@@ -3,6 +3,7 @@
 Определяет главное окно и управляет взаимодействием между различными формами.
 """
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, messagebox
 import customtkinter as ctk
 import logging
@@ -78,7 +79,7 @@ class AppGUI:
         # Кнопка "Карточки работ"
         self.cards_btn = ctk.CTkButton(
             self.nav_frame,
-            text="Карточки работ",
+            text="Наряды",
             command=self.show_cards_list,
             **BUTTON_STYLE
         )
@@ -122,7 +123,7 @@ class AppGUI:
         # Создаем заголовок
         header = ctk.CTkLabel(
             self.content_frame,
-            text="Список карточек работ",
+            text="Список нарядов",
             **HEADER_STYLE
         )
         header.pack(pady=(0, 10), anchor="w")
@@ -134,7 +135,7 @@ class AppGUI:
         # Кнопка "Создать карточку"
         create_btn = ctk.CTkButton(
             btn_frame,
-            text="Создать карточку",
+            text="Создать наряд",
             command=self.create_new_card,
             **BUTTON_STYLE
         )
@@ -158,7 +159,7 @@ class AppGUI:
         )
 
         # Настраиваем заголовки столбцов
-        self.cards_table.heading("number", text="№ карточки")
+        self.cards_table.heading("number", text="№ наряда")
         self.cards_table.heading("date", text="Дата")
         self.cards_table.heading("product", text="Изделие")
         self.cards_table.heading("contract", text="Контракт")
@@ -259,7 +260,7 @@ class AppGUI:
         # Получаем карточку из БД
         card = self.card_service.get_card(card_id)
         if not card:
-            messagebox.showerror("Ошибка", f"Карточка с ID {card_id} не найдена")
+            messagebox.showerror("Ошибка", f"Наряд с номером {card_id} не найден")
             return
 
         # Отображаем форму карточки
@@ -1267,3 +1268,375 @@ class AppGUI:
 
         # Привязываем двойной клик для редактирования
         self.contracts_table.bind("<Double-1>", lambda e: self.edit_contract(self.contracts_table))
+
+    def load_contracts_data(self) -> None:
+        """Загрузка данных контрактов в таблицу"""
+        # Очищаем таблицу
+        for item in self.contracts_table.get_children():
+            self.contracts_table.delete(item)
+
+        # Получаем список контрактов
+        contracts = self.contract_service.get_all_contracts()
+
+        # Добавляем в таблицу
+        for contract in contracts:
+            start_date = contract.start_date.strftime("%d.%m.%Y") if contract.start_date else "-"
+            end_date = contract.end_date.strftime("%d.%m.%Y") if contract.end_date else "-"
+
+            self.contracts_table.insert(
+                "", "end",
+                values=(
+                    contract.id,
+                    contract.contract_number,
+                    contract.description if contract.description else "",
+                    start_date,
+                    end_date
+                )
+            )
+
+    def add_contract(self) -> None:
+        """Добавление нового контракта"""
+        # Создаем диалоговое окно
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Добавление контракта")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Делаем окно модальным
+        dialog.focus_set()
+
+        # Поля формы
+        form_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(form_frame, text="Номер контракта:").grid(row=0, column=0, sticky="w", pady=(0, 5))
+        number_entry = ctk.CTkEntry(form_frame, width=250)
+        number_entry.grid(row=0, column=1, sticky="ew", pady=(0, 5))
+
+        ctk.CTkLabel(form_frame, text="Описание:").grid(row=1, column=0, sticky="w", pady=(0, 5))
+        description_entry = ctk.CTkTextbox(form_frame, width=250, height=80)
+        description_entry.grid(row=1, column=1, sticky="ew", pady=(0, 5))
+
+        ctk.CTkLabel(form_frame, text="Дата начала:").grid(row=2, column=0, sticky="w", pady=(0, 5))
+        start_date_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        start_date_frame.grid(row=2, column=1, sticky="ew", pady=(0, 5))
+
+        start_day = ctk.CTkComboBox(start_date_frame, width=60, values=[str(i) for i in range(1, 32)])
+        start_day.pack(side=tk.LEFT, padx=(0, 5))
+
+        start_month = ctk.CTkComboBox(start_date_frame, width=60, values=[str(i) for i in range(1, 13)])
+        start_month.pack(side=tk.LEFT, padx=(0, 5))
+
+        start_year = ctk.CTkComboBox(start_date_frame, width=80,
+                                     values=[str(i) for i in range(2000, 2051)])
+        start_year.pack(side=tk.LEFT)
+
+        # Устанавливаем текущую дату
+        today = datetime.now()
+        start_day.set(str(today.day))
+        start_month.set(str(today.month))
+        start_year.set(str(today.year))
+
+        ctk.CTkLabel(form_frame, text="Дата окончания:").grid(row=3, column=0, sticky="w", pady=(0, 5))
+        end_date_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        end_date_frame.grid(row=3, column=1, sticky="ew", pady=(0, 5))
+
+        end_day = ctk.CTkComboBox(end_date_frame, width=60, values=[str(i) for i in range(1, 32)])
+        end_day.pack(side=tk.LEFT, padx=(0, 5))
+
+        end_month = ctk.CTkComboBox(end_date_frame, width=60, values=[str(i) for i in range(1, 13)])
+        end_month.pack(side=tk.LEFT, padx=(0, 5))
+
+        end_year = ctk.CTkComboBox(end_date_frame, width=80,
+                                   values=[str(i) for i in range(2000, 2051)])
+        end_year.pack(side=tk.LEFT)
+
+        # По умолчанию - год вперед
+        next_year = today.year + 1
+        end_day.set(str(today.day))
+        end_month.set(str(today.month))
+        end_year.set(str(next_year))
+
+        # Кнопки
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=10)
+
+        def save_contract():
+            # Проверка обязательных полей
+            if not number_entry.get():
+                messagebox.showwarning("Внимание", "Необходимо указать номер контракта")
+                return
+
+            # Создаем даты из выбранных значений
+            try:
+                start_date_obj = datetime(
+                    int(start_year.get()),
+                    int(start_month.get()),
+                    int(start_day.get())
+                )
+            except ValueError:
+                messagebox.showwarning("Внимание", "Некорректная дата начала")
+                return
+
+            try:
+                end_date_obj = datetime(
+                    int(end_year.get()),
+                    int(end_month.get()),
+                    int(end_day.get())
+                )
+            except ValueError:
+                messagebox.showwarning("Внимание", "Некорректная дата окончания")
+                return
+
+            # Создаем объект контракта и сохраняем
+            from app.db.models import Contract
+            contract = Contract(
+                contract_number=number_entry.get(),
+                description=description_entry.get("1.0", tk.END).strip() or None,
+                start_date=start_date_obj,
+                end_date=end_date_obj
+            )
+
+            success, error = self.contract_service.save_contract(contract)
+            if success:
+                dialog.destroy()
+                self.load_contracts_data()  # Обновляем таблицу
+                messagebox.showinfo("Успех", "Контракт успешно добавлен")
+            else:
+                messagebox.showerror("Ошибка", f"Не удалось добавить контракт: {error}")
+
+        save_btn = ctk.CTkButton(
+            btn_frame,
+            text="Сохранить",
+            command=save_contract,
+            fg_color=COLOR_SCHEME["success"],
+            hover_color="#388E3C"
+        )
+        save_btn.pack(side=tk.RIGHT, padx=(10, 0))
+
+        cancel_btn = ctk.CTkButton(
+            btn_frame,
+            text="Отмена",
+            command=dialog.destroy,
+            fg_color=COLOR_SCHEME["error"],
+            hover_color="#D32F2F"
+        )
+        cancel_btn.pack(side=tk.RIGHT)
+
+    def edit_contract(self, table) -> None:
+        """Редактирование выбранного контракта"""
+        # Получаем выбранную строку
+        selection = table.selection()
+        if not selection:
+            messagebox.showinfo("Информация", "Выберите контракт для редактирования")
+            return
+
+        # Получаем данные из выбранной строки
+        item = table.item(selection[0])
+        values = item["values"]
+        contract_id = int(values[0])
+
+        # Получаем данные контракта из БД
+        contract = self.contract_service.db.get_contract_by_id(contract_id)
+        if not contract:
+            messagebox.showerror("Ошибка", f"Контракт с ID {contract_id} не найден")
+            return
+
+        # Создаем диалоговое окно
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Редактирование контракта")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Делаем окно модальным
+        dialog.focus_set()
+
+        # Поля формы
+        form_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        ctk.CTkLabel(form_frame, text="Номер контракта:").grid(row=0, column=0, sticky="w", pady=(0, 5))
+        number_entry = ctk.CTkEntry(form_frame, width=250)
+        number_entry.insert(0, contract.contract_number)
+        number_entry.grid(row=0, column=1, sticky="ew", pady=(0, 5))
+
+        ctk.CTkLabel(form_frame, text="Описание:").grid(row=1, column=0, sticky="w", pady=(0, 5))
+        description_entry = ctk.CTkTextbox(form_frame, width=250, height=80)
+        if contract.description:
+            description_entry.insert("1.0", contract.description)
+        description_entry.grid(row=1, column=1, sticky="ew", pady=(0, 5))
+
+        ctk.CTkLabel(form_frame, text="Дата начала:").grid(row=2, column=0, sticky="w", pady=(0, 5))
+        start_date_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        start_date_frame.grid(row=2, column=1, sticky="ew", pady=(0, 5))
+
+        start_day = ctk.CTkComboBox(start_date_frame, width=60, values=[str(i) for i in range(1, 32)])
+        start_day.pack(side=tk.LEFT, padx=(0, 5))
+
+        start_month = ctk.CTkComboBox(start_date_frame, width=60, values=[str(i) for i in range(1, 13)])
+        start_month.pack(side=tk.LEFT, padx=(0, 5))
+
+        start_year = ctk.CTkComboBox(start_date_frame, width=80,
+                                     values=[str(i) for i in range(2000, 2051)])
+        start_year.pack(side=tk.LEFT)
+
+        # Устанавливаем дату начала из контракта, если есть
+        if contract.start_date:
+            start_day.set(str(contract.start_date.day))
+            start_month.set(str(contract.start_date.month))
+            start_year.set(str(contract.start_date.year))
+        else:
+            # Иначе текущую дату
+            today = datetime.now()
+            start_day.set(str(today.day))
+            start_month.set(str(today.month))
+            start_year.set(str(today.year))
+
+        ctk.CTkLabel(form_frame, text="Дата окончания:").grid(row=3, column=0, sticky="w", pady=(0, 5))
+        end_date_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
+        end_date_frame.grid(row=3, column=1, sticky="ew", pady=(0, 5))
+
+        end_day = ctk.CTkComboBox(end_date_frame, width=60, values=[str(i) for i in range(1, 32)])
+        end_day.pack(side=tk.LEFT, padx=(0, 5))
+
+        end_month = ctk.CTkComboBox(end_date_frame, width=60, values=[str(i) for i in range(1, 13)])
+        end_month.pack(side=tk.LEFT, padx=(0, 5))
+
+        end_year = ctk.CTkComboBox(end_date_frame, width=80,
+                                   values=[str(i) for i in range(2000, 2051)])
+        end_year.pack(side=tk.LEFT)
+
+        # Устанавливаем дату окончания из контракта, если есть
+        if contract.end_date:
+            end_day.set(str(contract.end_date.day))
+            end_month.set(str(contract.end_date.month))
+            end_year.set(str(contract.end_date.year))
+        else:
+            # Иначе год вперед от текущей даты
+            today = datetime.now()
+            next_year = today.year + 1
+            end_day.set(str(today.day))
+            end_month.set(str(today.month))
+            end_year.set(str(next_year))
+
+        # Кнопки
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=10)
+
+        def save_contract_changes():
+            # Проверка обязательных полей
+            if not number_entry.get():
+                messagebox.showwarning("Внимание", "Необходимо указать номер контракта")
+                return
+
+            # Создаем даты из выбранных значений
+            try:
+                start_date_obj = datetime(
+                    int(start_year.get()),
+                    int(start_month.get()),
+                    int(start_day.get())
+                )
+            except ValueError:
+                messagebox.showwarning("Внимание", "Некорректная дата начала")
+                return
+
+            try:
+                end_date_obj = datetime(
+                    int(end_year.get()),
+                    int(end_month.get()),
+                    int(end_day.get())
+                )
+            except ValueError:
+                messagebox.showwarning("Внимание", "Некорректная дата окончания")
+                return
+
+            # Обновляем объект контракта
+            contract.contract_number = number_entry.get()
+            contract.description = description_entry.get("1.0", tk.END).strip() or None
+            contract.start_date = start_date_obj
+            contract.end_date = end_date_obj
+
+            success, error = self.contract_service.save_contract(contract)
+            if success:
+                dialog.destroy()
+                self.load_contracts_data()  # Обновляем таблицу
+                messagebox.showinfo("Успех", "Данные контракта успешно обновлены")
+            else:
+                messagebox.showerror("Ошибка", f"Не удалось обновить данные контракта: {error}")
+
+        save_btn = ctk.CTkButton(
+            btn_frame,
+            text="Сохранить",
+            command=save_contract_changes,
+            fg_color=COLOR_SCHEME["success"],
+            hover_color="#388E3C"
+        )
+        save_btn.pack(side=tk.RIGHT, padx=(10, 0))
+
+        cancel_btn = ctk.CTkButton(
+            btn_frame,
+            text="Отмена",
+            command=dialog.destroy,
+            fg_color=COLOR_SCHEME["error"],
+            hover_color="#D32F2F"
+        )
+        cancel_btn.pack(side=tk.RIGHT)
+
+    def delete_contract(self, table) -> None:
+        """Удаление выбранного контракта"""
+        # Получаем выбранную строку
+        selection = table.selection()
+        if not selection:
+            messagebox.showinfo("Информация", "Выберите контракт для удаления")
+            return
+
+        # Получаем данные из выбранной строки
+        item = table.item(selection[0])
+        values = item["values"]
+        contract_id = int(values[0])
+        contract_number = values[1]
+
+        # Подтверждение удаления
+        if not messagebox.askyesno("Подтверждение", f"Вы действительно хотите удалить контракт '{contract_number}'?"):
+            return
+
+        # Удаляем контракт
+        success, error = self.contract_service.delete_contract(contract_id)
+        if success:
+            self.load_contracts_data()  # Обновляем таблицу
+            messagebox.showinfo("Успех", f"Контракт '{contract_number}' успешно удален")
+        else:
+            messagebox.showerror("Ошибка", f"Не удалось удалить контракт: {error}")
+
+    def show_reports(self) -> None:
+        """Отображение формы для создания отчетов"""
+        self.clear_content()
+
+        # Создаем заголовок
+        header = ctk.CTkLabel(
+            self.content_frame,
+            text="Формирование отчетов",
+            **HEADER_STYLE
+        )
+        header.pack(pady=(0, 10), anchor="w")
+
+        # Создаем форму для отчетов
+        self.current_form = ReportForm(
+            self.content_frame,
+            self.report_service,
+            self.worker_service,
+            self.work_type_service,
+            self.product_service,
+            self.contract_service
+        )
+
+    def on_close(self) -> None:
+        """Обработчик закрытия приложения"""
+        # Подтверждаем закрытие
+        if messagebox.askyesno("Подтверждение", "Вы действительно хотите закрыть приложение?"):
+            # Закрываем соединение с БД
+            self.db_manager.close()
+            # Закрываем приложение
+            self.root.destroy()
