@@ -2,18 +2,20 @@
 Форма для создания отчетов.
 Позволяет выбирать период, работников и другие параметры для формирования отчетов.
 """
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import customtkinter as ctk
-from datetime import datetime, date, timedelta
 import os
+import tkinter as tk
 import webbrowser
-from typing import Optional, List, Dict, Any, Callable, Tuple
+from datetime import datetime, date, timedelta
+from tkinter import ttk, messagebox, filedialog
+from typing import List, Dict, Any, Tuple
 
-from app.services.report_service import ReportService
-from app.services.card_service import WorkerService, WorkTypeService, ProductService, ContractService
-from app.gui.styles import COLOR_SCHEME, BUTTON_STYLE, FRAME_STYLE, LABEL_STYLE
+import customtkinter as ctk
+
 from app.gui.autocomplete import AutocompleteCombobox
+from app.gui.styles import COLOR_SCHEME, BUTTON_STYLE, FRAME_STYLE, LABEL_STYLE
+from app.services.card_service import WorkerService, WorkTypeService, ProductService, ContractService
+from app.services.report_service import ReportService
+
 
 class ReportForm:
     """
@@ -144,7 +146,6 @@ class ReportForm:
             worker_frame,
             search_function=self.search_workers,
             display_key="full_name",
-            value_key="id",
             width=250
         )
         self.worker_combo.pack(side=tk.LEFT)
@@ -424,7 +425,7 @@ class ReportForm:
         contracts = self.contract_service.search_contracts(search_text)
 
         # Преобразуем в формат для автокомплита
-        result = [{"id": THE 0, "contract_number": "Все контракты"}]  # Опция "Все контракты"
+        result = [{"id": 0, "contract_number": "Все контракты"}]  # Опция "Все контракты"
 
         for contract in contracts:
             result.append({

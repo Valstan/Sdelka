@@ -53,7 +53,7 @@ def main():
     except Exception as e:
         logger.error(f"Критическая ошибка при запуске приложения: {e}", exc_info=True)
         # Показываем сообщение об ошибке пользователю
-        ctk.CTkMessageBox.show_error("Ошибка", f"Произошла ошибка при запуске приложения:\n{str(e)}")
+        print("Ошибка", f"Произошла ошибка при запуске приложения:\n{str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":

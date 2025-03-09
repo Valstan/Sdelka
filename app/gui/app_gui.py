@@ -208,7 +208,7 @@ class AppGUI:
                 "", "end",
                 values=(
                     card.card_number,
-                    card.card_date.strftime("%d.%m.%Y") if card.card_date else "-",
+                    card.formatted_date,
                     product_text,
                     card.contract_number if card.contract_number else "-",
                     len(full_card.workers) if full_card else 0,
@@ -1280,19 +1280,25 @@ class AppGUI:
 
         # Добавляем в таблицу
         for contract in contracts:
-            start_date = contract.start_date.strftime("%d.%m.%Y") if contract.start_date else "-"
-            end_date = contract.end_date.strftime("%d.%m.%Y") if contract.end_date else "-"
-
-            self.contracts_table.insert(
-                "", "end",
-                values=(
-                    contract.id,
-                    contract.contract_number,
-                    contract.description if contract.description else "",
-                    start_date,
-                    end_date
-                )
+            start_date = (
+                contract.start_date.strftime("%d.%m.%Y")
+                if contract.start_date and isinstance(contract.start_date, datetime)
+                else (contract.start_date if contract.start_date else "-")
             )
+            end_date = (
+                contract.end_date.strftime("%d.%m.%Y")
+                if contract.end_date and isinstance(contract.end_date, datetime)
+                else (contract.end_date if contract.end_date else "-")
+            )
+
+            # Используем свойства для безопасного форматирования дат
+            self.contracts_table.insert("", "end", values=(
+                contract.id,
+                contract.contract_number,
+                contract.formatted_start_date,  # Вместо start_date = contract.start_date.strftime...
+                contract.formatted_end_date,  # Аналогично для end_date
+                contract.description
+            ))
 
     def add_contract(self) -> None:
         """Добавление нового контракта"""

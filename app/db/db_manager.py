@@ -25,6 +25,25 @@ from app.db.models import (
 )
 from app.db.queries import *  # Импортируем все SQL-запросы
 
+
+def format_date_for_db(date_value: Optional[Union[datetime, str]]) -> Optional[str]:
+    """
+    Форматирует дату для сохранения в БД.
+
+    Args:
+        date_value: Дата в формате datetime или строке
+
+    Returns:
+        Optional[str]: Дата в строковом формате для БД или None
+    """
+    if not date_value:
+        return None
+
+    if isinstance(date_value, datetime):
+        return date_value.strftime("%Y-%m-%d")
+    return str(date_value)
+
+
 class DatabaseManager:
     """Класс для управления базой данных SQLite"""
 
@@ -62,8 +81,17 @@ class DatabaseManager:
             logger.info(f"Файл БД {self.db_path} не существует, резервная копия не создана")
             return ""
 
-        backup_filename = get_backup_filename()
-        backup_path = os.path.join(BACKUP_DIR, backup_filename)
+        # Убедимся, что директория для резервных копий существует
+        if not os.path.exists(BACKUP_DIR):
+            try:
+                os.makedirs(BACKUP_DIR)
+                logger.info(f"Создана директория для резервных копий: {BACKUP_DIR}")
+            except Exception as e:
+                logger.error(f"Не удалось создать директорию для резервных копий: {e}")
+                return ""
+
+        # Вызываем функцию со скобками
+        backup_path = os.path.join(BACKUP_DIR, get_backup_filename())
 
         try:
             shutil.copy2(self.db_path, backup_path)
@@ -299,21 +327,57 @@ class DatabaseManager:
 
     def add_contract(self, contract: Contract) -> int:
         """Добавление нового контракта"""
-        cursor = self.execute_query(
-            ADD_CONTRACT,
-            (contract.contract_number, contract.description,
-             contract.start_date, contract.end_date)
-        )
-        return cursor.lastrowid if cursor else 0
+        try:
+            # Форматируем даты для БД
+            start_date_db = None
+            if contract.start_date:
+                if isinstance(contract.start_date, datetime):
+                    start_date_db = contract.start_date.strftime("%Y-%m-%d")
+                else:
+                    start_date_db = str(contract.start_date)
+
+            end_date_db = None
+            if contract.end_date:
+                if isinstance(contract.end_date, datetime):
+                    end_date_db = contract.end_date.strftime("%Y-%m-%d")
+                else:
+                    end_date_db = str(contract.end_date)
+
+            cursor = self.execute_query(
+                ADD_CONTRACT,
+                (contract.contract_number, contract.description, start_date_db, end_date_db)
+            )
+            return cursor.lastrowid if cursor else 0
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении контракта: {e}")
+            return 0
 
     def update_contract(self, contract: Contract) -> bool:
-        """Обновление данных контракта"""
-        cursor = self.execute_query(
-            UPDATE_CONTRACT,
-            (contract.contract_number, contract.description,
-             contract.start_date, contract.end_date, contract.id)
-        )
-        return cursor is not None
+        """Обновление контракта"""
+        try:
+            # Форматируем даты для БД
+            start_date_db = None
+            if contract.start_date:
+                if isinstance(contract.start_date, datetime):
+                    start_date_db = contract.start_date.strftime("%Y-%m-%d")
+                else:
+                    start_date_db = str(contract.start_date)
+
+            end_date_db = None
+            if contract.end_date:
+                if isinstance(contract.end_date, datetime):
+                    end_date_db = contract.end_date.strftime("%Y-%m-%d")
+                else:
+                    end_date_db = str(contract.end_date)
+
+            result = self.execute_query(
+                UPDATE_CONTRACT,
+                (contract.contract_number, contract.description, start_date_db, end_date_db, contract.id)
+            )
+            return bool(result)
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении контракта: {e}")
+            return False
 
     def delete_contract(self, contract_id: int) -> bool:
         """Удаление контракта"""
@@ -483,7 +547,7 @@ class DatabaseManager:
         """
         # Если даты не заданы, используем широкий диапазон
         if not start_date:
-            start_date = "1900-01-01"
+            start_date = "2000-01-01"
         if not end_date:
             end_date = "2100-12-31"
 
@@ -496,3 +560,4 @@ class DatabaseManager:
         )
 
         return rows
+

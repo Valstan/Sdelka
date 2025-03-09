@@ -1,138 +1,109 @@
 """
-Модуль содержит стили и настройки внешнего вида для GUI приложения.
+Стили для GUI приложения.
+Определяет цветовую схему и стили виджетов.
 """
+import tkinter as tk
+from tkinter import ttk
 import customtkinter as ctk
-from typing import Dict, Any
 
 # Цветовая схема приложения
 COLOR_SCHEME = {
-    "primary": "#1E88E5",       # Основной цвет
-    "primary_dark": "#1565C0",  # Темный вариант основного цвета
-    "primary_light": "#64B5F6", # Светлый вариант основного цвета
-    "secondary": "#FF8F00",     # Дополнительный цвет
-    "success": "#4CAF50",       # Цвет успеха
-    "warning": "#FFC107",       # Цвет предупреждения
-    "error": "#F44336",         # Цвет ошибки
-    "text": "#212121",          # Основной цвет текста
-    "text_light": "#757575",    # Светлый цвет текста
-    "background": "#F5F5F5",    # Фон приложения
-    "card": "#FFFFFF",          # Фон карточек
-    "border": "#E0E0E0"         # Цвет границ
+    "primary": "#1976D2",         # Основной цвет
+    "primary_dark": "#0D47A1",    # Темный вариант основного цвета
+    "primary_light": "#BBDEFB",   # Светлый вариант основного цвета
+    "secondary": "#FF9800",       # Дополнительный цвет
+    "secondary_dark": "#F57C00",  # Темный вариант дополнительного цвета
+    "background": "#F5F5F5",      # Фон приложения
+    "card": "#FFFFFF",            # Фон карточек и форм
+    "text": "#212121",            # Основной цвет текста
+    "text_secondary": "#757575",  # Вторичный цвет текста
+    "error": "#F44336",           # Цвет ошибок
+    "success": "#4CAF50",         # Цвет успеха
+    "warning": "#FFC107",         # Цвет предупреждений
+    "black": "#000000",           # Чёрный
+    "white": "#FFFFFF",           # Белый
+    "gray": "#9E9E9E"             # Серый
 }
 
-# Общие настройки для заголовков
-HEADER_STYLE = {
-    "font": ("Roboto", 18, "bold"),
-    "fg_color": "transparent",
-    "text_color": COLOR_SCHEME["primary"]
-}
-
-# Общие настройки для надписей
-LABEL_STYLE = {
-    "font": ("Roboto", 12),
-    "fg_color": "transparent",
-    "text_color": COLOR_SCHEME["text"]
-}
-
-# Общие настройки для кнопок
+# Стили для кнопок
 BUTTON_STYLE = {
-    "font": ("Roboto", 12),
     "fg_color": COLOR_SCHEME["primary"],
     "hover_color": COLOR_SCHEME["primary_dark"],
     "corner_radius": 6,
-    "border_width": 0
+    "font": ("Roboto", 12),
+    "text_color": COLOR_SCHEME["white"]
 }
 
-# Настройки для кнопок отмены/удаления
-BUTTON_DANGER_STYLE = {
-    **BUTTON_STYLE,
-    "fg_color": COLOR_SCHEME["error"],
-    "hover_color": "#D32F2F"  # Темный красный
-}
-
-# Настройки для кнопок подтверждения/сохранения
-BUTTON_SUCCESS_STYLE = {
-    **BUTTON_STYLE,
-    "fg_color": COLOR_SCHEME["success"],
-    "hover_color": "#388E3C"  # Темный зеленый
-}
-
-# Настройки для полей ввода
+# Стили для текстовых полей
 ENTRY_STYLE = {
-    "font": ("Roboto", 12),
-    "fg_color": COLOR_SCHEME["card"],
-    "text_color": COLOR_SCHEME["text"],
-    "border_color": COLOR_SCHEME["border"],
-    "border_width": 1,
-    "corner_radius": 6
-}
-
-# Настройки для выпадающих списков
-COMBOBOX_STYLE = {
-    "font": ("Roboto", 12),
-    "fg_color": COLOR_SCHEME["card"],
-    "text_color": COLOR_SCHEME["text"],
-    "dropdown_fg_color": COLOR_SCHEME["card"],
-    "dropdown_text_color": COLOR_SCHEME["text"],
-    "dropdown_hover_color": COLOR_SCHEME["primary_light"],
-    "border_color": COLOR_SCHEME["border"],
-    "button_color": COLOR_SCHEME["primary"],
-    "button_hover_color": COLOR_SCHEME["primary_dark"],
+    "fg_color": COLOR_SCHEME["white"],
+    "border_color": COLOR_SCHEME["primary_light"],
     "corner_radius": 6,
-    "border_width": 1
+    "font": ("Roboto", 12)
 }
 
-# Настройки для таблиц
-TABLE_STYLE = {
-    "heading_font": ("Roboto", 12, "bold"),
-    "heading_bg": COLOR_SCHEME["primary_light"],
-    "heading_fg": COLOR_SCHEME["text"],
-    "row_bg_even": COLOR_SCHEME["card"],
-    "row_bg_odd": COLOR_SCHEME["background"],
-    "row_fg": COLOR_SCHEME["text"],
-    "selected_bg": COLOR_SCHEME["primary_light"],
-    "selected_fg": COLOR_SCHEME["text"]
-}
-
-# Настройки для фреймов
+# Стили для фреймов
 FRAME_STYLE = {
     "fg_color": COLOR_SCHEME["card"],
-    "corner_radius": 10,
+    "corner_radius": 8,
     "border_width": 1,
-    "border_color": COLOR_SCHEME["border"]
+    "border_color": COLOR_SCHEME["gray"]
 }
 
-# Настройки для вкладок
-TAB_STYLE = {
-    "fg_color": COLOR_SCHEME["background"],
+# Стили для меток
+LABEL_STYLE = {
     "text_color": COLOR_SCHEME["text"],
-    "hover_color": COLOR_SCHEME["primary_light"],
-    "corner_radius": 6
+    "font": ("Roboto", 12)
 }
 
-# Функция для применения стиля к виджету
-def apply_style(widget: ctk.CTkBaseClass, style: Dict[str, Any]) -> None:
-    """
-    Применяет указанный стиль к виджету.
+# Стили для заголовков
+HEADER_STYLE = {
+    "text_color": COLOR_SCHEME["primary"],
+    "font": ("Roboto", 16, "bold")
+}
 
-    Args:
-        widget: Виджет для стилизации
-        style: Словарь с параметрами стиля
-    """
-    for key, value in style.items():
-        try:
-            widget.configure(**{key: value})
-        except Exception:
-            # Некоторые параметры могут не поддерживаться конкретным виджетом
-            pass
-
-# Инициализация стилей для всего приложения
-def init_app_styles(appearance_mode: str = "light") -> None:
+def init_app_styles():
     """
     Инициализация стилей приложения.
-
-    Args:
-        appearance_mode: Режим оформления (light/dark)
+    Настраивает стили для CustomTkinter и ttk виджетов.
     """
-    ctk.set_appearance_mode(appearance_mode)
-    ctk.set_default_color_theme("blue")  # Базовая тема, которую мы будем кастомизировать
+    # Настройка темы для CustomTkinter
+    ctk.set_appearance_mode("light")
+    ctk.set_default_color_theme("blue")
+
+    # Настройка стилей для ttk виджетов (таблицы, прокрутки)
+    style = ttk.Style()
+
+    # Стиль для Treeview (таблиц)
+    style.configure(
+        "Treeview",
+        background=COLOR_SCHEME["card"],
+        foreground=COLOR_SCHEME["text"],
+        rowheight=28,
+        fieldbackground=COLOR_SCHEME["card"],
+        font=("Roboto", 10)
+    )
+
+    # Стиль для заголовков Treeview
+    style.configure(
+        "Treeview.Heading",
+        background=COLOR_SCHEME["primary_light"],
+        foreground=COLOR_SCHEME["text"],
+        font=("Roboto", 11, "bold")
+    )
+
+    # Стиль для выделенных строк
+    style.map(
+        "Treeview",
+        background=[("selected", COLOR_SCHEME["primary_light"])],
+        foreground=[("selected", COLOR_SCHEME["primary_dark"])]
+    )
+
+    # Стиль для полос прокрутки
+    style.configure(
+        "TScrollbar",
+        background=COLOR_SCHEME["card"],
+        arrowcolor=COLOR_SCHEME["primary"],
+        bordercolor=COLOR_SCHEME["gray"],
+        troughcolor=COLOR_SCHEME["background"]
+    )

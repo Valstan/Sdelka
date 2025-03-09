@@ -28,96 +28,85 @@ class ReportService:
         """
         self.db = db_manager
 
-    def generate_report(self,
-                       worker_id: int = 0,
-                       start_date: str = None,
-                       end_date: str = None,
-                       work_type_id: int = 0,
-                       product_id: int = 0,
-                       contract_id: int = 0,
-                       include_works_count: bool = False,
-                       include_products_count: bool = False,
-                       include_contracts_count: bool = False) -> pd.DataFrame:
+    def generate_report(self, params: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
-        Генерация отчета на основе указанных фильтров.
+        Генерирует отчет на основе указанных параметров.
 
         Args:
-            worker_id: ID работника (0 - все работники)
-            start_date: Начальная дата отчета
-            end_date: Конечная дата отчета
-            work_type_id: ID вида работы (0 - все виды работ)
-            product_id: ID изделия (0 - все изделия)
-            contract_id: ID контракта (0 - все контракты)
-            include_works_count: Включать количество работ
-            include_products_count: Включать количество изделий
-            include_contracts_count: Включать количество контрактов
+            params: Параметры отчета (даты, фильтры и т.д.)
 
         Returns:
-            pd.DataFrame: Данные отчета в виде DataFrame
+            DataFrame с данными отчета и словарь с сводными данными
         """
-        # Получаем данные из БД
-        report_data = self.db.get_report_data(
-            worker_id=worker_id,
-            start_date=start_date,
-            end_date=end_date,
-            work_type_id=work_type_id,
-            product_id=product_id,
-            contract_id=contract_id
-        )
+        try:
+            # Получаем данные для отчета
+            report_data = self.work_repository.get_report_data(
+                start_date=params.get('startdate'),
+                end_date=params.get('enddate'),
+                worker_id=params.get('workerid', 0),
+                worktype_id=params.get('worktypeid', 0),
+                product_id=params.get('productid', 0),
+                contract_id=params.get('contractid', 0)
+            )
 
-        if not report_data:
-            return pd.DataFrame()
+            if not report_data:
+                return pd.DataFrame(), {}
 
-        # Преобразуем данные в DataFrame для удобной обработки
-        df = pd.DataFrame(report_data)
+            # Конвертируем данные в DataFrame
+            df = pd.DataFrame(report_data)
 
-        # Переименовываем столбцы для лучшей читаемости
-        df = df.rename(columns={
-            'last_name': 'Фамилия',
-            'first_name': 'Имя',
-            'middle_name': 'Отчество',
-            'card_number': 'Номер карточки',
-            'card_date': 'Дата',
-            'quantity': 'Количество',
-            'amount': 'Сумма',
-            'work_name': 'Вид работы',
-            'product_number': 'Номер изделия',
-            'product_type': 'Тип изделия',
-            'contract_number': 'Номер контракта'
-        })
+            # Важно: разделяем суммы по работникам, если требуется
+            if 'Сумма' in df.columns and 'Работник' in df.columns and 'ID работы' in df.columns:
+                # Группируем данные по ID работы
+                work_groups = df.groupby('ID работы')
 
-        # Создаем полное имя работника
-        df['Работник'] = df['Фамилия'] + ' ' + df['Имя'].str[0] + '.'
-        df['Работник'] = df.apply(
-            lambda row: row['Работник'] + ' ' + row['Отчество'][0] + '.'
-            if not pd.isna(row['Отчество']) else row['Работник'],
-            axis=1
-        )
+                # Для каждой работы считаем количество уникальных работников
+                for work_id, group in work_groups:
+                    if len(group['Работник'].unique()) > 1:
+                        # Если у работы несколько работников, делим сумму поровну
+                        worker_count = len(group['Работник'].unique())
+                        # Сумма за одну работу (берем из первой строки группы)
+                        total_amount = group['Сумма'].iloc[0]
+                        # Разделенная сумма
+                        divided_amount = total_amount / worker_count
 
-        # Создаем полное наименование изделия
-        df['Изделие'] = df.apply(
-            lambda row: f"{row['Номер изделия']} {row['Тип изделия']}"
-            if not pd.isna(row['Номер изделия']) else "",
-            axis=1
-        )
+                        # Обновляем суммы для всех строк с этим ID работы
+                        df.loc[df['ID работы'] == work_id, 'Сумма'] = divided_amount
 
-        # Добавляем агрегированные данные если требуется
-        summary_data = {}
+            # Рассчитываем итоговые суммы
+            total_amount = df['Сумма'].sum() if 'Сумма' in df.columns else 0
 
-        if include_works_count:
-            work_counts = df.groupby('Вид работы')['Количество'].sum().reset_index()
-            work_counts.columns = ['Вид работы', 'Всего выполнено']
-            summary_data['works_count'] = work_counts
+            # Собираем дополнительную статистику, если запрошена
+            summary_data = {
+                'total_amount': total_amount,
+            }
 
-        if include_products_count:
-            product_counts = df.groupby('Изделие').size().reset_index(name='Количество')
-            summary_data['products_count'] = product_counts
+            if params.get('includeworkscount', False):
+                # Подсчет уникальных работ
+                summary_data['works_count'] = df['ID работы'].nunique() if 'ID работы' in df.columns else 0
 
-        if include_contracts_count:
-            contract_counts = df.groupby('Номер контракта').size().reset_index(name='Количество')
-            summary_data['contracts_count'] = contract_counts
+            if params.get('includeproductscount', False):
+                # Подсчет уникальных изделий
+                summary_data['products_count'] = df['ID изделия'].nunique() if 'ID изделия' in df.columns else 0
 
-        return df, summary_data
+            if params.get('includecontractscount', False):
+                # Подсчет уникальных контрактов
+                summary_data['contracts_count'] = df['ID контракта'].nunique() if 'ID контракта' in df.columns else 0
+
+            # Удаляем служебные колонки с ID перед возвратом
+            if 'ID работы' in df.columns:
+                df = df.drop(columns=['ID работы'])
+            if 'ID изделия' in df.columns:
+                df = df.drop(columns=['ID изделия'])
+            if 'ID контракта' in df.columns:
+                df = df.drop(columns=['ID контракта'])
+
+            return df, summary_data
+
+        except Exception as e:
+            logging.error(f"Ошибка при генерации отчета: {str(e)}")
+            logging.exception(e)
+            return pd.DataFrame(), {}
 
     def export_to_excel(self,
                       df: pd.DataFrame,

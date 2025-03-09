@@ -70,6 +70,53 @@ class Contract:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+    def __post_init__(self):
+        """Инициализация после создания объекта"""
+        # Обработка начальной даты
+        if isinstance(self.start_date, str) and self.start_date:
+            try:
+                self.start_date = datetime.strptime(self.start_date, "%Y-%m-%d")
+            except ValueError:
+                pass
+
+        # Обработка конечной даты
+        if isinstance(self.end_date, str) and self.end_date:
+            try:
+                self.end_date = datetime.strptime(self.end_date, "%Y-%m-%d")
+            except ValueError:
+                pass
+
+        # Обработка дат создания и обновления
+        if isinstance(self.created_at, str) and self.created_at:
+            try:
+                self.created_at = datetime.strptime(self.created_at, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+
+        if isinstance(self.updated_at, str) and self.updated_at:
+            try:
+                self.updated_at = datetime.strptime(self.updated_at, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+
+    @property
+    def formatted_start_date(self) -> str:
+        """Отформатированная начальная дата контракта"""
+        if self.start_date:
+            if isinstance(self.start_date, datetime):
+                return self.start_date.strftime("%d.%m.%Y")
+            return str(self.start_date)
+        return "-"
+
+    @property
+    def formatted_end_date(self) -> str:
+        """Отформатированная конечная дата контракта"""
+        if self.end_date:
+            if isinstance(self.end_date, datetime):
+                return self.end_date.strftime("%d.%m.%Y")
+            return str(self.end_date)
+        return "-"
+
 @dataclass
 class WorkCardItem:
     """Модель для представления элемента карточки работ (вида работы в карточке)"""
@@ -112,7 +159,7 @@ class WorkCard:
     """Модель для представления карточки работ"""
     id: Optional[int] = None
     card_number: int = 0
-    card_date: datetime = None
+    card_date: Optional[datetime] = None
     product_id: Optional[int] = None
     contract_id: Optional[int] = None
     total_amount: float = 0.0
@@ -129,11 +176,21 @@ class WorkCard:
     workers: List[WorkCardWorker] = None
 
     def __post_init__(self):
-        """Инициализация списков при создании объекта"""
+        """Инициализация после создания объекта"""
+        # Инициализация списков
         if self.items is None:
             self.items = []
         if self.workers is None:
             self.workers = []
+
+        # Обработка даты карточки
+        if isinstance(self.card_date, str) and self.card_date:
+            try:
+                # Пытаемся преобразовать строку в datetime
+                self.card_date = datetime.strptime(self.card_date, "%Y-%m-%d")
+            except ValueError:
+                # Если формат строки неверный, оставляем строку (будет обработано в formatted_date)
+                pass
 
     def calculate_total_amount(self) -> float:
         """Расчет общей суммы карточки на основе элементов"""
@@ -152,3 +209,12 @@ class WorkCard:
         worker_amount = self.calculate_worker_amount()
         for worker in self.workers:
             worker.amount = worker_amount
+
+    @property
+    def formatted_date(self) -> str:
+        """Отформатированная дата карточки в удобном для отображения формате"""
+        if self.card_date:
+            if isinstance(self.card_date, datetime):
+                return self.card_date.strftime("%d.%m.%Y")
+            return str(self.card_date)  # Если дата в виде строки
+        return "-"
