@@ -14,6 +14,7 @@ from app.config import REPORTS_DIR
 
 logger = logging.getLogger(__name__)
 
+
 class ReportService:
     """
     Сервис для генерации отчетов по работе сотрудников.
@@ -40,13 +41,13 @@ class ReportService:
         """
         try:
             # Получаем данные для отчета
-            report_data = self.work_repository.get_report_data(
-                start_date=params.get('startdate'),
-                end_date=params.get('enddate'),
-                worker_id=params.get('workerid', 0),
-                worktype_id=params.get('worktypeid', 0),
-                product_id=params.get('productid', 0),
-                contract_id=params.get('contractid', 0)
+            report_data = self.db.get_report_data(
+                worker_id=params.get('worker_id', 0),
+                start_date=params.get('start_date'),
+                end_date=params.get('end_date'),
+                work_type_id=params.get('work_type_id', 0),
+                product_id=params.get('product_id', 0),
+                contract_id=params.get('contract_id', 0)
             )
 
             if not report_data:
@@ -55,26 +56,45 @@ class ReportService:
             # Конвертируем данные в DataFrame
             df = pd.DataFrame(report_data)
 
-            # Важно: разделяем суммы по работникам, если требуется
-            if 'Сумма' in df.columns and 'Работник' in df.columns and 'ID работы' in df.columns:
-                # Группируем данные по ID работы
-                work_groups = df.groupby('ID работы')
+            # Обрабатываем отчет только если есть необходимые столбцы
+            if 'worker_amount' in df.columns:
+                # Если у нас уже есть суммы по работникам, используем их
+                total_amount = df['worker_amount'].sum()
+                # Преобразуем столбец для отображения в отчете
+                df['amount'] = df['worker_amount']
+            else:
+                # Если суммы по работникам отсутствуют, используем логику разделения
+                if 'amount' in df.columns and 'work_item_id' in df.columns:
+                    # Группируем данные по ID элемента работы
+                    work_groups = df.groupby('work_item_id')
 
-                # Для каждой работы считаем количество уникальных работников
-                for work_id, group in work_groups:
-                    if len(group['Работник'].unique()) > 1:
+                    # Для каждой работы считаем количество уникальных работников
+                    for work_id, group in work_groups:
+                        # Создаем полное имя для каждого работника
+                        full_names = []
+                        for _, row in group.iterrows():
+                            full_name = f"{row['last_name']} {row['first_name'][0]}.{row['middle_name'][0] if row['middle_name'] else ''}"
+                            full_names.append(full_name)
+
                         # Если у работы несколько работников, делим сумму поровну
-                        worker_count = len(group['Работник'].unique())
-                        # Сумма за одну работу (берем из первой строки группы)
-                        total_amount = group['Сумма'].iloc[0]
-                        # Разделенная сумма
-                        divided_amount = total_amount / worker_count
+                        if len(set(full_names)) > 1:
+                            worker_count = len(set(full_names))
+                            # Сумма за одну работу (берем из первой строки группы)
+                            total_work_amount = group['amount'].iloc[0]
+                            # Разделенная сумма
+                            divided_amount = total_work_amount / worker_count
 
-                        # Обновляем суммы для всех строк с этим ID работы
-                        df.loc[df['ID работы'] == work_id, 'Сумма'] = divided_amount
+                            # Обновляем суммы для всех строк с этим ID работы
+                            df.loc[df['work_item_id'] == work_id, 'amount'] = divided_amount
 
-            # Рассчитываем итоговые суммы
-            total_amount = df['Сумма'].sum() if 'Сумма' in df.columns else 0
+                # Рассчитываем итоговую сумму
+                total_amount = df['amount'].sum() if 'amount' in df.columns else 0
+
+            # Формируем полное имя работника
+            if all(col in df.columns for col in ['last_name', 'first_name', 'middle_name']):
+                df['worker_name'] = df.apply(lambda row:
+                                             f"{row['last_name']} {row['first_name'][0]}.{row['middle_name'][0] if row['middle_name'] else ''}",
+                                             axis=1)
 
             # Собираем дополнительную статистику, если запрошена
             summary_data = {
@@ -83,23 +103,21 @@ class ReportService:
 
             if params.get('includeworkscount', False):
                 # Подсчет уникальных работ
-                summary_data['works_count'] = df['ID работы'].nunique() if 'ID работы' in df.columns else 0
+                summary_data['works_count'] = df['work_item_id'].nunique() if 'work_item_id' in df.columns else 0
 
             if params.get('includeproductscount', False):
                 # Подсчет уникальных изделий
-                summary_data['products_count'] = df['ID изделия'].nunique() if 'ID изделия' in df.columns else 0
+                summary_data['products_count'] = df['product_id'].nunique() if 'product_id' in df.columns else 0
 
             if params.get('includecontractscount', False):
                 # Подсчет уникальных контрактов
-                summary_data['contracts_count'] = df['ID контракта'].nunique() if 'ID контракта' in df.columns else 0
+                summary_data['contracts_count'] = df['contract_id'].nunique() if 'contract_id' in df.columns else 0
 
-            # Удаляем служебные колонки с ID перед возвратом
-            if 'ID работы' in df.columns:
-                df = df.drop(columns=['ID работы'])
-            if 'ID изделия' in df.columns:
-                df = df.drop(columns=['ID изделия'])
-            if 'ID контракта' in df.columns:
-                df = df.drop(columns=['ID контракта'])
+            # Удаляем технические столбцы перед возвратом
+            columns_to_drop = ['work_item_id', 'product_id', 'contract_id']
+            for col in columns_to_drop:
+                if col in df.columns:
+                    df = df.drop(columns=[col])
 
             return df, summary_data
 
@@ -109,9 +127,9 @@ class ReportService:
             return pd.DataFrame(), {}
 
     def export_to_excel(self,
-                      df: pd.DataFrame,
-                      summary_data: Dict[str, pd.DataFrame] = None,
-                      filename: str = None) -> str:
+                        df: pd.DataFrame,
+                        summary_data: Dict[str, pd.DataFrame] = None,
+                        filename: str = None) -> str:
         """
         Экспорт отчета в формат Excel.
 
@@ -169,9 +187,9 @@ class ReportService:
             return ""
 
     def export_to_html(self,
-                     df: pd.DataFrame,
-                     summary_data: Dict[str, pd.DataFrame] = None,
-                     filename: str = None) -> str:
+                       df: pd.DataFrame,
+                       summary_data: Dict[str, pd.DataFrame] = None,
+                       filename: str = None) -> str:
         """
         Экспорт отчета в формат HTML.
 
@@ -264,9 +282,9 @@ class ReportService:
             return ""
 
     def export_to_pdf(self,
-                    df: pd.DataFrame,
-                    summary_data: Dict[str, pd.DataFrame] = None,
-                    filename: str = None) -> str:
+                      df: pd.DataFrame,
+                      summary_data: Dict[str, pd.DataFrame] = None,
+                      filename: str = None) -> str:
         """
         Экспорт отчета в формат PDF.
 

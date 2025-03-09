@@ -238,10 +238,14 @@ REPORT_BY_WORKER = """
 SELECT 
     w.last_name, w.first_name, w.middle_name,
     wc.card_number, wc.card_date,
+    wci.id as work_item_id,  -- добавляем ID элемента работы
     wci.quantity, wci.amount,
     wt.name as work_name,
     p.product_number, p.product_type,
-    c.contract_number
+    c.contract_number,
+    p.id as product_id,  -- добавляем ID изделия
+    c.id as contract_id,  -- добавляем ID контракта
+    wcw.amount as worker_amount  -- добавляем сумму для конкретного работника
 FROM work_card_workers wcw
 JOIN workers w ON wcw.worker_id = w.id
 JOIN work_cards wc ON wcw.work_card_id = wc.id
