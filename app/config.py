@@ -5,19 +5,20 @@
 
 import os
 from datetime import datetime
-import pathlib
 from pathlib import Path
 
+CURRENT_DIR = Path(os.getcwd())  # Текущая директория, из которой запущена программа
+
 # Корневая директория проекта
-ROOT_DIR = pathlib.Path(__file__).parent.parent.parent
+# ROOT_DIR = pathlib.Path(__file__).parent.parent.parent
+ROOT_DIR = CURRENT_DIR
 
 # Директория для хранения данных
-DATA_DIR = os.path.join(ROOT_DIR, "data")
-os.makedirs(DATA_DIR, exist_ok=True)
+DATA_DIR = Path(ROOT_DIR) / "data"
+DATA_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
 
 # Путь к основной базе данных
-DATABASE_PATH = os.path.join(DATA_DIR, "brigade.db")
-
+DATABASE_PATH = DATA_DIR / "brigade.db"
 
 # Функция для создания пути к резервной копии базы данных
 def get_backup_db_path():
@@ -28,18 +29,18 @@ def get_backup_db_path():
         str: Полный путь к файлу резервной копии
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return os.path.join(DATA_DIR, f"brigade_backup_{timestamp}.db")
+    return DATA_DIR / f"brigade_backup_{timestamp}.db"
 
 
 # Настройки приложения
-APP_TITLE = "Учет сдельной работы бригад"
+APP_TITLE = "Учет сдельной работы бригад РМЗ"
 APP_VERSION = "1.0.0"
 APP_WIDTH = 1200
 APP_HEIGHT = 800
 
 # Настройки для отчетов
-REPORTS_DIR = os.path.join(DATA_DIR, "reports")
-os.makedirs(REPORTS_DIR, exist_ok=True)
+REPORTS_DIR = DATA_DIR / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
 
 # Настройки базы данных
 DB_TABLES = {
@@ -56,31 +57,31 @@ DB_TABLES = {
 Конфигурационный файл приложения.
 Содержит настройки путей, параметров базы данных и других глобальных параметров.
 """
-
 # Базовая директория проекта
-BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = CURRENT_DIR
 
 # Директория для хранения базы данных
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-os.makedirs(DATA_DIR, exist_ok=True)
+DATA_DIR = Path(BASE_DIR) / "data"
+DATA_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
 
 # Путь к файлу базы данных
-DB_PATH = os.path.join(DATA_DIR, 'brigade_work.db')
+DB_PATH = DATA_DIR / "brigade_work.db"
 
 # Директория для хранения логов
-LOGS_DIR = os.path.join(BASE_DIR, 'logs')
-os.makedirs(LOGS_DIR, exist_ok=True)
+LOGS_DIR = DATA_DIR / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
 
 # Директория для сохранения отчетов
-REPORTS_DIR = os.path.join(BASE_DIR, 'reports')
-os.makedirs(REPORTS_DIR, exist_ok=True)
+REPORTS_DIR = DATA_DIR / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)
 
 # Название приложения
-APP_NAME = "Учет сдельной работы бригад"
+APP_NAME = "Учет сдельной работы бригад РМЗ 1.0"
 
 # Настройки для отчетов
 REPORT_OPTIONS = {
-    "company_name": "ООО «Предприятие»",
+    "company_name": "АО «МАЛМЫЖСКИЙ РЕМЗАВОД»",
     "report_title": "Отчет по сдельной работе",
     "report_footer": f"© {APP_NAME} v{APP_VERSION}"
 }
@@ -94,8 +95,8 @@ GUI_SETTINGS = {
 }
 
 # Директория для резервных копий
-BACKUP_DIR = os.path.join(BASE_DIR, 'backups')
-os.makedirs(BACKUP_DIR, exist_ok=True)
+BACKUP_DIR = BASE_DIR / "backups"
+BACKUP_DIR.mkdir(exist_ok=True)
 
 # Тема приложения (light, dark, system)
 APP_THEME = 'light'
