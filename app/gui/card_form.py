@@ -315,7 +315,6 @@ class CardForm:
             full_name = f"{product.product_number} {product.product_type}"
             if product.additional_number:
                 full_name += f" ({product.additional_number})"
-
             result.append({
                 "id": product.id,
                 "full_name": full_name
@@ -434,7 +433,6 @@ class CardForm:
             form_frame,
             search_function=self.search_work_types,
             display_key="name",
-            value_key="id",
             width=250
         )
         work_type_combo.grid(row=0, column=1, sticky="ew", pady=(0, 10))
@@ -683,26 +681,28 @@ class CardForm:
 
     def update_total_amount(self) -> None:
         """Обновление итоговой суммы карточки и распределение между работниками"""
-        # Рассчитываем итоговую сумму карточки
-        self.card_service.calculate_card_totals(self.card)
+        # Рассчитываем итоговую сумму карточки на основе элементов
+        self.card.total_amount = self.card.calculate_total_amount()
 
         # Обновляем отображение суммы
         self.total_amount_label.configure(text=f"{self.card.total_amount:.2f} руб.")
 
         # Обновляем суммы работников в таблице
-        for _, row in enumerate(self.workers_table.get_children()):
-            worker_id = int(self.workers_table.item(row)["values"][0])
-            for worker in self.card.workers:
-                if worker.worker_id == worker_id:
-                    self.workers_table.item(
-                        row,
-                        values=(
-                            worker_id,
-                            self.workers_table.item(row)["values"][1],
-                            f"{worker.amount:.2f}"
+        if self.card.workers:
+            worker_amount = self.card.total_amount / len(self.card.workers)
+            for _, row in enumerate(self.workers_table.get_children()):
+                worker_id = int(self.workers_table.item(row)["values"][0])
+                for worker in self.card.workers:
+                    if worker.worker_id == worker_id:
+                        self.workers_table.item(
+                            row,
+                            values=(
+                                worker_id,
+                                self.workers_table.item(row)["values"][1],
+                                f"{worker_amount:.2f}"
+                            )
                         )
-                    )
-                    break
+                        break
 
     def save_card(self) -> None:
         """Сохранение карточки работ"""
@@ -716,7 +716,7 @@ class CardForm:
             messagebox.showwarning("Внимание", "Добавьте хотя бы одного работника")
             return
 
-        # Получаем дату из выпадающих списков
+        # Получаем дату из выпадающих списках
         try:
             card_date = date(
                 int(self.year_combo.get()),
