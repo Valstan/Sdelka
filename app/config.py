@@ -1,98 +1,100 @@
 """
-Конфигурационный модуль приложения для учета сдельной работы сотрудников бригад.
-Содержит настройки приложения, пути к файлам и другие константы.
+Конфигурационный модуль приложения для учета сдельной работы сотрудников.
+Содержит настройки приложения, пути к файлам и другим ресурсам.
 """
-
 import os
-from datetime import datetime
 from pathlib import Path
 
-CURRENT_DIR = Path(os.getcwd())  # Текущая директория, из которой запущена программа
-
-# Директория для хранения данных
-DATA_DIR = Path(CURRENT_DIR) / "data"
-DATA_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
-
-# Путь к основной базе данных
-DB_PATH = DATA_DIR / "sdelka_base.db"
-
-# Функция для создания пути к резервной копии базы данных
-def get_backup_db_path():
-    """
-    Создает путь для резервной копии базы данных с текущей датой и временем в названии.
-
-    Returns:
-        str: Полный путь к файлу резервной копии
-    """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return DATA_DIR / f"sdelka_old_base_{timestamp}.db"
-
-
-# Настройки приложения
+# Основные настройки приложения
 APP_TITLE = "Учет сдельной работы бригад РМЗ"
 APP_VERSION = "1.0.0"
 APP_WIDTH = 1200
 APP_HEIGHT = 800
+MIN_WINDOW_WIDTH = 800
+MIN_WINDOW_HEIGHT = 600
 
-# Настройки для отчетов
-REPORTS_DIR = DATA_DIR / "reports"
-REPORTS_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
-
-# Настройки базы данных
-DB_TABLES = {
-    "workers": "Сотрудники",
-    "work_types": "Виды работ",
-    "products": "Изделия",
-    "contracts": "Контракты",
-    "work_cards": "Наряды",
-    "work_card_items": "Элементы нарядов",
-    "work_card_workers": "Сотрудники в нарядах"
-}
-
-# Директория для хранения логов
-LOGS_DIR = DATA_DIR / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
-
-# Директория для сохранения отчетов
-REPORTS_DIR = DATA_DIR / "reports"
-REPORTS_DIR.mkdir(exist_ok=True)
-
-# Настройки для отчетов
-REPORT_OPTIONS = {
-    "company_name": "АО «МАЛМЫЖСКИЙ РЕМЗАВОД»",
-    "report_title": "Отчет по сдельной работе",
-    "report_footer": f"© {APP_TITLE} v{APP_VERSION}"
-}
-
-# Параметры интерфейса
-GUI_SETTINGS = {
-    "default_window_width": 1200,
-    "default_window_height": 800,
-    "min_window_width": 800,
-    "min_window_height": 600
-}
-
-# Директория для резервных копий
-BACKUP_DIR = DATA_DIR / "backups"
-BACKUP_DIR.mkdir(exist_ok=True)
-
-# Тема приложения (light, dark, system)
+# Тема интерфейса (light, dark, system)
 APP_THEME = 'dark'
 
-"""
-Формирование имени файла для резервной копии базы данных.
-Включает дату и время для уникальности.
-str: Имя файла резервной копии (без пути)
-"""
-# Формируем имя файла с текущей датой и временем
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-def get_backup_filename() -> str:
-    """
-    Создает имя файла для резервной копии с текущей датой и временем.
+# Настройки базы данных
+DB_SETTINGS = {
+    'database_path': 'data/sdelka_base.db',
+    'create_backup_on_start': True
+}
 
-    Returns:
-        str: Имя файла для резервной копии
-    """
-    current_time = datetime.now()
-    return f"backup_{current_time.strftime('%Y%m%d_%H%M%S')}.db"
+# Настройки отчетов
+REPORT_SETTINGS = {
+    'output_dir': 'data/reports',
+    'default_filename_prefix': 'report',
+    'supported_formats': ['excel', 'html', 'pdf']
+}
 
+# Настройки логирования
+LOGGING_SETTINGS = {
+    'log_dir': 'data/logs',
+    'log_file_prefix': 'app_log',
+    'log_level': 'INFO'
+}
+
+# Пути к директориям
+DIRECTORIES = {
+    'base': Path(os.getcwd()),
+    'data': Path(os.getcwd()) / "data",
+    'reports': Path(os.getcwd()) / "data" / "reports",
+    'logs': Path(os.getcwd()) / "data" / "logs",
+    'backups': Path(os.getcwd()) / "data" / "backups"
+}
+
+# Инициализация директорий
+for dir_path in DIRECTORIES.values():
+    dir_path.mkdir(exist_ok=True)
+
+# Настройки для работы с датами
+DATE_FORMATS = {
+    'default': '%Y-%m-%d',
+    'display': '%d.%m.%Y',
+    'log': '%Y%m%d_%H%M%S'
+}
+
+# Настройки интерфейса
+UI_SETTINGS = {
+    'primary_color': '#1976D2',
+    'primary_dark': '#0D47A1',
+    'primary_light': '#BBDEFB',
+    'secondary_color': '#FF9800',
+    'secondary_dark': '#F57C00',
+    'background_color': '#F5F5F5',
+    'card_color': '#FFFFFF',
+    'text_color': '#212121',
+    'text_secondary': '#757575',
+    'error_color': '#F44336',
+    'success_color': '#4CAF50',
+    'warning_color': '#FFC107',
+    'button_style': {
+        'fg_color': '#1976D2',
+        'hover_color': '#0D47A1',
+        'corner_radius': 6,
+        'font': ('Roboto', 12),
+        'text_color': '#FFFFFF'
+    },
+    'card_frame': {
+        'fg_color': '#FFFFFF',
+        'corner_radius': 8,
+        'border_width': 1,
+        'border_color': '#9E9E9E'
+    },
+    'header_style': {
+        'text_color': '#1976D2',
+        'font': ('Roboto', 16, 'bold')
+    },
+    'label_style': {
+        'text_color': '#212121',
+        'font': ('Roboto', 12)
+    },
+    'table_style': {
+        'row_height': 28,
+        'font': ('Roboto', 10),
+        'header_font': ('Roboto', 11, 'bold'),
+        'selected_color': '#BBDEFB'
+    }
+}

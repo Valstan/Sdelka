@@ -3,12 +3,12 @@
 Здесь создается главное окно и запускается приложение.
 """
 import os
-import sys
 import logging
+import sys
 from datetime import datetime
 
 import customtkinter as ctk
-from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME
+from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME, LOGGING_SETTINGS
 from app.gui.app_gui import AppGUI
 from app.db.db_manager import DatabaseManager
 
@@ -17,7 +17,12 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f"app_log_{datetime.now().strftime('%Y%m%d')}.log"),
+        logging.FileHandler(
+            os.path.join(
+                LOGGING_SETTINGS['log_dir'],
+                f"{LOGGING_SETTINGS['log_file_prefix']}_{datetime.now().strftime('%Y%m%d')}.log"
+            )
+        ),
         logging.StreamHandler()
     ]
 )
@@ -29,31 +34,28 @@ def main():
     Инициализирует базу данных и GUI, настраивает внешний вид приложения.
     """
     try:
-        # Настраиваем тему оформления
+        # Инициализация базы данных
+        db_manager = DatabaseManager()
+
+        # Настройка интерфейса
         ctk.set_appearance_mode(APP_THEME)
         ctk.set_default_color_theme("blue")
 
-        # Инициализируем соединение с БД
-        db_manager = DatabaseManager()
-
-        # Создаем главное окно приложения
+        # Создание главного окна
         root = ctk.CTk()
         root.title(APP_TITLE)
         root.geometry(f"{APP_WIDTH}x{APP_HEIGHT}")
+        root.minsize(APP_WIDTH // 1.5, APP_HEIGHT // 1.5)
 
-        # Создаем и размещаем GUI приложения
+        # Инициализация GUI
         app = AppGUI(root, db_manager)
 
-        # Запускаем главный цикл обработки событий
+        # Запуск главного цикла обработки событий
         root.mainloop()
-
-        # Закрываем соединение с БД при выходе
-        db_manager.close()
 
     except Exception as e:
         logger.error(f"Критическая ошибка при запуске приложения: {e}", exc_info=True)
-        # Показываем сообщение об ошибке пользователю
-        print("Ошибка", f"Произошла ошибка при запуске приложения:\n{str(e)}")
+        print(f"Ошибка при запуске приложения: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """
 Форма для создания и редактирования карточек работ.
+Позволяет добавлять виды работ и работников, а также рассчитывать суммы.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -7,10 +8,12 @@ import customtkinter as ctk
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Callable
 
+from app.config import UI_SETTINGS, DATE_FORMATS
+from app.db.db_manager import DatabaseManager
 from app.db.models import WorkCard, WorkCardItem, WorkCardWorker
 from app.services.card_service import CardService, WorkerService, WorkTypeService, ProductService, ContractService
-from app.gui.styles import COLOR_SCHEME, BUTTON_STYLE, ENTRY_STYLE, FRAME_STYLE, LABEL_STYLE
 from app.gui.autocomplete import AutocompleteCombobox
+from app.gui.styles import init_app_styles
 
 class CardForm:
     """
@@ -21,10 +24,6 @@ class CardForm:
     def __init__(self,
                 parent: ctk.CTkFrame,
                 card_service: CardService,
-                worker_service: WorkerService,
-                work_type_service: WorkTypeService,
-                product_service: ProductService,
-                contract_service: ContractService,
                 card: WorkCard,
                 on_save: Callable[[], None] = None,
                 on_cancel: Callable[[], None] = None):
@@ -34,20 +33,12 @@ class CardForm:
         Args:
             parent: Родительский виджет
             card_service: Сервис для работы с карточками
-            worker_service: Сервис для работы с работниками
-            work_type_service: Сервис для работы с видами работ
-            product_service: Сервис для работы с изделиями
-            contract_service: Сервис для работы с контрактами
             card: Карточка работ для редактирования
             on_save: Функция обратного вызова при сохранении
             on_cancel: Функция обратного вызова при отмене
         """
         self.parent = parent
         self.card_service = card_service
-        self.worker_service = worker_service
-        self.work_type_service = work_type_service
-        self.product_service = product_service
-        self.contract_service = contract_service
         self.card = card
         self.on_save = on_save
         self.on_cancel = on_cancel
@@ -61,59 +52,56 @@ class CardForm:
     def setup_ui(self) -> None:
         """Создание интерфейса формы"""
         # Верхняя часть с общей информацией о карточке
-        self.header_frame = ctk.CTkFrame(self.parent, fg_color="transparent")
+        self.header_frame = ctk.CTkFrame(self.parent, **UI_SETTINGS['card_frame'])
         self.header_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # Заголовок "Карточка работ №X"
+        # Заголовок формы
         title_text = f"Карточка работ №{self.card.card_number}" if self.card.id else "Новая карточка работ"
-        self.title_label = ctk.CTkLabel(
+        title_label = ctk.CTkLabel(
             self.header_frame,
             text=title_text,
-            font=("Roboto", 18, "bold"),
-            text_color=COLOR_SCHEME["primary"]
+            **UI_SETTINGS['header_style']
         )
-        self.title_label.pack(side=tk.LEFT)
+        title_label.pack(side=tk.LEFT)
 
         # Кнопки действий
         self.buttons_frame = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         self.buttons_frame.pack(side=tk.RIGHT)
 
-        self.save_btn = ctk.CTkButton(
+        save_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Сохранить",
             command=self.save_card,
-            fg_color=COLOR_SCHEME["success"],
-            hover_color="#388E3C",
-            font=("Roboto", 12, "bold")
+            **UI_SETTINGS['button_style']
         )
-        self.save_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        save_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
-        self.cancel_btn = ctk.CTkButton(
+        cancel_btn = ctk.CTkButton(
             self.buttons_frame,
             text="Отмена",
             command=self.cancel,
-            fg_color=COLOR_SCHEME["error"],
-            hover_color="#D32F2F"
+            fg_color=UI_SETTINGS['error_color'],
+            hover_color=UI_SETTINGS['error_hover']
         )
-        self.cancel_btn.pack(side=tk.RIGHT)
+        cancel_btn.pack(side=tk.RIGHT)
 
         # Форма с основными полями карточки
-        self.form_frame = ctk.CTkFrame(self.parent, **FRAME_STYLE)
+        self.form_frame = ctk.CTkFrame(self.parent, **UI_SETTINGS['card_frame'])
         self.form_frame.pack(fill=tk.X, pady=(0, 10), padx=5)
 
         # 1-я строка: Номер карточки и дата
         row1 = ctk.CTkFrame(self.form_frame, fg_color="transparent")
         row1.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        ctk.CTkLabel(row1, text="Номер карточки:", **LABEL_STYLE).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkLabel(row1, text="Номер карточки:", **UI_SETTINGS['label_style']).pack(side=tk.LEFT, padx=(0, 5))
         self.card_number_label = ctk.CTkLabel(
             row1,
             text=str(self.card.card_number),
-            font=("Roboto", 12, "bold")
+            font=UI_SETTINGS['default_font']
         )
         self.card_number_label.pack(side=tk.LEFT, padx=(0, 20))
 
-        ctk.CTkLabel(row1, text="Дата:", **LABEL_STYLE).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkLabel(row1, text="Дата:", **UI_SETTINGS['label_style']).pack(side=tk.LEFT, padx=(0, 5))
 
         # Фрейм для даты с выпадающими списками
         date_frame = ctk.CTkFrame(row1, fg_color="transparent")
@@ -142,35 +130,31 @@ class CardForm:
 
         # 2-я строка: Изделие
         row2 = ctk.CTkFrame(self.form_frame, fg_color="transparent")
-        row2.pack(fill=tk.X, padx=10, pady=5)
+        row2.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        ctk.CTkLabel(row2, text="Изделие:", **LABEL_STYLE).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkLabel(row2, text="Изделие:", **UI_SETTINGS['label_style']).pack(side=tk.LEFT, padx=(0, 5))
 
         # Автозаполняемый выпадающий список для изделий
         self.product_combo = AutocompleteCombobox(
             row2,
             search_function=self.search_products,
             display_key="full_name",
-            value_key="id",
-            width=300,
-            command=self.on_product_selected
+            width=300
         )
-        self.product_combo.pack(side=tk.LEFT, padx=(0, 20))
+        self.product_combo.pack(side=tk.LEFT)
 
         # 3-я строка: Контракт
         row3 = ctk.CTkFrame(self.form_frame, fg_color="transparent")
-        row3.pack(fill=tk.X, padx=10, pady=(5, 10))
+        row3.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        ctk.CTkLabel(row3, text="Контракт:", **LABEL_STYLE).pack(side=tk.LEFT, padx=(0, 5))
+        ctk.CTkLabel(row3, text="Контракт:", **UI_SETTINGS['label_style']).pack(side=tk.LEFT, padx=(0, 5))
 
         # Автозаполняемый выпадающий список для контрактов
         self.contract_combo = AutocompleteCombobox(
             row3,
             search_function=self.search_contracts,
             display_key="contract_number",
-            value_key="id",
-            width=300,
-            command=self.on_contract_selected
+            width=300
         )
         self.contract_combo.pack(side=tk.LEFT)
 
@@ -182,15 +166,15 @@ class CardForm:
         left_column = ctk.CTkFrame(split_frame, fg_color="transparent")
         left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
 
-        # Заголовок "Виды работ"
+        # Заголовок для видов работ
         work_types_header = ctk.CTkFrame(left_column, fg_color="transparent")
         work_types_header.pack(fill=tk.X, pady=(0, 5))
 
         ctk.CTkLabel(
             work_types_header,
             text="Виды работ",
-            font=("Roboto", 14, "bold"),
-            text_color=COLOR_SCHEME["text"]
+            font=UI_SETTINGS['header_font'],
+            text_color=UI_SETTINGS['text_color']
         ).pack(side=tk.LEFT)
 
         # Кнопка "Добавить вид работы"
@@ -198,12 +182,12 @@ class CardForm:
             work_types_header,
             text="Добавить вид работы",
             command=self.add_work_type,
-            **BUTTON_STYLE
+            **UI_SETTINGS['button_style']
         )
         add_work_btn.pack(side=tk.RIGHT)
 
-        # Таблица видов работ
-        work_types_frame = ctk.CTkFrame(left_column, **FRAME_STYLE)
+        # Таблица для видов работ
+        work_types_frame = ctk.CTkFrame(left_column, **UI_SETTINGS['card_frame'])
         work_types_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = ("id", "name", "quantity", "price", "amount")
@@ -215,18 +199,21 @@ class CardForm:
             selectmode="browse"
         )
 
+        # Настройка заголовков
         self.work_types_table.heading("id", text="ID")
         self.work_types_table.heading("name", text="Наименование")
         self.work_types_table.heading("quantity", text="Количество")
-        self.work_types_table.heading("price", text="Цена, руб.")
-        self.work_types_table.heading("amount", text="Сумма, руб.")
+        self.work_types_table.heading("price", text="Цена")
+        self.work_types_table.heading("amount", text="Сумма")
 
+        # Настройка ширин столбцов
         self.work_types_table.column("id", width=50, anchor="center")
-        self.work_types_table.column("name", width=250)
+        self.work_types_table.column("name", width=200)
         self.work_types_table.column("quantity", width=100, anchor="center")
         self.work_types_table.column("price", width=100, anchor="e")
         self.work_types_table.column("amount", width=100, anchor="e")
 
+        # Добавление прокрутки
         scrollbar = ttk.Scrollbar(work_types_frame, orient=tk.VERTICAL, command=self.work_types_table.yview)
         self.work_types_table.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -239,15 +226,15 @@ class CardForm:
         right_column = ctk.CTkFrame(split_frame, fg_color="transparent")
         right_column.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
 
-        # Заголовок "Работники"
+        # Заголовок для работников
         workers_header = ctk.CTkFrame(right_column, fg_color="transparent")
         workers_header.pack(fill=tk.X, pady=(0, 5))
 
         ctk.CTkLabel(
             workers_header,
             text="Работники",
-            font=("Roboto", 14, "bold"),
-            text_color=COLOR_SCHEME["text"]
+            font=UI_SETTINGS['header_font'],
+            text_color=UI_SETTINGS['text_color']
         ).pack(side=tk.LEFT)
 
         # Кнопка "Добавить работника"
@@ -255,12 +242,12 @@ class CardForm:
             workers_header,
             text="Добавить работника",
             command=self.add_worker,
-            **BUTTON_STYLE
+            **UI_SETTINGS['button_style']
         )
         add_worker_btn.pack(side=tk.RIGHT)
 
-        # Таблица работников
-        workers_frame = ctk.CTkFrame(right_column, **FRAME_STYLE)
+        # Таблица для работников
+        workers_frame = ctk.CTkFrame(right_column, **UI_SETTINGS['card_frame'])
         workers_frame.pack(fill=tk.BOTH, expand=True)
 
         columns = ("id", "name", "amount")
@@ -272,14 +259,17 @@ class CardForm:
             selectmode="browse"
         )
 
+        # Настройка заголовков
         self.workers_table.heading("id", text="ID")
         self.workers_table.heading("name", text="ФИО")
-        self.workers_table.heading("amount", text="Сумма, руб.")
+        self.workers_table.heading("amount", text="Сумма")
 
+        # Настройка ширин столбцов
         self.workers_table.column("id", width=50, anchor="center")
         self.workers_table.column("name", width=250)
         self.workers_table.column("amount", width=100, anchor="e")
 
+        # Добавление прокрутки
         scrollbar = ttk.Scrollbar(workers_frame, orient=tk.VERTICAL, command=self.workers_table.yview)
         self.workers_table.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -289,132 +279,23 @@ class CardForm:
         self.workers_table.bind("<Button-3>", self.show_worker_menu)
 
         # Нижняя панель с итоговой суммой
-        footer_frame = ctk.CTkFrame(self.parent, fg_color=COLOR_SCHEME["primary_light"])
+        footer_frame = ctk.CTkFrame(self.parent, **UI_SETTINGS['card_frame'])
         footer_frame.pack(fill=tk.X, pady=(10, 0))
 
         ctk.CTkLabel(
             footer_frame,
             text="Итоговая сумма:",
-            font=("Roboto", 14, "bold"),
-            text_color=COLOR_SCHEME["text"]
+            font=UI_SETTINGS['header_font'],
+            text_color=UI_SETTINGS['text_color']
         ).pack(side=tk.LEFT, padx=10, pady=10)
 
         self.total_amount_label = ctk.CTkLabel(
             footer_frame,
             text="0.00 руб.",
-            font=("Roboto", 16, "bold"),
-            text_color=COLOR_SCHEME["text"]
+            font=UI_SETTINGS['header_font'],
+            text_color=UI_SETTINGS['text_color']
         )
         self.total_amount_label.pack(side=tk.RIGHT, padx=10, pady=10)
-
-        # Создаем контекстное меню для таблиц
-        self.work_type_menu = tk.Menu(self.parent, tearoff=0)
-        self.work_type_menu.add_command(label="Удалить", command=self.remove_work_type)
-
-        self.worker_menu = tk.Menu(self.parent, tearoff=0)
-        self.worker_menu.add_command(label="Удалить", command=self.remove_worker)
-
-    def load_card_data(self) -> None:
-        """Загрузка данных карточки в форму"""
-        # Обновляем заголовок
-        if self.card.id:
-            self.title_label.configure(text=f"Карточка работ №{self.card.card_number}")
-
-        # Устанавливаем изделие, если оно выбрано
-        if self.card.product_id:
-            # Ищем информацию об изделии
-            product = self.product_service.db.get_product_by_id(self.card.product_id)
-            if product:
-                full_name = f"{product.product_number} {product.product_type}"
-                if product.additional_number:
-                    full_name += f" ({product.additional_number})"
-                # Заполняем комбобокс
-                self.product_combo.set(full_name)
-                self.product_combo.items_data[full_name] = {
-                    "id": product.id,
-                    "full_name": full_name
-                }
-
-        # Устанавливаем контракт, если он выбран
-        if self.card.contract_id:
-            # Ищем информацию о контракте
-            contract = self.contract_service.db.get_contract_by_id(self.card.contract_id)
-            if contract:
-                # Заполняем комбобокс
-                self.contract_combo.set(contract.contract_number)
-                self.contract_combo.items_data[contract.contract_number] = {
-                    "id": contract.id,
-                    "contract_number": contract.contract_number
-                }
-
-        # Загружаем виды работ
-        self.load_work_types()
-
-        # Загружаем работников
-        self.load_workers()
-
-        # Обновляем итоговую сумму
-        self.update_total_amount()
-
-    def load_work_types(self) -> None:
-        """Загрузка видов работ карточки в таблицу"""
-        # Очищаем таблицу
-        for item in self.work_types_table.get_children():
-            self.work_types_table.delete(item)
-
-        # Добавляем виды работ из карточки
-        for item in self.card.items:
-            # Получаем название вида работы, если его нет в объекте
-            if not item.work_name:
-                work_type = self.work_type_service.db.get_work_type_by_id(item.work_type_id)
-                if work_type:
-                    item.work_name = work_type.name
-                    item.price = work_type.price
-
-            # Добавляем в таблицу
-            self.work_types_table.insert(
-                "", "end",
-                values=(
-                    item.work_type_id,
-                    item.work_name,
-                    item.quantity,
-                    f"{item.price:.2f}" if item.price else "0.00",
-                    f"{item.amount:.2f}"
-                ),
-                tags=(str(item.work_type_id),)  # Используем ID вида работы как тег
-            )
-
-    def load_workers(self) -> None:
-        """Загрузка работников карточки в таблицу"""
-        # Очищаем таблицу
-        for item in self.workers_table.get_children():
-            self.workers_table.delete(item)
-
-        # Добавляем работников из карточки
-        for worker in self.card.workers:
-            # Получаем ФИО работника, если оно не задано в объекте
-            if not worker.last_name or not worker.first_name:
-                worker_obj = self.worker_service.db.get_worker_by_id(worker.worker_id)
-                if worker_obj:
-                    worker.last_name = worker_obj.last_name
-                    worker.first_name = worker_obj.first_name
-                    worker.middle_name = worker_obj.middle_name
-
-            # Формируем полное имя
-            full_name = f"{worker.last_name} {worker.first_name}"
-            if worker.middle_name:
-                full_name += f" {worker.middle_name}"
-
-            # Добавляем в таблицу
-            self.workers_table.insert(
-                "", "end",
-                values=(
-                    worker.worker_id,
-                    full_name,
-                    f"{worker.amount:.2f}"
-                ),
-                tags=(str(worker.worker_id),)  # Используем ID работника как тег
-            )
 
     def search_products(self, search_text: str) -> List[Dict[str, Any]]:
         """
@@ -424,12 +305,12 @@ class CardForm:
             search_text: Текст для поиска
 
         Returns:
-            List[Dict]: Список изделий в формате для автокомплита
+            Список изделий в формате для автокомплита
         """
-        products = self.product_service.search_products(search_text)
+        products = self.card_service.product_service.search_products(search_text)
 
-        # Преобразуем в формат для автокомплита
-        result = []
+        result = [{"id": 0, "full_name": "Все изделия"}]  # Опция "Все изделия"
+
         for product in products:
             full_name = f"{product.product_number} {product.product_type}"
             if product.additional_number:
@@ -450,12 +331,12 @@ class CardForm:
             search_text: Текст для поиска
 
         Returns:
-            List[Dict]: Список контрактов в формате для автокомплита
+            Список контрактов в формате для автокомплита
         """
-        contracts = self.contract_service.search_contracts(search_text)
+        contracts = self.card_service.contract_service.search_contracts(search_text)
 
-        # Преобразуем в формат для автокомплита
-        result = []
+        result = [{"id": 0, "contract_number": "Все контракты"}]  # Опция "Все контракты"
+
         for contract in contracts:
             result.append({
                 "id": contract.id,
@@ -464,82 +345,75 @@ class CardForm:
 
         return result
 
-    def search_workers(self, search_text: str) -> List[Dict[str, Any]]:
-        """
-        Поиск работников для автокомплита.
+    def load_card_data(self) -> None:
+        """Загрузка данных карточки в форму"""
+        # Устанавливаем изделие, если оно выбрано
+        if self.card.product_id:
+            product = self.card_service.product_service.get_product_by_id(self.card.product_id)
+            if product:
+                full_name = f"{product.product_number} {product.product_type}"
+                if product.additional_number:
+                    full_name += f" ({product.additional_number})"
+                self.product_combo.set(full_name)
 
-        Args:
-            search_text: Текст для поиска
+        # Устанавливаем контракт, если он выбран
+        if self.card.contract_id:
+            contract = self.card_service.contract_service.get_contract_by_id(self.card.contract_id)
+            if contract:
+                self.contract_combo.set(contract.contract_number)
 
-        Returns:
-            List[Dict]: Список работников в формате для автокомплита
-        """
-        workers = self.worker_service.search_workers(search_text)
+        # Загружаем виды работ
+        self.load_work_types()
 
-        # Преобразуем в формат для автокомплита
-        result = []
-        for worker in workers:
-            # Проверяем, не добавлен ли уже этот работник в карточку
-            if any(w.worker_id == worker.id for w in self.card.workers):
-                continue
+        # Загружаем работников
+        self.load_workers()
 
+        # Обновляем итоговую сумму
+        self.update_total_amount()
+
+    def load_work_types(self) -> None:
+        """Загрузка видов работ карточки в таблицу"""
+        # Очищаем таблицу
+        for item in self.work_types_table.get_children():
+            self.work_types_table.delete(item)
+
+        # Добавляем виды работ из карточки
+        for item in self.card.items:
+            self.work_types_table.insert(
+                "", "end",
+                values=(
+                    item.work_type_id,
+                    item.work_name,
+                    item.quantity,
+                    f"{item.price:.2f}" if item.price else "0.00",
+                    f"{item.amount:.2f}"
+                )
+            )
+
+    def load_workers(self) -> None:
+        """Загрузка работников карточки в таблицу"""
+        # Очищаем таблицу
+        for item in self.workers_table.get_children():
+            self.workers_table.delete(item)
+
+        # Добавляем работников из карточки
+        for worker in self.card.workers:
             full_name = f"{worker.last_name} {worker.first_name}"
             if worker.middle_name:
                 full_name += f" {worker.middle_name}"
 
-            result.append({
-                "id": worker.id,
-                "full_name": full_name
-            })
-
-        return result
-
-    def search_work_types(self, search_text: str) -> List[Dict[str, Any]]:
-        """
-        Поиск видов работ для автокомплита.
-
-        Args:
-            search_text: Текст для поиска
-
-        Returns:
-            List[Dict]: Список видов работ в формате для автокомплита
-        """
-        work_types = self.work_type_service.search_work_types(search_text)
-
-        # Преобразуем в формат для автокомплита
-        result = []
-        for work_type in work_types:
-            result.append({
-                "id": work_type.id,
-                "name": work_type.name,
-                "price": work_type.price
-            })
-
-        return result
-
-    def on_product_selected(self, selected_item: Dict[str, Any]) -> None:
-        """
-        Обработчик выбора изделия.
-
-        Args:
-            selected_item: Выбранное изделие
-        """
-        if selected_item and "id" in selected_item:
-            self.card.product_id = selected_item["id"]
-
-    def on_contract_selected(self, selected_item: Dict[str, Any]) -> None:
-        """
-        Обработчик выбора контракта.
-
-        Args:
-            selected_item: Выбранный контракт
-        """
-        if selected_item and "id" in selected_item:
-            self.card.contract_id = selected_item["id"]
+            self.workers_table.insert(
+                "", "end",
+                values=(
+                    worker.worker_id,
+                    full_name,
+                    f"{worker.amount:.2f}"
+                )
+            )
 
     def add_work_type(self) -> None:
         """Добавление вида работы в карточку"""
-        # Создаем диалоговое окно
+        # Создание диалогового окна
         dialog = ctk.CTkToplevel(self.parent)
         dialog.title("Добавление вида работы")
         dialog.geometry("400x200")
@@ -550,7 +424,7 @@ class CardForm:
         dialog.focus_set()
 
         # Поля формы
-        form_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        form_frame = ctk.CTkFrame(dialog)
         form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         ctk.CTkLabel(form_frame, text="Вид работы:").grid(row=0, column=0, sticky="w", pady=(0, 10))
@@ -567,11 +441,11 @@ class CardForm:
 
         ctk.CTkLabel(form_frame, text="Количество:").grid(row=1, column=0, sticky="w", pady=(0, 10))
         quantity_entry = ctk.CTkEntry(form_frame, width=250)
-        quantity_entry.insert(0, "1")  # По умолчанию 1
+        quantity_entry.insert(0, "1")
         quantity_entry.grid(row=1, column=1, sticky="ew", pady=(0, 10))
 
         # Кнопки
-        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(dialog)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=10)
 
         def save_work_type():
@@ -591,12 +465,9 @@ class CardForm:
                 messagebox.showwarning("Внимание", "Количество должно быть целым числом")
                 return
 
-            # Получаем ID вида работы
-            work_type_id = selected_item["id"]
-
             # Добавляем вид работы в карточку
             try:
-                self.card_service.add_work_item(self.card, work_type_id, quantity)
+                self.card_service.add_work_item(self.card, selected_item["id"], quantity)
 
                 # Обновляем отображение
                 self.load_work_types()
@@ -610,8 +481,7 @@ class CardForm:
             btn_frame,
             text="Добавить",
             command=save_work_type,
-            fg_color=COLOR_SCHEME["success"],
-            hover_color="#388E3C"
+            **UI_SETTINGS['button_style']
         )
         save_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
@@ -619,10 +489,32 @@ class CardForm:
             btn_frame,
             text="Отмена",
             command=dialog.destroy,
-            fg_color=COLOR_SCHEME["error"],
-            hover_color="#D32F2F"
+            fg_color=UI_SETTINGS['error_color'],
+            hover_color=UI_SETTINGS['error_hover']
         )
         cancel_btn.pack(side=tk.RIGHT)
+
+    def search_work_types(self, search_text: str) -> List[Dict[str, Any]]:
+        """
+        Поиск видов работ для автокомплита.
+
+        Args:
+            search_text: Текст для поиска
+
+        Returns:
+            Список видов работ в формате для автокомплита
+        """
+        work_types = self.card_service.work_type_service.search_work_types(search_text)
+
+        result = [{"id": 0, "name": "Все виды работ"}]  # Опция "Все виды работ"
+
+        for work_type in work_types:
+            result.append({
+                "id": work_type.id,
+                "name": work_type.name
+            })
+
+        return result
 
     def show_work_type_menu(self, event) -> None:
         """
@@ -631,13 +523,13 @@ class CardForm:
         Args:
             event: Событие щелчка правой кнопкой мыши
         """
-        # Получаем элемент под курсором
-        item = self.work_types_table.identify_row(event.y)
-        if item:  # Если щелчок был на строке
-            # Выделяем строку
-            self.work_types_table.selection_set(item)
-            # Показываем контекстное меню
-            self.work_type_menu.post(event.x_root, event.y_root)
+        # Получаем выбранную строку
+        selection = self.work_types_table.selection()
+        if not selection:
+            return
+
+        # Показываем контекстное меню
+        self.work_type_menu.post(event.x_root, event.y_root)
 
     def remove_work_type(self) -> None:
         """Удаление выбранного вида работы из карточки"""
@@ -647,13 +539,13 @@ class CardForm:
             return
 
         # Получаем индекс вида работы в списке
-        work_type_id = int(self.work_types_table.item(selection[0])["values"][0])
+        item_id = int(self.work_types_table.item(selection[0])["values"][0])
 
         # Находим индекс элемента в списке
         for i, item in enumerate(self.card.items):
-            if item.work_type_id == work_type_id:
+            if item.work_type_id == item_id:
                 # Удаляем элемент
-                self.card_service.remove_work_item(self.card, i)
+                del self.card.items[i]
                 break
 
         # Обновляем отображение
@@ -662,7 +554,7 @@ class CardForm:
 
     def add_worker(self) -> None:
         """Добавление работника в карточку"""
-        # Создаем диалоговое окно
+        # Создание диалогового окна
         dialog = ctk.CTkToplevel(self.parent)
         dialog.title("Добавление работника")
         dialog.geometry("400x150")
@@ -673,7 +565,7 @@ class CardForm:
         dialog.focus_set()
 
         # Поля формы
-        form_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        form_frame = ctk.CTkFrame(dialog)
         form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         ctk.CTkLabel(form_frame, text="Работник:").grid(row=0, column=0, sticky="w", pady=(0, 10))
@@ -683,13 +575,12 @@ class CardForm:
             form_frame,
             search_function=self.search_workers,
             display_key="full_name",
-            value_key="id",
             width=250
         )
         worker_combo.grid(row=0, column=1, sticky="ew", pady=(0, 10))
 
         # Кнопки
-        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(dialog)
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=10)
 
         def save_worker():
@@ -699,12 +590,9 @@ class CardForm:
                 messagebox.showwarning("Внимание", "Необходимо выбрать работника")
                 return
 
-            # Получаем ID работника
-            worker_id = selected_item["id"]
-
             # Добавляем работника в карточку
             try:
-                self.card_service.add_worker(self.card, worker_id)
+                self.card_service.add_worker(self.card, selected_item["id"])
 
                 # Обновляем отображение
                 self.load_workers()
@@ -718,8 +606,7 @@ class CardForm:
             btn_frame,
             text="Добавить",
             command=save_worker,
-            fg_color=COLOR_SCHEME["success"],
-            hover_color="#388E3C"
+            **UI_SETTINGS['button_style']
         )
         save_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
@@ -727,10 +614,36 @@ class CardForm:
             btn_frame,
             text="Отмена",
             command=dialog.destroy,
-            fg_color=COLOR_SCHEME["error"],
-            hover_color="#D32F2F"
+            fg_color=UI_SETTINGS['error_color'],
+            hover_color=UI_SETTINGS['error_hover']
         )
         cancel_btn.pack(side=tk.RIGHT)
+
+    def search_workers(self, search_text: str) -> List[Dict[str, Any]]:
+        """
+        Поиск работников для автокомплита.
+
+        Args:
+            search_text: Текст для поиска
+
+        Returns:
+            Список работников в формате для автокомплита
+        """
+        workers = self.card_service.worker_service.search_workers(search_text)
+
+        result = [{"id": 0, "full_name": "Все работники"}]  # Опция "Все работники"
+
+        for worker in workers:
+            full_name = f"{worker.last_name} {worker.first_name}"
+            if worker.middle_name:
+                full_name += f" {worker.middle_name}"
+
+            result.append({
+                "id": worker.id,
+                "full_name": full_name
+            })
+
+        return result
 
     def show_worker_menu(self, event) -> None:
         """
@@ -739,13 +652,13 @@ class CardForm:
         Args:
             event: Событие щелчка правой кнопкой мыши
         """
-        # Получаем элемент под курсором
-        item = self.workers_table.identify_row(event.y)
-        if item:  # Если щелчок был на строке
-            # Выделяем строку
-            self.workers_table.selection_set(item)
-            # Показываем контекстное меню
-            self.worker_menu.post(event.x_root, event.y_root)
+        # Получаем выбранную строку
+        selection = self.workers_table.selection()
+        if not selection:
+            return
+
+        # Показываем контекстное меню
+        self.worker_menu.post(event.x_root, event.y_root)
 
     def remove_worker(self) -> None:
         """Удаление выбранного работника из карточки"""
@@ -761,7 +674,7 @@ class CardForm:
         for i, worker in enumerate(self.card.workers):
             if worker.worker_id == worker_id:
                 # Удаляем элемент
-                self.card_service.remove_worker(self.card, i)
+                del self.card.workers[i]
                 break
 
         # Обновляем отображение
@@ -770,23 +683,22 @@ class CardForm:
 
     def update_total_amount(self) -> None:
         """Обновление итоговой суммы карточки и распределение между работниками"""
-        # Рассчитываем итоговую сумму
+        # Рассчитываем итоговую сумму карточки
         self.card_service.calculate_card_totals(self.card)
 
         # Обновляем отображение суммы
         self.total_amount_label.configure(text=f"{self.card.total_amount:.2f} руб.")
 
         # Обновляем суммы работников в таблице
-        for i, worker in enumerate(self.card.workers):
-            # Находим строку в таблице
-            for item in self.workers_table.get_children():
-                if int(self.workers_table.item(item)["values"][0]) == worker.worker_id:
-                    # Обновляем сумму
+        for _, row in enumerate(self.workers_table.get_children()):
+            worker_id = int(self.workers_table.item(row)["values"][0])
+            for worker in self.card.workers:
+                if worker.worker_id == worker_id:
                     self.workers_table.item(
-                        item,
+                        row,
                         values=(
-                            worker.worker_id,
-                            self.workers_table.item(item)["values"][1],
+                            worker_id,
+                            self.workers_table.item(row)["values"][1],
                             f"{worker.amount:.2f}"
                         )
                     )
@@ -817,13 +729,16 @@ class CardForm:
             return
 
         # Сохраняем карточку
-        success, error = self.card_service.save_card(self.card)
-        if success:
-            messagebox.showinfo("Успех", "Карточка успешно сохранена")
-            if self.on_save:
-                self.on_save()
-        else:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить карточку: {error}")
+        try:
+            success, error = self.card_service.save_card(self.card)
+            if success:
+                messagebox.showinfo("Успех", "Карточка успешно сохранена")
+                if self.on_save:
+                    self.on_save()
+            else:
+                messagebox.showerror("Ошибка", f"Не удалось сохранить карточку: {error}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить карточку: {str(e)}")
 
     def cancel(self) -> None:
         """Отмена редактирования карточки"""
