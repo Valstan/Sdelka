@@ -9,16 +9,12 @@ from pathlib import Path
 
 CURRENT_DIR = Path(os.getcwd())  # Текущая директория, из которой запущена программа
 
-# Корневая директория проекта
-# ROOT_DIR = pathlib.Path(__file__).parent.parent.parent
-ROOT_DIR = CURRENT_DIR
-
 # Директория для хранения данных
-DATA_DIR = Path(ROOT_DIR) / "data"
+DATA_DIR = Path(CURRENT_DIR) / "data"
 DATA_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
 
 # Путь к основной базе данных
-DATABASE_PATH = DATA_DIR / "brigade.db"
+DB_PATH = DATA_DIR / "sdelka_base.db"
 
 # Функция для создания пути к резервной копии базы данных
 def get_backup_db_path():
@@ -29,7 +25,7 @@ def get_backup_db_path():
         str: Полный путь к файлу резервной копии
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return DATA_DIR / f"brigade_backup_{timestamp}.db"
+    return DATA_DIR / f"sdelka_old_base_{timestamp}.db"
 
 
 # Настройки приложения
@@ -48,25 +44,10 @@ DB_TABLES = {
     "work_types": "Виды работ",
     "products": "Изделия",
     "contracts": "Контракты",
-    "work_cards": "Карточки работ",
-    "work_card_items": "Элементы карточек работ",
-    "work_card_workers": "Сотрудники в карточках работ"
+    "work_cards": "Наряды",
+    "work_card_items": "Элементы нарядов",
+    "work_card_workers": "Сотрудники в нарядах"
 }
-
-"""
-Конфигурационный файл приложения.
-Содержит настройки путей, параметров базы данных и других глобальных параметров.
-"""
-# Базовая директория проекта
-# BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BASE_DIR = CURRENT_DIR
-
-# Директория для хранения базы данных
-DATA_DIR = Path(BASE_DIR) / "data"
-DATA_DIR.mkdir(exist_ok=True)  # Создаем директорию, если она не существует
-
-# Путь к файлу базы данных
-DB_PATH = DATA_DIR / "brigade_work.db"
 
 # Директория для хранения логов
 LOGS_DIR = DATA_DIR / "logs"
@@ -76,14 +57,11 @@ LOGS_DIR.mkdir(exist_ok=True)
 REPORTS_DIR = DATA_DIR / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
-# Название приложения
-APP_NAME = "Учет сдельной работы бригад РМЗ 1.0"
-
 # Настройки для отчетов
 REPORT_OPTIONS = {
     "company_name": "АО «МАЛМЫЖСКИЙ РЕМЗАВОД»",
     "report_title": "Отчет по сдельной работе",
-    "report_footer": f"© {APP_NAME} v{APP_VERSION}"
+    "report_footer": f"© {APP_TITLE} v{APP_VERSION}"
 }
 
 # Параметры интерфейса
@@ -95,11 +73,11 @@ GUI_SETTINGS = {
 }
 
 # Директория для резервных копий
-BACKUP_DIR = BASE_DIR / "backups"
+BACKUP_DIR = DATA_DIR / "backups"
 BACKUP_DIR.mkdir(exist_ok=True)
 
 # Тема приложения (light, dark, system)
-APP_THEME = 'light'
+APP_THEME = 'dark'
 
 """
 Формирование имени файла для резервной копии базы данных.
