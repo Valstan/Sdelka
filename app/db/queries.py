@@ -233,19 +233,19 @@ WHERE id = ?
 DELETE_WORK_CARD_WORKER = "DELETE FROM work_card_workers WHERE id = ?"
 DELETE_WORK_CARD_WORKERS_BY_CARD = "DELETE FROM work_card_workers WHERE work_card_id = ?"
 
-# Запросы для отчетов
-REPORT_BY_WORKER = """
+# Запросы для отчетов - обновленная версия для динамического создания
+REPORT_BY_WORKER_BASE = """
 SELECT 
     w.last_name, w.first_name, w.middle_name,
     wc.card_number, wc.card_date,
-    wci.id as work_item_id,  -- добавляем ID элемента работы
+    wci.id as work_item_id,
     wci.quantity, wci.amount,
     wt.name as work_name,
     p.product_number, p.product_type,
     c.contract_number,
-    p.id as product_id,  -- добавляем ID изделия
-    c.id as contract_id,  -- добавляем ID контракта
-    wcw.amount as worker_amount  -- добавляем сумму для конкретного работника
+    p.id as product_id,
+    c.id as contract_id,
+    wcw.amount as worker_amount
 FROM work_card_workers wcw
 JOIN workers w ON wcw.worker_id = w.id
 JOIN work_cards wc ON wcw.work_card_id = wc.id
@@ -253,11 +253,48 @@ JOIN work_card_items wci ON wci.work_card_id = wc.id
 JOIN work_types wt ON wci.work_type_id = wt.id
 LEFT JOIN products p ON wc.product_id = p.id
 LEFT JOIN contracts c ON wc.contract_id = c.id
-WHERE 
-    (? = 0 OR wcw.worker_id = ?) AND
-    (wc.card_date BETWEEN ? AND ?) AND
-    (? = 0 OR wci.work_type_id = ?) AND
-    (? = 0 OR wc.product_id = ?) AND
-    (? = 0 OR wc.contract_id = ?)
+WHERE wc.card_date BETWEEN ? AND ?
+{additional_conditions}
 ORDER BY w.last_name, wc.card_date
 """
+
+
+def get_report_query(params):
+    """
+    Генерирует SQL-запрос для отчета, учитывая только указанные параметры фильтрации.
+
+    Args:
+        params: Словарь с параметрами отчета
+
+    Returns:
+        Tuple[str, list]: SQL-запрос и список параметров для него
+    """
+    conditions = []
+    query_params = [params.get("start_date"), params.get("end_date")]
+
+    # Добавляем условия только для заполненных параметров
+    if "worker_id" in params:
+        conditions.append("wcw.worker_id = ?")
+        query_params.append(params["worker_id"])
+
+    if "work_type_id" in params:
+        conditions.append("wci.work_type_id = ?")
+        query_params.append(params["work_type_id"])
+
+    if "product_id" in params:
+        conditions.append("wc.product_id = ?")
+        query_params.append(params["product_id"])
+
+    if "contract_id" in params:
+        conditions.append("wc.contract_id = ?")
+        query_params.append(params["contract_id"])
+
+    # Формируем дополнительные условия
+    additional_conditions = ""
+    if conditions:
+        additional_conditions = "AND " + " AND ".join(conditions)
+
+    # Подставляем дополнительные условия в базовый запрос
+    query = REPORT_BY_WORKER_BASE.format(additional_conditions=additional_conditions)
+
+    return query, query_params

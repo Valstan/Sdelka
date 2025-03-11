@@ -553,7 +553,7 @@ class DatabaseManager:
 
         # Получаем данные из БД
         rows = self.execute_query_fetchall(
-            REPORT_BY_WORKER,
+            REPORT_BY_WORKER_BASE,
             (worker_id, worker_id, start_date, end_date,
              work_type_id, work_type_id, product_id, product_id,
              contract_id, contract_id)
