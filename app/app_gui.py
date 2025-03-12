@@ -9,30 +9,19 @@ import logging
 
 from app.config import UI_SETTINGS, APP_TITLE
 from app.db_manager import DatabaseManager
-from app.card_service import CardService
+from app.services.card_service import CardService
 from app.models import WorkCard
-from app.Report.report_service import ReportService
+from app.services.report_service import ReportService
 from app.card_form import CardForm
-from app.Report.report_form import ReportForm
-from app.services import WorkerService, WorkTypeService, ProductService, ContractService
+from app.report.report_form import ReportForm
+from app.services.services import WorkerService, WorkTypeService, ProductService, ContractService
 from app.styles import init_app_styles
 
 logger = logging.getLogger(__name__)
 
+
 class AppGUI:
-    """
-    Основной класс графического интерфейса приложения.
-    Создает главное окно и управляет навигацией между различными экранами.
-    """
-
     def __init__(self, root: ctk.CTk, db_manager: DatabaseManager):
-        """
-        Инициализация главного окна приложения.
-
-        Args:
-            root: Корневой виджет Tkinter
-            db_manager: Менеджер базы данных
-        """
         self.root = root
         self.db_manager = db_manager
 
@@ -41,11 +30,13 @@ class AppGUI:
         self.work_type_service = WorkTypeService(db_manager)
         self.product_service = ProductService(db_manager)
         self.contract_service = ContractService(db_manager)
-        self.card_service = CardService(db_manager)
+        self.card_service = CardService(db_manager, product_service=self.product_service)
         self.report_service = ReportService(
             db_manager,
             worker_service=self.worker_service,
-            contract_service=self.contract_service
+            contract_service=self.contract_service,
+            work_type_service=self.work_type_service,
+            product_service=self.product_service
         )
 
         # Инициализация стилей

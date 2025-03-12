@@ -508,22 +508,22 @@ class DatabaseManager:
 
     # Методы для формирования отчетов
     def get_report_data(self,
-                       worker_id: int = 0,
-                       start_date: str = None,
-                       end_date: str = None,
-                       work_type_id: int = 0,
-                       product_id: int = 0,
-                       contract_id: int = 0) -> List[Dict[str, Any]]:
+                        worker_id: int = 0,
+                        start_date: str = None,
+                        end_date: str = None,
+                        work_type_id: int = 0,
+                        product_id: int = 0,
+                        contract_id: int = 0) -> List[Dict[str, Any]]:
         """
         Получение данных для отчета по заданным параметрам.
 
         Args:
-            worker_id: ID работника (0 - все работники)
-            start_date: Начальная дата отчета (формат YYYY-MM-DD)
-            end_date: Конечная дата отчета (формат YYYY-MM-DD)
-            work_type_id: ID вида работы (0 - все виды работ)
-            product_id: ID изделия (0 - все изделия)
-            contract_id: ID контракта (0 - все контракты)
+            worker_id: ID работника
+            start_date: Начальная дата
+            end_date: Конечная дата
+            work_type_id: ID вида работы
+            product_id: ID изделия
+            contract_id: ID контракта
 
         Returns:
             Список словарей с данными для отчета

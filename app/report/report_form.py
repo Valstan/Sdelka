@@ -4,21 +4,18 @@
 """
 import logging
 import tkinter as tk
-from tkinter import ttk
 import customtkinter as ctk
 from datetime import datetime, date
 
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Optional
 
-from app.Report.report_generator import ReportGenerator
-from app.Report.report_exporter import ReportExporter
-from app.Report.report_preview import ReportPreview
-from app.Report.report_params import ReportParams
-from app.config import REPORT_SETTINGS, UI_SETTINGS, DATE_FORMATS
-from app.db_manager import DatabaseManager
+from app.report.report_generator import ReportGenerator
+from app.report.report_exporter import ReportExporter
+from app.report.report_preview import ReportPreview
+from app.report.report_params import ReportParams
+from app.config import REPORT_SETTINGS, UI_SETTINGS
 from app.autocomplete import AutocompleteCombobox
-from app.Report.report_service import ReportService
-from app.models import Worker, WorkType, Product, Contract
+from app.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
 

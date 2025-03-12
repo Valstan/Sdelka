@@ -1,11 +1,12 @@
 import logging
 
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-from app.Report.report_service import ReportService
+from app.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
+
 
 class ReportGenerator:
     def __init__(self, report_service: ReportService):

@@ -13,11 +13,11 @@ from app.base import BaseService
 
 logger = logging.getLogger(__name__)
 
+
 class CardService(BaseService):
-    """
-    Сервис для работы с карточками работ.
-    Обеспечивает бизнес-логику операций с карточками.
-    """
+    def __init__(self, db_manager, product_service):
+        super().__init__(db_manager)
+        self.product_service = product_service
 
     def create_new_card(self) -> WorkCard:
         """Создание новой пустой карточки работ с автоматическим номером."""

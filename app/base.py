@@ -1,11 +1,12 @@
 """
 Базовые классы и утилиты для проекта.
 """
-import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
+
 
 class BaseService:
     """Базовый класс сервиса с общими методами"""
+
     def __init__(self, db_manager):
         self.db = db_manager
 
@@ -41,8 +42,10 @@ class BaseService:
         success = self.db.execute_query(query, (record_id,))
         return success is not None
 
+
 class BaseForm:
     """Базовый класс для форм"""
+
     def __init__(self, parent, service):
         self.parent = parent
         self.service = service
@@ -60,8 +63,10 @@ class BaseForm:
         """Сохранение данных из формы"""
         pass
 
+
 class BaseDialog:
     """Базовый класс для диалоговых окон"""
+
     def __init__(self, parent):
         self.parent = parent
         self.dialog = None

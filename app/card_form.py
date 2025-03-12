@@ -3,15 +3,16 @@
 Позволяет добавлять виды работ и работников, а также рассчитывать суммы.
 """
 import tkinter as tk
-from tkinter import ttk, messagebox
-import customtkinter as ctk
 from datetime import date
+from tkinter import ttk, messagebox
 from typing import List, Dict, Any, Callable
 
+import customtkinter as ctk
+
+from app.autocomplete import AutocompleteCombobox
 from app.config import UI_SETTINGS
 from app.models import WorkCard
-from app.services import CardService, WorkerService, WorkTypeService, ProductService, ContractService
-from app.autocomplete import AutocompleteCombobox
+from app.services.card_service import CardService
 
 
 class CardForm:
@@ -297,19 +298,8 @@ class CardForm:
         self.total_amount_label.pack(side=tk.RIGHT, padx=10, pady=10)
 
     def search_products(self, search_text: str) -> List[Dict[str, Any]]:
-        """
-        Поиск изделий для автокомплита.
-
-        Args:
-            search_text: Текст для поиска
-
-        Returns:
-            Список изделий в формате для автокомплита
-        """
         products = self.card_service.product_service.search_products(search_text)
-
         result = [{"id": 0, "full_name": "Все изделия"}]  # Опция "Все изделия"
-
         for product in products:
             full_name = f"{product.product_number} {product.product_type}"
             if product.additional_number:
@@ -318,7 +308,6 @@ class CardForm:
                 "id": product.id,
                 "full_name": full_name
             })
-
         return result
 
     def search_contracts(self, search_text: str) -> List[Dict[str, Any]]:

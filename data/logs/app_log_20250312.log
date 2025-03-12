@@ -1,0 +1,41 @@
+2025-03-12 19:36:21,545 - app.db_manager - INFO - Файл БД data/sdelka_base.db не существует, резервная копия не создана
+2025-03-12 19:36:21,561 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 19:36:21,608 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 20:12:26,269 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_201226.db
+2025-03-12 20:12:26,269 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 20:12:26,269 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 20:12:54,628 - app.db_manager - ERROR - Ошибка выполнения запроса: Incorrect number of bindings supplied. The current statement uses 2, and there are 0 supplied.
+2025-03-12 21:13:55,400 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_211355.db
+2025-03-12 21:13:55,400 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 21:13:55,400 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 21:14:23,993 - app.report.report_generator - ERROR - Ошибка при генерации отчета: 'ReportService' object has no attribute 'get_report_data'
+2025-03-12 21:18:15,368 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_211815.db
+2025-03-12 21:18:15,368 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 21:18:15,368 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 23:10:01,248 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_231001.db
+2025-03-12 23:10:01,248 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 23:10:01,248 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 23:10:01,327 - app.main - ERROR - Критическая ошибка при запуске приложения: CardService.__init__() missing 1 required positional argument: 'product_service'
+Traceback (most recent call last):
+  File "C:\Users\Valstan\Documents\GitHub\Sdelka\app\main.py", line 51, in main
+    app = AppGUI(root, db_manager)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Valstan\Documents\GitHub\Sdelka\app\app_gui.py", line 33, in __init__
+    self.card_service = CardService(db_manager)
+                        ^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: CardService.__init__() missing 1 required positional argument: 'product_service'
+2025-03-12 23:12:38,402 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_231238.db
+2025-03-12 23:12:38,402 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 23:12:38,402 - app.db_manager - INFO - Структура БД успешно инициализирована
+2025-03-12 23:12:38,496 - app.main - ERROR - Критическая ошибка при запуске приложения: CardService.__init__() missing 1 required positional argument: 'product_service'
+Traceback (most recent call last):
+  File "C:\Users\Valstan\Documents\GitHub\Sdelka\app\main.py", line 51, in main
+    app = AppGUI(root, db_manager)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Valstan\Documents\GitHub\Sdelka\app\app_gui.py", line 33, in __init__
+    self.card_service = CardService(db_manager)
+                        ^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: CardService.__init__() missing 1 required positional argument: 'product_service'
+2025-03-12 23:13:35,617 - app.db_manager - INFO - Резервная копия БД создана: C:\Users\Valstan\Documents\GitHub\Sdelka\data\backups\backup_20250312_231335.db
+2025-03-12 23:13:35,617 - app.db_manager - INFO - Успешно подключено к БД: data/sdelka_base.db
+2025-03-12 23:13:35,617 - app.db_manager - INFO - Структура БД успешно инициализирована

@@ -200,6 +200,7 @@ LEFT JOIN contracts c ON wc.contract_id = c.id
 WHERE wc.card_date BETWEEN ? AND ?
 """
 
+
 def get_report_query(params: dict) -> Tuple[str, list]:
     """
     Генерирует SQL-запрос для отчета с учетом фильтров.
@@ -210,37 +211,47 @@ def get_report_query(params: dict) -> Tuple[str, list]:
     Returns:
         Кортеж (SQL-запрос, список параметров)
     """
-    query = REPORT_BY_WORKER_BASE
-    conditions = []
-    parameters = []
-    params_count = 0
+    base_query = """
+        SELECT 
+            w.last_name, w.first_name, w.middle_name,
+            wc.card_date,
+            wti.id AS work_item_id,
+            wt.name AS work_name,
+            wti.quantity,
+            wt.price,
+            wti.amount,
+            p.product_number, p.product_type, p.additional_number AS product_additional,
+            c.contract_number
+        FROM work_card_workers wcw
+        JOIN workers w ON wcw.worker_id = w.id
+        JOIN work_cards wc ON wcw.work_card_id = wc.id
+        JOIN work_card_items wti ON wti.work_card_id = wc.id
+        JOIN work_types wt ON wti.work_type_id = wt.id
+        LEFT JOIN products p ON wc.product_id = p.id
+        LEFT JOIN contracts c ON wc.contract_id = c.id
+        WHERE wc.card_date BETWEEN ? AND ?
+    """
 
-    # Добавляем условия для фильтров
+    conditions = []
+    query_params = [params.get('start_date'), params.get('end_date')]
+
     if params.get('worker_id') and params['worker_id'] != 0:
         conditions.append("w.id = ?")
-        parameters.append(params['worker_id'])
-        params_count += 1
+        query_params.append(params['worker_id'])
 
     if params.get('work_type_id') and params['work_type_id'] != 0:
         conditions.append("wt.id = ?")
-        parameters.append(params['work_type_id'])
-        params_count += 1
+        query_params.append(params['work_type_id'])
 
     if params.get('product_id') and params['product_id'] != 0:
         conditions.append("p.id = ?")
-        parameters.append(params['product_id'])
-        params_count += 1
+        query_params.append(params['product_id'])
 
     if params.get('contract_id') and params['contract_id'] != 0:
         conditions.append("c.id = ?")
-        parameters.append(params['contract_id'])
-        params_count += 1
+        query_params.append(params['contract_id'])
 
-    # Добавляем условия к основному запросу
     if conditions:
-        query += " AND " + " AND ".join(conditions)
+        base_query += " AND " + " AND ".join(conditions)
 
-    query += " ORDER BY w.last_name, wc.card_date"
-
-    # Возвращаем сформированный запрос и параметры
-    return query, parameters
+    return base_query, query_params

@@ -1,6 +1,8 @@
 from datetime import datetime, date
 from tkinter import messagebox
 from typing import Dict, Any
+from app.config import DATE_FORMATS
+
 
 class ReportParams:
     @staticmethod
@@ -24,8 +26,8 @@ class ReportParams:
                     messagebox.showerror("Ошибка", "Дата начала не может быть позже даты окончания")
                     return None
 
-                params['start_date'] = from_date.strftime(form.DATE_FORMATS['default'])
-                params['end_date'] = to_date.strftime(form.DATE_FORMATS['default'])
+                params['start_date'] = from_date.strftime(DATE_FORMATS['default'])
+                params['end_date'] = to_date.strftime(DATE_FORMATS['default'])
             except ValueError:
                 messagebox.showerror("Ошибка", "Некорректная дата")
                 return None
@@ -35,12 +37,12 @@ class ReportParams:
                     int(form.from_year.get()),
                     int(form.from_month.get()),
                     int(form.from_day.get())
-                ).strftime(form.DATE_FORMATS['default'])
+                ).strftime(DATE_FORMATS['default'])
                 params['end_date'] = date(
                     int(form.to_year.get()),
                     int(form.to_month.get()),
                     int(form.to_day.get())
-                ).strftime(form.DATE_FORMATS['default'])
+                ).strftime(DATE_FORMATS['default'])
             except ValueError:
                 messagebox.showerror("Ошибка", "Некорректная дата")
                 return None
