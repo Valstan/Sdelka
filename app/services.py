@@ -8,8 +8,8 @@ from typing import List, Optional, Dict, Any, Tuple
 import pandas as pd
 from future.backports.datetime import date
 
-from app.db.db_manager import DatabaseManager
-from app.db.models import (
+from app.db_manager import DatabaseManager
+from app.models import (
     WorkCard, WorkCardItem, WorkCardWorker,
     Worker, WorkType, Product, Contract
 )

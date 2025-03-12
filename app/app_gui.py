@@ -6,15 +6,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
 import logging
-from typing import Optional, Dict, Any, List
 
-from app.config import UI_SETTINGS, APP_TITLE, REPORT_SETTINGS
-from app.db.db_manager import DatabaseManager
-from app.services.card_service import CardService
-from app.services.report_service import ReportService
-from app.gui.card_form import CardForm
-from app.gui.report_form import ReportForm
-from app.gui.styles import init_app_styles
+from app.config import UI_SETTINGS, APP_TITLE
+from app.db_manager import DatabaseManager
+from app.card_service import CardService
+from app.models import WorkCard
+from app.Report.report_service import ReportService
+from app.card_form import CardForm
+from app.Report.report_form import ReportForm
+from app.services import WorkerService, WorkTypeService, ProductService, ContractService
+from app.styles import init_app_styles
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,16 @@ class AppGUI:
         self.db_manager = db_manager
 
         # Инициализация сервисов
+        self.worker_service = WorkerService(db_manager)
+        self.work_type_service = WorkTypeService(db_manager)
+        self.product_service = ProductService(db_manager)
+        self.contract_service = ContractService(db_manager)
         self.card_service = CardService(db_manager)
-        self.report_service = ReportService(db_manager)
+        self.report_service = ReportService(
+            db_manager,
+            worker_service=self.worker_service,
+            contract_service=self.contract_service
+        )
 
         # Инициализация стилей
         init_app_styles()
@@ -72,8 +81,8 @@ class AppGUI:
         title_label = ctk.CTkLabel(
             header_frame,
             text=APP_TITLE,
-            font=UI_SETTINGS['header_font'],
-            text_color=UI_SETTINGS['text_color']
+            font=UI_SETTINGS['header_style']['font'],
+            text_color=UI_SETTINGS['header_style']['text_color']
         )
         title_label.pack(side=tk.LEFT, padx=20)
 
@@ -299,7 +308,7 @@ class AppGUI:
             text="Удалить",
             command=self.delete_selected_worker,
             fg_color=UI_SETTINGS['error_color'],
-            hover_color=UI_SETTINGS['error_hover']
+            hover_color=UI_SETTINGS['button_style']['hover_color']
         )
         delete_btn.pack(side=tk.LEFT)
 
@@ -336,7 +345,7 @@ class AppGUI:
         self.workers_table.pack(fill=tk.BOTH, expand=True)
 
         # Загрузка данных
-        workers = self.card_service.worker_service.get_all_workers()
+        workers = self.worker_service.get_all_workers()
         for worker in workers:
             self.workers_table.insert(
                 "", "end",

@@ -101,9 +101,17 @@ def init_app_styles():
 
     # Стиль для полос прокрутки
     style.configure(
-        "TScrollbar",
+        "Vertical.TScrollbar",
         background=COLOR_SCHEME["card"],
         arrowcolor=COLOR_SCHEME["primary"],
-        bordercolor=COLOR_SCHEME["gray"],
+        bordercolor=COLOR_SCHEME["background"],
+        troughcolor=COLOR_SCHEME["background"]
+    )
+
+    style.configure(
+        "Horizontal.TScrollbar",
+        background=COLOR_SCHEME["card"],
+        arrowcolor=COLOR_SCHEME["primary"],
+        bordercolor=COLOR_SCHEME["background"],
         troughcolor=COLOR_SCHEME["background"]
     )

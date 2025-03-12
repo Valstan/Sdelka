@@ -28,7 +28,7 @@ class Worker:
     def short_name(self) -> str:
         """Сокращенное имя сотрудника (Фамилия И. О.)"""
         if self.middle_name:
-            return f"{self.last_name} {self.first_name[0]}. {self.middle_name[0]}."
+            return f"{self.last_name} {self.first_name[0]}.{self.middle_name[0]}."
         return f"{self.last_name} {self.first_name[0]}."
 
 @dataclass
@@ -84,6 +84,7 @@ class Contract:
 class WorkCardItem:
     """Модель для представления элемента карточки работ (вида работы в карточке)"""
     id: Optional[int] = None
+    card_date: Optional[datetime] = None
     work_card_id: int = 0
     work_type_id: int = 0
     quantity: int = 0
@@ -92,6 +93,20 @@ class WorkCardItem:
     price: Optional[float] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @property
+    def formatted_date(self) -> str:
+        """Отформатированная дата карточки"""
+        if isinstance(self.card_date, str):
+            # Конвертируем строку в объект date
+            try:
+                return datetime.strptime(self.card_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+            except ValueError:
+                return "-"
+        elif isinstance(self.card_date, (datetime, date)):
+            return self.card_date.strftime("%d.%m.%Y")
+        else:
+            return "-"
 
 @dataclass
 class WorkCardWorker:
@@ -125,7 +140,7 @@ class WorkCard:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    # Связанные объекты
+    # Связанные сущности
     items: List[WorkCardItem] = None
     workers: List[WorkCardWorker] = None
     product: Optional[Product] = None
@@ -147,12 +162,6 @@ class WorkCard:
         if not self.workers or self.total_amount == 0:
             return 0.0
         return self.total_amount / len(self.workers)
-
-    def distribute_amount_to_workers(self) -> None:
-        """Распределение общей суммы между работниками"""
-        worker_amount = self.calculate_worker_amount()
-        for worker in self.workers:
-            worker.amount = worker_amount
 
     @property
     def formatted_date(self) -> str:

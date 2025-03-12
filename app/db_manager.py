@@ -10,11 +10,11 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple, Union
 
 from app.config import DB_SETTINGS, DIRECTORIES
-from app.db.models import (
+from app.models import (
     Worker, WorkType, Product, Contract,
     WorkCard, WorkCardItem, WorkCardWorker
 )
-from app.db.queries import (
+from app.queries import (
     CREATE_TABLES_QUERIES,
     GET_ALL_WORKERS, GET_WORKER_BY_ID, SEARCH_WORKERS,
     GET_ALL_WORK_TYPES, GET_WORK_TYPE_BY_ID, SEARCH_WORK_TYPES,
@@ -68,7 +68,7 @@ class DatabaseManager:
         Создание резервной копии базы данных.
 
         Returns:
-            str: Путь к созданной резервной копии
+            Путь к созданной резервной копии
         """
         if not os.path.exists(self.db_path):
             logger.info(f"Файл БД {self.db_path} не существует, резервная копия не создана")
@@ -85,7 +85,7 @@ class DatabaseManager:
             logger.info(f"Резервная копия БД создана: {backup_path}")
             return str(backup_path)
         except Exception as e:
-            logger.error(f"Ошибка создания резервной копии БД: {e}")
+            logger.error(f"Ошибка создания резервной копии: {e}")
             return ""
 
     def initialize_db(self) -> None:
@@ -460,7 +460,7 @@ class DatabaseManager:
             cursor.execute("DELETE FROM work_card_items WHERE work_card_id = ?", (work_card.id,))
             cursor.execute("DELETE FROM work_card_workers WHERE work_card_id = ?", (work_card.id,))
 
-            # Вставляем элементы карточки (виды работ)
+            # Вставляем новые элементы и работников
             for item in work_card.items:
                 cursor.execute(
                     """
@@ -470,7 +470,6 @@ class DatabaseManager:
                     (work_card.id, item.work_type_id, item.quantity, item.amount)
                 )
 
-            # Вставляем работников карточки
             for worker in work_card.workers:
                 cursor.execute(
                     """

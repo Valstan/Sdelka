@@ -1,10 +1,8 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import pandas as pd
-from datetime import datetime
+from unittest.mock import MagicMock
 
 # Импортируйте ваш класс/модуль отчетов
-from app.services.report_service import ReportService
+from app.Report.report_service import ReportService
 
 class TestReports(unittest.TestCase):
     def setUp(self):

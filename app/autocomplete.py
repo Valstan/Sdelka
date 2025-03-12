@@ -42,10 +42,10 @@ class AutocompleteCombobox:
         self.dropdown.overrideredirect(True)  # Убираем рамку окна
 
         # Настройка стиля для выпадающего списка
-        self.dropdown.configure(bg=ctk.ThemeManager.theme["CTkFrame"]["fg_color"])
+        self.dropdown.configure(bg='#F5F5F5')
 
         # Список для отображения результатов
-        self.listbox = tk.Listbox(self.dropdown, bg=ctk.ThemeManager.theme["CTk"]["bg_color"], fg="black", highlightthickness=0)
+        self.listbox = tk.Listbox(self.dropdown, bg='#F5F5F5', fg="black", highlightthickness=0)
         self.listbox.pack(fill="both", expand=True, padx=2, pady=2)
 
         # Привязка событий

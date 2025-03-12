@@ -131,11 +131,8 @@ SEARCH_CONTRACTS = "SELECT * FROM contracts WHERE contract_number LIKE ? || '%' 
 
 # Запросы для работы с карточками работ
 GET_ALL_WORK_CARDS = """
-SELECT wc.*, p.product_number, p.product_type, c.contract_number
-FROM work_cards wc
-LEFT JOIN products p ON wc.product_id = p.id
-LEFT JOIN contracts c ON wc.contract_id = c.id
-ORDER BY wc.card_number DESC
+SELECT * FROM work_cards
+ORDER BY card_number DESC
 """
 GET_WORK_CARD_BY_ID = """
 SELECT wc.*, p.product_number, p.product_type, c.contract_number

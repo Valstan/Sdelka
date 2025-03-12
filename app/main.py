@@ -9,8 +9,8 @@ from datetime import datetime
 
 import customtkinter as ctk
 from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME, LOGGING_SETTINGS
-from app.gui.app_gui import AppGUI
-from app.db.db_manager import DatabaseManager
+from app.app_gui import AppGUI
+from app.db_manager import DatabaseManager
 
 # Настройка логирования
 logging.basicConfig(

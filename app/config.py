@@ -45,10 +45,6 @@ DIRECTORIES = {
     'backups': Path(os.getcwd()) / "data" / "backups"
 }
 
-# Инициализация директорий
-for dir_path in DIRECTORIES.values():
-    dir_path.mkdir(exist_ok=True)
-
 # Настройки для работы с датами
 DATE_FORMATS = {
     'default': '%Y-%m-%d',
@@ -58,6 +54,7 @@ DATE_FORMATS = {
 
 # Настройки интерфейса
 UI_SETTINGS = {
+    'default_font': ('Roboto', 12),
     'primary_color': '#1976D2',
     'primary_dark': '#0D47A1',
     'primary_light': '#BBDEFB',
@@ -98,3 +95,7 @@ UI_SETTINGS = {
         'selected_color': '#BBDEFB'
     }
 }
+
+# Инициализация директорий
+for dir_path in DIRECTORIES.values():
+    dir_path.mkdir(exist_ok=True)

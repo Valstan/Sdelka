@@ -5,15 +5,14 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import customtkinter as ctk
-from datetime import datetime, date
-from typing import Optional, List, Dict, Any, Callable
+from datetime import date
+from typing import List, Dict, Any, Callable
 
-from app.config import UI_SETTINGS, DATE_FORMATS
-from app.db.db_manager import DatabaseManager
-from app.db.models import WorkCard, WorkCardItem, WorkCardWorker
-from app.services.card_service import CardService, WorkerService, WorkTypeService, ProductService, ContractService
-from app.gui.autocomplete import AutocompleteCombobox
-from app.gui.styles import init_app_styles
+from app.config import UI_SETTINGS
+from app.models import WorkCard
+from app.services import CardService, WorkerService, WorkTypeService, ProductService, ContractService
+from app.autocomplete import AutocompleteCombobox
+
 
 class CardForm:
     """
@@ -81,7 +80,7 @@ class CardForm:
             text="Отмена",
             command=self.cancel,
             fg_color=UI_SETTINGS['error_color'],
-            hover_color=UI_SETTINGS['error_hover']
+            hover_color=UI_SETTINGS['button_style']['hover_color']
         )
         cancel_btn.pack(side=tk.RIGHT)
 

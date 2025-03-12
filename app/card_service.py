@@ -7,28 +7,17 @@ from typing import List, Optional, Tuple
 
 from future.backports.datetime import date
 
-from app.db.db_manager import DatabaseManager
-from app.db.models import (
-    WorkCard, WorkCardItem, WorkCardWorker,
-    Worker, WorkType, Product, Contract
-)
+from app.db_manager import DatabaseManager
+from app.models import WorkCard, WorkCardItem, WorkCardWorker
+from app.base import BaseService
 
 logger = logging.getLogger(__name__)
 
-class CardService:
+class CardService(BaseService):
     """
     Сервис для работы с карточками работ.
     Обеспечивает бизнес-логику операций с карточками.
     """
-
-    def __init__(self, db_manager: DatabaseManager):
-        """
-        Инициализация сервиса.
-
-        Args:
-            db_manager: Менеджер базы данных
-        """
-        self.db = db_manager
 
     def create_new_card(self) -> WorkCard:
         """Создание новой пустой карточки работ с автоматическим номером."""
@@ -66,7 +55,7 @@ class CardService:
                 if success:
                     card.id = card_id
 
-            return (success, None) if success else (False, "Не удалось сохранить карточку")
+            return success, None if success else "Не удалось сохранить карточку"
 
         except Exception as e:
             logger.error(f"Ошибка при сохранении карточки: {e}")
@@ -84,8 +73,7 @@ class CardService:
         """
         try:
             success = self.db.delete_work_card(card_id)
-            return (success, None) if success else (False, "Не удалось удалить карточку")
-
+            return success, None if success else "Не удалось удалить карточку"
         except Exception as e:
             logger.error(f"Ошибка при удалении карточки: {e}")
             return False, f"Ошибка при удалении карточки: {str(e)}"
