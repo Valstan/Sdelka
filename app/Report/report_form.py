@@ -2,6 +2,7 @@
 Форма для создания отчетов.
 Позволяет выбирать период, работников и другие параметры для формирования отчетов.
 """
+import logging
 import tkinter as tk
 from tkinter import ttk
 import customtkinter as ctk

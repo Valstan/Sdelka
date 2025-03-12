@@ -55,6 +55,7 @@ DATE_FORMATS = {
 # Настройки интерфейса
 UI_SETTINGS = {
     'default_font': ('Roboto', 12),
+    'header_font': ('Roboto', 12),
     'primary_color': '#1976D2',
     'primary_dark': '#0D47A1',
     'primary_light': '#BBDEFB',

@@ -125,14 +125,14 @@ class AutocompleteCombobox:
             return
 
         # Обновляем данные и отображаем dropdown
-        self.items_data = {item[self.display_key]: item for item in items}
+        self.items_data = {getattr(item, self.display_key): item for item in items}
 
         # Очищаем список
         self.listbox.delete(0, tk.END)
 
         # Добавляем найденные элементы
         for item in items:
-            self.listbox.insert(tk.END, item[self.display_key])
+            self.listbox.insert(tk.END, getattr(item, self.display_key))
 
         # Позиционируем dropdown под полем ввода
         self.position_dropdown()
