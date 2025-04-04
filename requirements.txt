@@ -1,20 +1,36 @@
-pytest~=7.4.0
-
-# База данных и ORM
-sqlalchemy~=2.0.23
-
-# GUI
-customtkinter~=5.2.0
-pillow~=10.4.0
-
-# Обработка данных
-pandas~=2.1.2
-numpy~=1.26.0
-
-# Экспорт отчетов
-openpyxl~=3.1.2
-jinja2~=3.1.6
-weasyprint~=60.1
-
-reportlab>=4.0.0
-python-dateutil>=2.8.2
+Brotli==1.1.0
+cffi==1.17.1
+chardet==5.2.0
+colorama==0.4.6
+cssselect2==0.8.0
+customtkinter==5.2.2
+darkdetect==0.8.0
+et_xmlfile==2.0.0
+fonttools==4.57.0
+greenlet==3.1.1
+html5lib==1.1
+iniconfig==2.1.0
+Jinja2==3.1.6
+MarkupSafe==3.0.2
+numpy==2.2.4
+openpyxl==3.1.5
+packaging==24.2
+pandas==2.2.3
+pillow==11.2.0
+pluggy==1.5.0
+pycparser==2.22
+pydyf==0.11.0
+pyphen==0.17.2
+pytest==8.3.5
+python-dateutil==2.9.0.post0
+pytz==2025.2
+reportlab==4.3.1
+six==1.17.0
+SQLAlchemy==2.0.40
+tinycss2==1.4.0
+tinyhtml5==2.0.0
+typing_extensions==4.13.1
+tzdata==2025.2
+weasyprint==65.0
+webencodings==0.5.1
+zopfli==0.2.3.post1
