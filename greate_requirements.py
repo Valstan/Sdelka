@@ -1,30 +1,60 @@
 import subprocess
 import os
+import sys
+from chardet import detect
 
-def generate_project_requirements(project_path):
-    """
-    Создает файл requirements.txt, включая только используемые в проекте библиотеки.
-
-    :param project_path: Путь к корневой директории проекта.
-    """
+def run_pipreqs_safely(project_path):
+    """Безопасный запуск pipreqs с обработкой новых требований к аргументам"""
     try:
-        # Проверяем, установлен ли pipreqs
-        subprocess.run(["pip", "show", "pipreqs"], check=True, stdout=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        print("pipreqs не установлен. Устанавливаем...")
-        subprocess.run(["pip", "install", "pipreqs"], check=True)
+        # Определяем кодировку
+        encoding = "utf-8"
+        for root, _, files in os.walk(project_path):
+            for file in files:
+                if file.endswith(".py"):
+                    with open(os.path.join(root, file), "rb") as f:
+                        raw = f.read(50000)
+                        if result := detect(raw):
+                            encoding = result["encoding"]
+                            break
+            if encoding != "utf-8":
+                break
 
-    try:
-        # Генерация файла requirements.txt с использованием pipreqs
-        print(f"Генерация requirements.txt для проекта в директории: {project_path}")
-        subprocess.run(["pipreqs", project_path, "--force"], check=True)
-        print("Файл requirements.txt успешно создан.")
+        # Формируем команду согласно новым требованиям
+        cmd = [
+            sys.executable,
+            "-m",
+            "pipreqs.pipreqs",
+            "--savepath", "requirements.txt",
+            "--force",
+            f"--encoding={encoding}",
+            "--mode=compat",
+            "--ignore-errors",
+            project_path
+        ]
+
+        # Запускаем с обработкой вывода
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+
+        print("Успешно создан requirements.txt")
+        print("Вывод:\n", result.stdout)
+
     except subprocess.CalledProcessError as e:
-        print(f"Ошибка при генерации файла requirements.txt: {e}")
-    except Exception as e:
-        print(f"Произошла непредвиденная ошибка: {e}")
+        print(f"Ошибка (код {e.returncode}):")
+        print("STDOUT:", e.stdout)
+        print("STDERR:", e.stderr)
+        print("Рекомендации:")
+        print("1. Обновите pipreqs: pip install -U pipreqs")
+        print("2. Проверьте пути к файлам")
+        print("3. Запустите вручную:")
+        print("   ", " ".join(cmd))
 
 if __name__ == "__main__":
-    # Укажите путь к вашему проекту
-    project_dir = os.getcwd()  # Текущая директория по умолчанию
-    generate_project_requirements(project_dir)
+    current_dir = os.getcwd()
+    run_pipreqs_safely(current_dir)

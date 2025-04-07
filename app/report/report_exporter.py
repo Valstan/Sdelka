@@ -3,17 +3,16 @@
 Реализует стратегии экспорта с использованием паттерна Strategy.
 """
 import logging
-import os
 from abc import ABC, abstractmethod
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Tuple
+from pathlib import Path
+from typing import Tuple
 
 import pandas as pd
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 logger = logging.getLogger(__name__)
 
