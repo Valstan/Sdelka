@@ -13,11 +13,12 @@ from app.config import UI_SETTINGS, APP_TITLE
 from app.db_manager import DatabaseManager
 from app.card_form import CardForm
 from app.report.report_form import ReportForm
-from app.services import (
+from app.services.services import (
     WorkerService, WorkTypeService,
-    ProductService, ContractService,
-    CardService, ReportService
+    ProductService, ContractService
 )
+from app.services.card_service import CardService
+from app.services.report_service import ReportService
 from app.styles import init_app_styles
 
 logger = logging.getLogger(__name__)

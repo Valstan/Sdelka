@@ -16,13 +16,14 @@ def create_project_map(project_root):
                 project_map.append(os.path.relpath(file_path, project_root))
     return project_map
 
-def write_part(output_path, file_group, project_root, project_map):
+def write_part(output_path, file_group, project_root, project_map, include_map=False):
     with open(output_path, 'w', encoding='utf-8') as f:
-        # Записываем карту проекта
-        f.write("Карта проекта:\n")
-        for file_path in project_map:
-            f.write(f"{file_path}\n")
-        f.write('\n' + '-' * 80 + '\n\n')
+        if include_map:
+            # Записываем карту проекта только если include_map=True
+            f.write("Карта проекта:\n")
+            for file_path in project_map:
+                f.write(f"{file_path}\n")
+            f.write('\n' + '-' * 80 + '\n\n')
         # Записываем содержимое файлов группы
         for file_path in file_group:
             full_path = os.path.join(project_root, file_path)
@@ -35,7 +36,6 @@ def write_part(output_path, file_group, project_root, project_map):
             f.write('\n' + '-' * 80 + '\n')
 
 def split_files(project_map):
-    # Делим файлы проекта на три группы
     total_files = len(project_map)
     group_size = total_files // 3
 
@@ -49,16 +49,14 @@ def main():
     project_root = os.getcwd()
     project_map = create_project_map(project_root)
 
-    # Разделяем файлы на три группы
     group1, group2, group3 = split_files(project_map)
 
-    # Определяем пути для итоговых файлов
     output_file1 = os.path.join(project_root, "project_contents_part1.txt")
     output_file2 = os.path.join(project_root, "project_contents_part2.txt")
     output_file3 = os.path.join(project_root, "project_contents_part3.txt")
 
-    # Записываем каждую группу в отдельный файл
-    write_part(output_file1, group1, project_root, project_map)
+    # Передаем include_map=True только для первого файла
+    write_part(output_file1, group1, project_root, project_map, include_map=True)
     write_part(output_file2, group2, project_root, project_map)
     write_part(output_file3, group3, project_root, project_map)
 
