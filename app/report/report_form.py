@@ -14,7 +14,7 @@ from app.report.report_exporter import ReportExporter
 from app.report.report_preview import ReportPreview
 from app.report.report_params import ReportParams
 from app.config import REPORT_SETTINGS, UI_SETTINGS
-from app.autocomplete import AutocompleteCombobox
+from app.gui.components.autocomplete import AutocompleteCombobox
 from app.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)

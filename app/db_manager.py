@@ -8,20 +8,9 @@ import shutil
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple, Union
 
-from app.models import (
-    Worker, WorkType, Product, Contract,
-    WorkCard, WorkCardItem, WorkCardWorker
-)
 from app.queries import (
     CREATE_TABLES_QUERIES,
-    GET_ALL_WORKERS, GET_WORKER_BY_ID, SEARCH_WORKERS,
-    GET_ALL_WORK_TYPES, GET_WORK_TYPE_BY_ID, SEARCH_WORK_TYPES,
-    GET_ALL_PRODUCTS, GET_PRODUCT_BY_ID, SEARCH_PRODUCTS,
-    GET_ALL_CONTRACTS, GET_CONTRACT_BY_ID, SEARCH_CONTRACTS,
-    GET_ALL_WORK_CARDS, GET_WORK_CARD_BY_ID,
-    GET_WORK_CARD_ITEMS, GET_WORK_CARD_WORKERS,
     REPORT_BY_WORKER_BASE, get_report_query
 )
 from app.config import DB_SETTINGS, DIRECTORIES
