@@ -10,9 +10,9 @@ from typing import Optional, Tuple, List, Callable
 from datetime import date, datetime
 import customtkinter as ctk
 from app.models.models import WorkCard, Product, Contract, WorkCardItem, WorkCardWorker
-from app.services.contract_service import ContractService
+from app.services.contracts_service import ContractService
 from app.services.products_service import ProductService
-from app.services.work_card_service import WorkCardService
+from app.services.work_cards_service import WorkCardService
 from app.gui.components.autocomplete import AutocompleteCombobox
 
 
