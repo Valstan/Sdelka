@@ -15,6 +15,28 @@ CREATE TABLE IF NOT EXISTS contracts (
     CHECK(start_date <= end_date)
 );
 
+-- Новая таблица work_cards (наряды)
+CREATE TABLE IF NOT EXISTS work_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_number TEXT UNIQUE NOT NULL,
+    card_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    product_id INTEGER,
+    contract_id INTEGER,
+    total_amount REAL DEFAULT 0,
+    FOREIGN KEY(product_id) REFERENCES products(id),
+    FOREIGN KEY(contract_id) REFERENCES contracts(id)
+);
+
+-- Таблица работников наряда
+CREATE TABLE IF NOT EXISTS work_card_workers (
+    work_card_id INTEGER,
+    worker_id INTEGER,
+    amount REAL DEFAULT 0,
+    PRIMARY KEY(work_card_id, worker_id),
+    FOREIGN KEY(work_card_id) REFERENCES work_cards(id),
+    FOREIGN KEY(worker_id) REFERENCES workers(id)
+);
+
 -- Добавление нового контракта
 INSERT INTO contracts (contract_number, start_date, end_date, description)
 VALUES (?, ?, ?, ?);

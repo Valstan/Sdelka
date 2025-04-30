@@ -1,13 +1,13 @@
-# File: app/gui/worker_form.py
+# File: app/ui/worker_form.py
 """
 Форма для управления информацией о работнике.
 """
 
 import tkinter as tk
 import customtkinter as ctk
-from app.gui.base_form import BaseForm
-from app.models.models import Worker
-from app.services.workers_service import WorkerService
+from app.ui.base_form import BaseForm
+from app.core.models.models import Worker
+from app.core.services.worker_service import WorkerService
 
 
 class WorkerForm(BaseForm):

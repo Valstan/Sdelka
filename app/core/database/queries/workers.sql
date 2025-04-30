@@ -3,7 +3,7 @@
 SQL-запросы для работы с работниками предприятия.
 """
 
--- Создание таблицы workers
+-- Таблица работников
 CREATE TABLE IF NOT EXISTS workers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     last_name TEXT NOT NULL,
@@ -11,10 +11,13 @@ CREATE TABLE IF NOT EXISTS workers (
     middle_name TEXT,
     workshop_number INTEGER NOT NULL,
     position TEXT NOT NULL,
-    employee_id INTEGER UNIQUE NOT NULL,
+    employee_id TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Индекс по табельному номеру для быстрого поиска
+CREATE INDEX IF NOT EXISTS idx_employee_id ON workers(employee_id);
 
 -- Добавление нового работника
 INSERT INTO workers (last_name, first_name, middle_name, workshop_number, position, employee_id)

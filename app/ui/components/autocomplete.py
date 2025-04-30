@@ -1,4 +1,4 @@
-# File: app/gui/components/autocomplete.py
+# File: app/ui/components/autocomplete.py
 """
 CustomTkinter autocomplete combobox component with proper positioning
 """

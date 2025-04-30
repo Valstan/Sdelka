@@ -3,14 +3,17 @@
 SQL-запросы для работы с изделиями.
 """
 
--- Создание таблицы products
+-- Таблица изделий
 CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    product_number TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Индекс по наименованию для быстрого поиска
+CREATE INDEX IF NOT EXISTS idx_product_name ON products(name);
 
 -- Добавление нового изделия
 INSERT INTO products (name, product_number)

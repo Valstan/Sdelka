@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from typing import Dict, Any
 
-from app.services.report_service import ReportService
+from app.core.services.report_service import ReportService
 
 logger = logging.getLogger(__name__)
 

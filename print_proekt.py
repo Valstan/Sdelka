@@ -1,25 +1,43 @@
 import os
 
-def create_project_map(project_root):
-    project_map = []
-    for root, dirs, files in os.walk(project_root):
-        if '.venv' in dirs:
-            dirs.remove('.venv')  # Исключаем папку из сканирования
-        if 'fonts' in dirs:
-            dirs.remove('fonts')  # Исключаем папку из сканирования
-        if 'data' in dirs:
-            dirs.remove('data')  # Исключаем папку из сканирования
-        for file in files:
-            if file.endswith('.py'):
-                file_path = os.path.join(root, file)
-                project_map.append(os.path.relpath(file_path, project_root))
-    return project_map
 
-project_root = os.getcwd()  # Корневая директория проекта
-output_file = os.path.join(project_root, "project_contents.txt")
+# Список допустимых расширений файлов для включения в карту проекта
+VALID_EXTENSIONS = ('.py', '.sql')
+
+# Список папок, которые необходимо игнорировать
+IGNORE_FOLDERS = ['.venv',
+                  'fonts',
+                  'data',
+                  '__pycache__']
+
+# Список файлов, которые нужно исключить
+IGNORE_FILES = ['temp.py',
+                'debug.py',
+                'great_map_project.py',
+                'greate_requirements.py',
+                'print_proekt.py',
+                'setup.py',
+                'requirements_generator.py']
+
+def create_project_map(project_path):
+    project_mapp = []
+    for root, dirs, files in os.walk(project_path):
+        # Удаляем игнорируемые папки из списка для обхода
+        dirs[:] = [d for d in dirs if d not in IGNORE_FOLDERS]
+
+        # Обрабатываем только нужные файлы
+        for file in files:
+            # Исключаем файлы из списка IGNORE_FILES и проверяем расширение
+            if file.endswith(VALID_EXTENSIONS) and file not in IGNORE_FILES:
+                filepath = os.path.join(root, file)
+                project_mapp.append(os.path.relpath(filepath, project_path))
+    return project_mapp
+
+project_root_path = os.getcwd()  # Корневая директория проекта
+output_file = os.path.join(project_root_path, "project_contents.txt")
 
 # Создаем карту проекта
-project_map = create_project_map(project_root)
+project_map = create_project_map(project_root_path)
 
 with open(output_file, 'w', encoding='utf-8') as f:
     # Записываем карту проекта
@@ -30,7 +48,7 @@ with open(output_file, 'w', encoding='utf-8') as f:
 
     # Записываем содержимое файлов
     for file_path in project_map:
-        full_path = os.path.join(project_root, file_path)
+        full_path = os.path.join(project_root_path, file_path)
         with open(full_path, 'r', encoding='utf-8') as src_file:
             content = src_file.read()
 

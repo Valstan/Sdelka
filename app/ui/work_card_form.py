@@ -1,4 +1,4 @@
-# File: app/gui/work_card_form.py
+# File: app/ui/work_card_form.py
 """
 Форма для создания и редактирования карточек выполненных работ
 """
@@ -6,14 +6,13 @@
 import logging
 import tkinter as tk
 from tkinter import messagebox
-from typing import Optional, Tuple, List, Callable
-from datetime import date, datetime
+from typing import Optional, Tuple, Callable
+from datetime import date
 import customtkinter as ctk
-from app.models.models import WorkCard, Product, Contract, WorkCardItem, WorkCardWorker
-from app.services.contracts_service import ContractService
-from app.services.products_service import ProductService
-from app.services.work_cards_service import WorkCardService
-from app.gui.components.autocomplete import AutocompleteCombobox
+from app.core.services.contract_service import ContractService
+from app.core.services.product_service import ProductService
+from app.core.services.work_card_service import WorkCardService
+from app.ui.components.autocomplete import AutocompleteCombobox
 
 
 class WorkCardForm(ctk.CTkFrame):

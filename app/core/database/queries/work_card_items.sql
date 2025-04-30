@@ -3,17 +3,19 @@
 SQL-запросы для работы с элементами карточек работ.
 """
 
--- Создание таблицы work_card_items
+-- Таблица элементов наряда
 CREATE TABLE IF NOT EXISTS work_card_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_id INTEGER NOT NULL,
-    work_type_id INTEGER NOT NULL,
+    work_card_id INTEGER REFERENCES work_cards(id) ON DELETE CASCADE,
+    work_type_id INTEGER REFERENCES work_types(id),
     quantity INTEGER NOT NULL CHECK(quantity > 0),
-    amount REAL NOT NULL CHECK(amount >= 0),
+    amount REAL AS (quantity * (SELECT price FROM work_types wt WHERE wt.id = work_type_id)),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(card_id) REFERENCES work_cards(id),
-    FOREIGN KEY(work_type_id) REFERENCES work_types(id)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Индекс по типу работы для аналитики
+CREATE INDEX IF NOT EXISTS idx_work_type_id ON work_card_items(work_type_id);
 
 -- Добавление элемента карточки
 INSERT INTO work_card_items (card_id, work_type_id, quantity, amount)

@@ -3,16 +3,20 @@
 SQL-запросы для работы с видами работ.
 """
 
--- Создание таблицы work_types
+-- Таблица видов работ
 CREATE TABLE IF NOT EXISTS work_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    unit TEXT NOT NULL,
+    name TEXT NOT NULL,
+    unit TEXT NOT NULL CHECK(unit IN ('штуки', 'комплекты')),
     price REAL NOT NULL CHECK(price >= 0),
     valid_from DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CHECK(valid_from <= CURRENT_DATE)
 );
+
+-- Уникальный индекс по имени и дате для предотвращения дубликатов
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_work_type ON work_types(name, valid_from);
 
 -- Добавление нового вида работы
 INSERT INTO work_types (name, unit, price, valid_from)

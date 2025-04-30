@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 
 # Импортируйте ваш класс/модуль отчетов
-from app.services.report_service import ReportService
+from app.core.services.report_service import ReportService
 
 class TestReportService(unittest.TestCase):
     def setUp(self):

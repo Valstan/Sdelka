@@ -4,21 +4,21 @@
 """
 import logging
 import tkinter as tk
-from typing import Optional, Callable
+from typing import Optional
 
 import customtkinter as ctk
 from tkinter import ttk
 
 from app.config import UI_SETTINGS, APP_TITLE
-from app.db_manager import DatabaseManager
+from app.core.database.connections import DatabaseManager
 from app.card_form import CardForm
 from app.report.report_form import ReportForm
-from app.services.services import (
-    WorkerService, WorkTypeService,
-    ProductService, ContractService
-)
-from app.services.card_service import CardService
-from app.services.report_service import ReportService
+from app.core.services.worker_service import WorkerService
+from app.core.services.work_type_service import WorkTypeService
+from app.core.services.product_service import ProductService
+from app.core.services.contract_service import ContractService
+from app.core.services.card_service import CardService
+from app.core.services.report_service import ReportService
 from app.styles import init_app_styles
 
 logger = logging.getLogger(__name__)

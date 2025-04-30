@@ -3,19 +3,20 @@
 SQL-запросы для работы с карточками работ.
 """
 
--- Создание таблицы work_cards
+-- Таблица нарядов
 CREATE TABLE IF NOT EXISTS work_cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_number TEXT UNIQUE NOT NULL,
-    card_date DATE NOT NULL,
-    product_id INTEGER NOT NULL,
-    contract_id INTEGER NOT NULL,
-    total_amount REAL NOT NULL CHECK(total_amount >= 0),
+    card_number TEXT NOT NULL UNIQUE,
+    card_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    product_id INTEGER REFERENCES products(id),
+    contract_id INTEGER REFERENCES contracts(id),
+    total_amount REAL DEFAULT 0 CHECK(total_amount >= 0),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(product_id) REFERENCES products(id),
-    FOREIGN KEY(contract_id) REFERENCES contracts(id)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Индекс по дате для фильтрации по периодам
+CREATE INDEX IF NOT EXISTS idx_card_date ON work_cards(card_date);
 
 -- Добавление новой карточки
 INSERT INTO work_cards (card_number, card_date, product_id, contract_id, total_amount)
