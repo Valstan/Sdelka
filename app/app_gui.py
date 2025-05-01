@@ -1,151 +1,158 @@
 """
-Основной класс GUI приложения.
-Реализует главное окно и управление формами.
+File: app/ui/main_app_gui.py
+Основной графический интерфейс приложения с навигацией между разделами.
 """
-import logging
+
 import tkinter as tk
-from typing import Optional
-
+from tkinter import messagebox
 import customtkinter as ctk
-from tkinter import ttk
+from datetime import date, datetime
+import logging
+import os
+import sys
 
-from app.config import UI_SETTINGS, APP_TITLE
-from app.core.database.connections import DatabaseManager
-from app.card_form import CardForm
-from app.report.report_form import ReportForm
-from app.core.services.worker_service import WorkerService
-from app.core.services.work_type_service import WorkTypeService
-from app.core.services.product_service import ProductService
-from app.core.services.contract_service import ContractService
-from app.core.services.card_service import CardService
-from app.core.services.report_service import ReportService
-from app.styles import init_app_styles
+from app.core.models.worker import Worker
+from app.core.models.contract import Contract
+from app.core.models.product import Product
+from app.core.models.work_type import WorkType
+from app.core.models.work_card import WorkCard
+from app.core.services.work_card_service import WorkCardsService
+from app.core.services.report_manager import ReportManager
+from app.ui.work_card_form import WorkCardForm
+from app.ui.worker_form import WorkerForm
+from app.ui.contract_form import ContractForm
+from app.ui.product_form import ProductForm
+from app.ui.work_type_form import WorkTypeForm
+from app.ui.report_preview import ReportPreview
+from app.config import UI_SETTINGS, DIRECTORIES
+from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT
 
 logger = logging.getLogger(__name__)
 
 
 class AppGUI:
-    """Класс главного графического интерфейса приложения."""
+    """
+    Основной GUI класс для бухгалтерской программы.
+    Реализует навигацию между разделами и интеграцию с сервисами.
+    """
 
-    def __init__(self, root: ctk.CTk, db_manager: DatabaseManager):
+    def __init__(self, root: tk.Tk, db_manager: 'DatabaseManager'):
+        """
+        Инициализация основного интерфейса.
+
+        Args:
+            root: Основное окно приложения
+            db_manager: Менеджер базы данных
+        """
         self.root = root
         self.db_manager = db_manager
-        self.current_form: Optional[ttk.Frame] = None
-
-        # Инициализация сервисов
-        self._init_services()
-        self._setup_ui()
+        self.card_service = WorkCardsService(db_manager)
+        self.report_manager = ReportManager(root, db_manager, self.card_service)
+        self.current_form = None
+        self._setup_root()
+        self._setup_menu()
+        self._setup_content()
+        self._load_default_form()
         self._bind_events()
 
-    def _init_services(self) -> None:
-        """Инициализация бизнес-логики приложения."""
-        self.worker_service = WorkerService(self.db_manager)
-        self.work_type_service = WorkTypeService(self.db_manager)
-        self.product_service = ProductService(self.db_manager)
-        self.contract_service = ContractService(self.db_manager)
-        self.card_service = CardService(self.db_manager, self.product_service)
-        self.report_service = ReportService(
-            self.db_manager,
-            self.worker_service,
-            self.contract_service,
-            self.work_type_service,
-            self.product_service
-        )
+    def _setup_root(self) -> None:
+        """Настройка основного окна."""
+        self.root.title(APP_TITLE)
+        self.root.geometry(f"{APP_WIDTH}x{APP_HEIGHT}")
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
 
-    def _setup_ui(self) -> None:
-        """Настройка основных элементов интерфейса."""
-        init_app_styles()
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Центрируем окно
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width // 2) - (APP_WIDTH // 2)
+        y = (screen_height // 2) - (APP_HEIGHT // 2)
+        self.root.geometry(f"+{x}+{y}")
 
-        # Основные фреймы
-        self.header_frame = self._create_header_frame()
-        self.nav_frame = self._create_navigation_frame()
-        self.content_frame = self._create_content_frame()
+        # Устанавливаем стиль
+        ctk.set_appearance_mode("Light")
+        ctk.set_default_color_theme("blue")
 
-    def _bind_events(self) -> None:
-        """Привязка глобальных горячих клавиш."""
-        self.root.bind("<Control-s>", lambda e: self._save_current_form())
-        self.root.bind("<Control-q>", lambda e: self._on_close())
+    def _setup_menu(self) -> None:
+        """Настройка меню приложения."""
+        menu_bar = ctk.CTkFrame(self.root, fg_color="#F5F5F5", height=40)
+        menu_bar.pack(fill=tk.X, side=tk.TOP)
 
-    def _create_header_frame(self) -> ctk.CTkFrame:
-        """Создание верхней панели с заголовком."""
-        frame = ctk.CTkFrame(
-            self.root,
-            fg_color=UI_SETTINGS['primary_color']
-        )
-        title_label = ctk.CTkLabel(
-            frame,
-            text=APP_TITLE,
-            font=UI_SETTINGS['header_style']['font'],
-            text_color=UI_SETTINGS['header_style']['text_color']
-        )
-        title_label.pack(side=tk.LEFT, padx=20)
-        frame.pack(fill=tk.X, side=tk.TOP, ipady=10)
-        return frame
-
-    def _create_navigation_frame(self) -> ctk.CTkFrame:
-        """Создание панели навигации."""
-        frame = ctk.CTkFrame(self.root, fg_color=UI_SETTINGS['background_color'])
-
-        buttons = [
-            ("Карточки работ", self.show_cards_list),
-            ("Справочники", self.show_references),
-            ("Отчеты", self.show_reports)
+        # Кнопки навигации
+        nav_buttons = [
+            ("Работники", self.show_workers_form),
+            ("Изделия", self.show_products_form),
+            ("Контракты", self.show_contracts_form),
+            ("Виды работ", self.show_work_types_form),
+            ("Карточки", self.show_cards_form),
+            ("Отчеты", self.report_manager.show_report_form)
         ]
 
-        for text, command in buttons:
+        for text, command in nav_buttons:
             btn = ctk.CTkButton(
-                frame,
+                menu_bar,
                 text=text,
                 command=command,
                 **UI_SETTINGS['button_style']
             )
-            btn.pack(side=tk.LEFT, padx=(0, 10), pady=5)
+            btn.pack(side=tk.LEFT, padx=2, pady=2)
 
-        frame.pack(fill=tk.X, side=tk.TOP, ipady=5)
-        return frame
+    def _setup_content(self) -> None:
+        """Настройка контентной области."""
+        self.content_frame = ctk.CTkFrame(self.root, fg_color="white")
+        self.content_frame.pack(fill=tk.BOTH, expand=True, side=tk.TOP, padx=10, pady=10)
 
-    def _create_content_frame(self) -> ctk.CTkFrame:
-        """Создание основного контейнера для контента."""
-        frame = ctk.CTkFrame(
-            self.root,
-            fg_color=UI_SETTINGS['background_color']
-        )
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        return frame
+    def _load_default_form(self) -> None:
+        """Загружает форму по умолчанию."""
+        self.show_cards_form()
+
+    def _bind_events(self) -> None:
+        """Привязывает глобальные события."""
+        self.root.bind("<Control-q>", lambda e: self._on_close())
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def show_workers_form(self) -> None:
+        """Отображает форму управления работниками."""
+        self._clear_content()
+        WorkerForm(self.content_frame, self.card_service.worker_service, on_save=self._refresh_data)
+
+    def show_products_form(self) -> None:
+        """Отображает форму управления изделиями."""
+        self._clear_content()
+        ProductForm(self.content_frame, self.card_service.product_service, on_save=self._refresh_data)
+
+    def show_contracts_form(self) -> None:
+        """Отображает форму управления контрактами."""
+        self._clear_content()
+        ContractForm(self.content_frame, self.card_service.contract_service, on_save=self._refresh_data)
+
+    def show_work_types_form(self) -> None:
+        """Отображает форму управления типами работ."""
+        self._clear_content()
+        WorkTypeForm(self.content_frame, self.card_service.work_type_service, on_save=self._refresh_data)
+
+    def show_cards_form(self) -> None:
+        """Отображает форму управления карточками работ."""
+        self._clear_content()
+        WorkCardForm(self.content_frame, self.card_service, on_save=self._refresh_data)
+
+    def _refresh_data(self) -> None:
+        """Обновляет данные в текущей форме."""
+        if self.current_form:
+            self.current_form.refresh_data()
 
     def _clear_content(self) -> None:
-        """Очистка области контента."""
+        """Очищает контентную область."""
         for widget in self.content_frame.winfo_children():
             widget.destroy()
-        self.current_form = None
-
-    def show_cards_list(self) -> None:
-        """Отображение списка карточек работ."""
-        self._clear_content()
-        # Реализация таблицы с карточками...
-
-    def show_references(self) -> None:
-        """Отображение справочников."""
-        self._clear_content()
-        # Реализация вкладок со справочниками...
-
-    def show_reports(self) -> None:
-        """Отображение формы отчетов."""
-        self._clear_content()
-        ReportForm(self.content_frame, self.report_service)
-
-    def _save_current_form(self) -> None:
-        """Сохранение данных в текущей активной форме."""
-        if isinstance(self.current_form, CardForm):
-            self.current_form.save_card()
 
     def _on_close(self) -> None:
         """Обработчик закрытия приложения."""
-        if ctk.messagebox.askyesno("Выход", "Вы уверены, что хотите выйти?"):
-            self.db_manager.close()
-            self.root.destroy()
-
-    def _show_error(self, message: str) -> None:
-        """Отображение сообщения об ошибке."""
-        ctk.messagebox.showerror("Ошибка", message)
+        if messagebox.askokcancel("Выход", "Вы уверены, что хотите выйти?"):
+            try:
+                self.db_manager.close()
+                self.root.destroy()
+                sys.exit(0)
+            except Exception as e:
+                logger.error(f"Ошибка закрытия приложения: {e}", exc_info=True)
+                sys.exit(1)

@@ -1,7 +1,5 @@
 -- File: app/core/database/queries/work_types.sql
-"""
-SQL-запросы для работы с видами работ.
-"""
+-- SQL-запросы для работы с видами работ.
 
 -- Таблица видов работ
 CREATE TABLE IF NOT EXISTS work_types (

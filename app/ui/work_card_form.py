@@ -1,79 +1,79 @@
-# File: app/ui/work_card_form.py
+# File: app/ui/forms/work_card_form.py
 """
-Форма для создания и редактирования карточек выполненных работ
+Форма для создания и редактирования карточек работ.
 """
 
-import logging
 import tkinter as tk
-from tkinter import messagebox
-from typing import Optional, Tuple, Callable
-from datetime import date
 import customtkinter as ctk
-from app.core.services.contract_service import ContractService
-from app.core.services.product_service import ProductService
-from app.core.services.work_card_service import WorkCardService
-from app.ui.components.autocomplete import AutocompleteCombobox
+from tkinter import messagebox
+from typing import Dict, Any, Optional, Callable, Tuple
+from datetime import date
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WorkCardForm(ctk.CTkFrame):
     """
-    Форма для создания и редактирования карточек работ
+    Форма для редактирования карточки работы.
 
     Attributes:
-        card_id (Optional[int]): ID карточки для редактирования
-        card_service (WorkCardService): Сервис для работы с карточками
-        entry_fields (Dict[str, CTkEntry | Combobox]): Словарь полей ввода
-        on_save_callback (Callable): Callback-функция после сохранения
+        parent: Родительский виджет
+        card: Текущая карточка работы
+        on_save: Callback-функция, вызываемая при сохранении
+        on_cancel: Callback-функция, вызываемая при отмене
     """
 
-    def __init__(self, parent, work_card_service: WorkCardService,
-                 product_service=None, contract_service=None, card_id: Optional[int] = None):
+    def __init__(
+            self,
+            parent: ctk.CTkFrame,
+            card_service: 'WorkCardsService',
+            on_save: Optional[Callable[[Dict[str, Any]], None]] = None,
+            on_cancel: Optional[Callable[[Dict[str, Any]], None]] = None
+    ):
         """
-        Инициализация формы карточки
+        Инициализирует форму карточки работы.
 
         Args:
             parent: Родительский виджет
-            work_card_service: Сервис для работы с карточками
-            product_service: Сервис для работы с изделиями
-            contract_service: Сервис для работы с контрактами
-            card_id: ID карточки для редактирования
+            card_service: Сервис карточек работ
+            on_save: Callback при сохранении
+            on_cancel: Callback при отмене
         """
         super().__init__(parent)
+        self.parent = parent
+        self.card_service = card_service
+        self.on_save = on_save
+        self.on_cancel = on_cancel
+
+        self.card = None
         self.logger = logging.getLogger(__name__)
 
-        self.card_id = card_id
-        self.card_service = work_card_service
-        self.product_service = product_service or ProductService(self.card_service.db_path)
-        self.contract_service = contract_service or ContractService(self.card_service.db_path)
-        self.entry_fields = {}
-        self.on_save_callback = None
+        self.setup_ui()
 
-        # Создаем интерфейс
-        self._setup_ui()
-
-        # Загружаем данные если это редактирование
-        if card_id:
-            self._load_card_data(card_id)
-        else:
-            self._set_default_values()
-
-    def _setup_ui(self) -> None:
-        """Настройка пользовательского интерфейса формы"""
+    def setup_ui(self) -> None:
+        """Создает элементы интерфейса."""
         form_frame = ctk.CTkFrame(self)
-        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        form_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         # Первая строка: Номер и дата
         row1 = ctk.CTkFrame(form_frame)
         row1.pack(fill=tk.X, pady=(0, 10))
 
-        # Номер карточки
         ctk.CTkLabel(row1, text="Номер:", width=80).pack(side=tk.LEFT, padx=(0, 5))
-        self.entry_fields["number"] = ctk.CTkEntry(row1)
-        self.entry_fields["number"].pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        self.entry_fields = {}
 
-        # Дата карточки
-        ctk.CTkLabel(row1, text="Дата:", width=40).pack(side=tk.LEFT, padx=(0, 5))
-        self._setup_date_selector(row1)
+        self.entry_fields["number"] = ctk.CTkEntry(row1, width=120)
+        self.entry_fields["number"].pack(side=tk.LEFT, padx=(0, 10))
+
+        self.entry_fields["date_day"] = ctk.CTkComboBox(row1, width=60, values=[str(i) for i in range(1, 32)])
+        self.entry_fields["date_day"].pack(side=tk.LEFT, padx=(0, 5))
+
+        self.entry_fields["date_month"] = ctk.CTkComboBox(row1, width=60, values=[str(i) for i in range(1, 13)])
+        self.entry_fields["date_month"].pack(side=tk.LEFT, padx=(0, 5))
+
+        self.entry_fields["date_year"] = ctk.CTkComboBox(row1, width=80, values=[str(i) for i in range(2000, 2051)])
+        self.entry_fields["date_year"].pack(side=tk.LEFT)
 
         # Вторая строка: Изделие
         row2 = ctk.CTkFrame(form_frame)
@@ -82,7 +82,7 @@ class WorkCardForm(ctk.CTkFrame):
         ctk.CTkLabel(row2, text="Изделие:", width=80).pack(side=tk.LEFT, padx=(0, 5))
         self.entry_fields["product"] = AutocompleteCombobox(
             row2,
-            search_function=self.product_service.search_products,
+            search_function=self.card_service.products_service.search_products,
             display_key="full_name"
         )
         self.entry_fields["product"].pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -94,620 +94,280 @@ class WorkCardForm(ctk.CTkFrame):
         ctk.CTkLabel(row3, text="Контракт:", width=80).pack(side=tk.LEFT, padx=(0, 5))
         self.entry_fields["contract"] = AutocompleteCombobox(
             row3,
-            search_function=self.contract_service.search_contracts,
+            search_function=self.card_service.contracts_service.search_contracts,
             display_key="contract_number"
         )
         self.entry_fields["contract"].pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Четвертая строка: Общая сумма
+        # Четвертая строка: Таблица элементов работы
         row4 = ctk.CTkFrame(form_frame)
-        row4.pack(fill=tk.X, pady=(0, 20))
+        row4.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        ctk.CTkLabel(row4, text="Общая сумма:", width=100).pack(side=tk.LEFT, padx=(0, 5))
-        self.entry_fields["total_amount"] = ctk.CTkEntry(row4)
-        self.entry_fields["total_amount"].pack(side=tk.LEFT, fill=tk.X, expand=True)
+        items_label = ctk.CTkLabel(row4, text="Элементы работы:")
+        items_label.pack(anchor=tk.W, padx=5, pady=(0, 5))
 
-        # Пятая строка: Управление элементами работы
-        items_frame = ctk.CTkFrame(form_frame)
-        items_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        items_container = ctk.CTkScrollableFrame(row4)
+        items_container.pack(fill=tk.BOTH, expand=True)
 
-        # Заголовок раздела
-        ctk.CTkLabel(items_frame, text="Элементы работы", font=("Roboto", 14, "bold")).pack(anchor=tk.W, pady=(0, 10))
-
-        # Таблица элементов работы
-        self.items_table = tk.Frame(items_frame)
+        self.items_table = ItemsTable(items_container, self.card_service)
         self.items_table.pack(fill=tk.BOTH, expand=True)
 
-        # Кнопки управления элементами
-        items_btns = ctk.CTkFrame(items_frame)
-        items_btns.pack(fill=tk.X, side=tk.BOTTOM, pady=(5, 0))
-
         add_item_btn = ctk.CTkButton(
-            items_btns,
-            text="Добавить",
-            command=self._show_work_type_dialog,
-            width=100
+            row4,
+            text="Добавить элемент",
+            command=self._add_work_item
         )
-        add_item_btn.pack(side=tk.LEFT, padx=(0, 5))
+        add_item_btn.pack(pady=5, anchor=tk.E)
 
-        remove_item_btn = ctk.CTkButton(
-            items_btns,
-            text="Удалить",
-            command=self._remove_selected_item,
-            width=100,
-            fg_color="#F44336",
-            hover_color="#D32F2F"
-        )
-        remove_item_btn.pack(side=tk.LEFT)
+        # Пятая строка: Таблица работников
+        row5 = ctk.CTkFrame(form_frame)
+        row5.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        # Шестая строка: Управление работниками
-        workers_frame = ctk.CTkFrame(form_frame)
-        workers_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        workers_label = ctk.CTkLabel(row5, text="Работники:")
+        workers_label.pack(anchor=tk.W, padx=5, pady=(0, 5))
 
-        # Заголовок раздела
-        ctk.CTkLabel(workers_frame, text="Работники", font=("Roboto", 14, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        workers_container = ctk.CTkScrollableFrame(row5)
+        workers_container.pack(fill=tk.BOTH, expand=True)
 
-        # Таблица работников
-        self.workers_table = tk.Frame(workers_frame)
+        self.workers_table = WorkersTable(workers_container, self.card_service)
         self.workers_table.pack(fill=tk.BOTH, expand=True)
 
-        # Кнопки управления работниками
-        workers_btns = ctk.CTkFrame(workers_frame)
-        workers_btns.pack(fill=tk.X, side=tk.BOTTOM, pady=(5, 0))
-
         add_worker_btn = ctk.CTkButton(
-            workers_btns,
-            text="Добавить",
-            command=self._show_worker_selection,
-            width=100
+            row5,
+            text="Добавить работника",
+            command=self._add_worker
         )
-        add_worker_btn.pack(side=tk.LEFT, padx=(0, 5))
+        add_worker_btn.pack(pady=5, anchor=tk.E)
 
-        remove_worker_btn = ctk.CTkButton(
-            workers_btns,
-            text="Удалить",
-            command=self._remove_selected_worker,
-            width=100,
-            fg_color="#F44336",
-            hover_color="#D32F2F"
-        )
-        remove_worker_btn.pack(side=tk.LEFT)
+        # Шестая строка: Общая сумма
+        row6 = ctk.CTkFrame(form_frame)
+        row6.pack(fill=tk.X, pady=(0, 10))
 
-        # Седьмая строка: Кнопки сохранения
-        btn_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ctk.CTkLabel(row6, text="Общая сумма:", font=("Roboto", 12, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        self.entry_fields["total_amount"] = ctk.CTkEntry(row6, state="readonly")
+        self.entry_fields["total_amount"].pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        save_btn = ctk.CTkButton(
-            btn_frame,
+        # Кнопки действий
+        action_frame = ctk.CTkFrame(self)
+        action_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=10)
+
+        self.save_button = ctk.CTkButton(
+            action_frame,
             text="Сохранить",
-            command=self.save,
-            width=120
+            command=self._save_card
         )
-        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self.save_button.pack(side=tk.RIGHT, padx=(5, 0))
 
-        cancel_btn = ctk.CTkButton(
-            btn_frame,
+        cancel_button = ctk.CTkButton(
+            action_frame,
             text="Отмена",
-            command=self.parent.destroy,
-            width=120,
             fg_color="#9E9E9E",
-            hover_color="#757575"
+            hover_color="#757575",
+            command=self._on_cancel
         )
-        cancel_btn.pack(side=tk.RIGHT)
+        cancel_button.pack(side=tk.RIGHT)
 
-        # Привязываем событие Enter к кнопке сохранить
-        self.bind("<Return>", lambda event: self.save())
-        self.bind("<KP_Enter>", lambda event: self.save())
+        # Привязываем событие Enter к кнопке "Сохранить"
+        self.bind("<Return>", lambda event: self._save_card())
+        self.bind("<KP_Enter>", lambda event: self._save_card())
 
-    def _setup_date_selector(self, parent) -> None:
-        """Настройка выпадающих списков для выбора даты"""
-        date_frame = ctk.CTkFrame(parent)
-        date_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Разбиваем дату на день, месяц, год
-        parts = {
-            "day": ctk.CTkComboBox(date_frame, values=[str(i) for i in range(1, 32)], width=60),
-            "month": ctk.CTkComboBox(date_frame, values=[str(i) for i in range(1, 13)], width=60),
-            "year": ctk.CTkComboBox(date_frame, values=[str(i) for i in range(2000, 2051)], width=80)
-        }
-
-        # Сохраняем ссылки на поля
-        self.entry_fields["date_day"] = parts["day"]
-        self.entry_fields["date_month"] = parts["month"]
-        self.entry_fields["date_year"] = parts["year"]
-
-        # Располагаем элементы даты
-        for name, combo in parts.items():
-            combo.pack(side=tk.LEFT, padx=(0, 5) if name != "year" else 0)
-
-        # Устанавливаем значения по умолчанию
-        current_date = date.today()
-        parts["day"].set(str(current_date.day))
-        parts["month"].set(str(current_date.month))
-        parts["year"].set(str(current_date.year))
-
-    def _load_card_data(self, card_id: int) -> None:
+    def set_card(self, card: Optional[Dict[str, Any]] = None) -> None:
         """
-        Загружает данные карточки из базы данных
+        Устанавливает карточку для редактирования.
 
         Args:
-            card_id: ID карточки для загрузки
+            card: Карточка работы для редактирования
         """
-        try:
-            self.card = self.card_service.get_work_card_by_id(card_id)
+        self.card = card
 
-            if not self.card:
-                raise ValueError(f"Карточка с ID {card_id} не найдена")
-
-            # Устанавливаем номер карточки
-            self.entry_fields["number"].delete(0, tk.END)
-            self.entry_fields["number"].insert(0, str(self.card.card_number))
+        if card:
+            # Загружаем основные данные карточки
+            self.entry_fields["number"].insert(0, str(card.get("card_number", "")))
 
             # Устанавливаем дату
-            card_date = self.card.card_date or date.today()
+            card_date = card.get("card_date", date.today())
+            if isinstance(card_date, str):
+                try:
+                    card_date = date.fromisoformat(card_date.split("T")[0])
+                except ValueError:
+                    card_date = date.today()
+
             self.entry_fields["date_day"].set(str(card_date.day))
             self.entry_fields["date_month"].set(str(card_date.month))
             self.entry_fields["date_year"].set(str(card_date.year))
 
-            # Устанавливаем изделие
-            if self.card.product:
-                self.entry_fields["product"].set(self.card.product.full_name)
+            # Устанавливаем данные изделия
+            if product := card.get("product"):
+                self.entry_fields["product"].set(product.get("full_name", ""))
 
-            # Устанавливаем контракт
-            if self.card.contract:
-                self.entry_fields["contract"].set(self.card.contract.contract_number)
+            # Устанавливаем данные контракта
+            if contract := card.get("contract"):
+                self.entry_fields["contract"].set(contract.get("contract_number", ""))
 
             # Устанавливаем общую сумму
             self.entry_fields["total_amount"].delete(0, tk.END)
-            self.entry_fields["total_amount"].insert(0, f"{self.card.total_amount:.2f}")
+            self.entry_fields["total_amount"].insert(0, f"{card.get('total_amount', 0):.2f}")
 
-            # Загружаем элементы работы
-            self._update_items_table()
+            # Обновляем таблицы
+            self.items_table.set_card(card)
+            self.workers_table.set_card(card)
 
-            # Загружаем работников
-            self._update_workers_table()
-
-        except Exception as e:
-            self.logger.error(f"Ошибка загрузки данных карточки: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось загрузить данные карточки: {str(e)}")
-
-    def _set_default_values(self) -> None:
-        """Устанавливает значения по умолчанию для новой карточки"""
-        try:
-            # Автоматически генерируемый номер
-            next_number = self.card_service.get_next_card_number()
-            self.entry_fields["number"].delete(0, tk.END)
-            self.entry_fields["number"].insert(0, str(next_number))
-
-            # Текущая дата
-            today = date.today()
-            self.entry_fields["date_day"].set(str(today.day))
-            self.entry_fields["date_month"].set(str(today.month))
-            self.entry_fields["date_year"].set(str(today.year))
-
-            # Инициализируем пустую карточку
-            self.card = self.card_service.create_new_card()
-
-        except Exception as e:
-            self.logger.error(f"Ошибка установки значений по умолчанию: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось установить значения по умолчанию: {str(e)}")
-
-    def _validate_date(self) -> date:
+    def _save_card(self) -> Tuple[bool, Optional[str]]:
         """
-        Валидирует и возвращает дату
+        Сохраняет текущую карточку.
 
         Returns:
-            Объект даты
-        """
-        day = self.entry_fields["date_day"].get()
-        month = self.entry_fields["date_month"].get()
-        year = self.entry_fields["date_year"].get()
-
-        try:
-            return date(int(year), int(month), int(day))
-        except ValueError as e:
-            raise ValueError(f"Некорректная дата: {e}")
-
-    def validate(self) -> bool:
-        """
-        Валидирует введенные данные
-
-        Returns:
-            True если данные корректны, False в противном случае
+            Кортеж (успех, сообщение)
         """
         try:
-            # Проверяем наличие хотя бы одного элемента работы
-            if not self.card.items:
-                messagebox.showwarning("Предупреждение", "Добавьте хотя бы один элемент работы")
-                return False
+            # Получаем данные формы
+            data = self._get_form_data()
 
-            # Проверяем наличие хотя бы одного работника
-            if not self.card.workers:
-                messagebox.showwarning("Предупреждение", "Добавьте хотя бы одного работника")
-                return False
+            # Валидируем данные
+            if not self._validate(data):
+                return False, "Некорректные данные формы"
 
-            # Проверяем уникальность номера карточки
-            number = int(self.entry_fields["number"].get())
-            existing = self.card_service.get_work_card_by_number(number)
+            # Создаем объект карточки
+            card = self._create_card_object(data)
 
-            if existing and (existing.id != self.card.id if self.card else False):
-                messagebox.showwarning("Предупреждение", "Карточка с таким номером уже существует")
-                return False
+            # Сохраняем или обновляем карточку
+            if card.id:
+                success, message = self.card_service.update_work_card(card)
+            else:
+                success, message = self.card_service.add_work_card(card)
 
-            # Проверяем дату
-            try:
-                self._validate_date()
-            except ValueError as e:
-                messagebox.showwarning("Предупреждение", str(e))
-                return False
+            if success:
+                self._update_items_and_workers(card)
 
-            # Проверяем дополнительные связи
-            if not self._validate_relations():
-                return False
+                # Вызываем callback если установлен
+                if self.on_save:
+                    self.on_save({"card": card})
 
-            return True
+                logger.info(f"Карточка {'обновлена' if card.id else 'создана'}: {card.card_number}")
+                return True, None
+            else:
+                logger.warning(f"Не удалось сохранить карточку: {message}")
+                return False, message
 
         except Exception as e:
-            self.logger.error(f"Ошибка валидации карточки: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Ошибка при валидации: {str(e)}")
+            logger.error(f"Ошибка сохранения карточки: {e}", exc_info=True)
+            return False, f"Ошибка сохранения карточки: {str(e)}"
+
+    def _get_form_data(self) -> Dict[str, Any]:
+        """
+        Получает данные из формы.
+
+        Returns:
+            Словарь с данными формы
+        """
+        return {
+            "number": int(self.entry_fields["number"].get()),
+            "day": int(self.entry_fields["date_day"].get()),
+            "month": int(self.entry_fields["date_month"].get()),
+            "year": int(self.entry_fields["date_year"].get()),
+            "product": self.entry_fields["product"].get_selected_item(),
+            "contract": self.entry_fields["contract"].get_selected_item()
+        }
+
+    def _validate(self, data: Dict[str, Any]) -> bool:
+        """
+        Проверяет корректность введенных данных.
+
+        Args:
+            data: Данные формы
+
+        Returns:
+            True, если данные корректны, иначе False
+        """
+        if not data.get("product"):
+            messagebox.showwarning("Предупреждение", "Выберите изделие")
             return False
 
-    def _validate_relations(self) -> bool:
-        """
-        Валидирует связи с изделием и контрактом
+        if not data.get("contract"):
+            messagebox.showwarning("Предупреждение", "Выберите контракт")
+            return False
 
-        Returns:
-            True если связи корректны, False в противном случае
-        """
-        # Проверяем изделие
-        if self.entry_fields["product"].selected_item:
-            product = self.entry_fields["product"].selected_item
-            self.card.product_id = product.id if isinstance(product, dict) else product["id"]
-
-        # Проверяем контракт
-        if self.entry_fields["contract"].selected_item:
-            contract = self.entry_fields["contract"].selected_item
-            self.card.contract_id = contract.id if isinstance(contract, dict) else contract["id"]
+        # Проверяем, чтобы номер карточки был уникальным
+        existing = self.card_service.get_work_card_by_number(data["number"])
+        if existing and (not self.card or existing["id"] != self.card["id"]):
+            messagebox.showwarning("Предупреждение", "Карточка с таким номером уже существует")
+            return False
 
         return True
 
-    def save(self) -> Tuple[bool, Optional[str]]:
+    def _create_card_object(self, data: Dict[str, Any]) -> 'WorkCard':
         """
-        Сохраняет или обновляет карточку
-
-        Returns:
-            Кортеж (успех, сообщение об ошибке)
-        """
-        try:
-            if not self.validate():
-                return False, "Данные карточки некорректны"
-
-            # Устанавливаем дату карточки
-            self.card.card_date = self._validate_date()
-
-            # Сохраняем карточку
-            if self.card.id:
-                result = self.card_service.update_work_card(self.card)
-            else:
-                result = self.card_service.save_card(self.card)
-
-            success, message = result
-
-            if success:
-                messagebox.showinfo("Успех", "Карточка успешно сохранена")
-                if self.on_save_callback:
-                    self.on_save_callback()
-            else:
-                messagebox.showerror("Ошибка", message)
-
-            return result
-
-        except Exception as e:
-            self.logger.error(f"Ошибка сохранения карточки: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось сохранить карточку: {str(e)}")
-            return False, f"Ошибка сохранения карточки: {str(e)}"
-
-    def _update_items_table(self) -> None:
-        """Обновляет таблицу элементов работы"""
-        try:
-            for widget in self.items_table.winfo_children():
-                widget.destroy()
-
-            headers = ["ID", "Наименование", "Цена", "Количество", "Сумма"]
-            for col, header in enumerate(headers):
-                tk.Label(self.items_table, text=header, relief=tk.RIDGE, width=20).grid(
-                    row=0, column=col, sticky="ew")
-
-            if not self.card or not self.card.items:
-                return
-
-            for row_idx, item in enumerate(self.card.items):
-                item_data = [
-                    item.id,
-                    item.work_name,
-                    f"{item.price:.2f}",
-                    item.quantity,
-                    f"{item.amount:.2f}"
-                ]
-
-                for col_idx, value in enumerate(item_data):
-                    tk.Label(self.items_table, text=value, relief=tk.RIDGE, width=20).grid(
-                        row=row_idx + 1, column=col_idx, sticky="ew")
-
-        except Exception as e:
-            self.logger.error(f"Ошибка обновления таблицы элементов: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось обновить таблицу элементов: {str(e)}")
-
-    def _update_workers_table(self) -> None:
-        """Обновляет таблицу работников"""
-        try:
-            for widget in self.workers_table.winfo_children():
-                widget.destroy()
-
-            headers = ["ID", "ФИО", "Сумма"]
-            for col, header in enumerate(headers):
-                tk.Label(self.workers_table, text=header, relief=tk.RIDGE, width=20).grid(
-                    row=0, column=col, sticky="ew")
-
-            if not self.card or not self.card.workers:
-                return
-
-            # Получаем текущую сумму для каждого работника
-            total_amount = self.card.total_amount
-            worker_count = len(self.card.workers) or 1
-
-            for row_idx, worker in enumerate(self.card.workers):
-                worker_amount = total_amount / worker_count
-                worker_data = [
-                    worker.worker_id,
-                    worker.full_name(),
-                    f"{worker_amount:.2f}"
-                ]
-
-                for col_idx, value in enumerate(worker_data):
-                    tk.Label(self.workers_table, text=value, relief=tk.RIDGE, width=20).grid(
-                        row=row_idx + 1, column=col_idx, sticky="ew")
-
-        except Exception as e:
-            self.logger.error(f"Ошибка обновления таблицы работников: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось обновить таблицу работников: {str(e)}")
-
-    def _show_work_type_dialog(self) -> None:
-        """Показывает диалоговое окно для выбора вида работы"""
-        dialog = tk.Toplevel(self)
-        dialog.title("Добавить вид работы")
-        dialog.geometry("500x300")
-
-        # Центрируем окно
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (300 // 2)
-        dialog.geometry(f"+{x}+{y}")
-
-        # Поиск вида работы
-        search_frame = ctk.CTkFrame(dialog)
-        search_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        work_type_search = AutocompleteCombobox(
-            search_frame,
-            search_function=self.card_service.get_all_work_types,
-            display_key="name"
-        )
-        work_type_search.pack(fill=tk.X, expand=True)
-
-        # Количество
-        quantity_frame = ctk.CTkFrame(dialog)
-        quantity_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        ctk.CTkLabel(quantity_frame, text="Количество:", width=80).pack(side=tk.LEFT, padx=(0, 5))
-        quantity_entry = ctk.CTkEntry(quantity_frame)
-        quantity_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Кнопки действия
-        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        def save_work_type():
-            """Сохраняет выбранный вид работы"""
-            selected_item = work_type_search.selected_item
-            if not selected_item:
-                messagebox.showwarning("Предупреждение", "Выберите вид работы")
-                return
-
-            try:
-                quantity = float(quantity_entry.get().replace(',', '.'))
-                if quantity <= 0:
-                    raise ValueError("Количество должно быть положительным числом")
-
-                # Получаем ID вида работы
-                work_type_id = selected_item.id if isinstance(selected_item, dict) else selected_item["id"]
-
-                # Добавляем элемент работы
-                success, error = self.card_service.add_work_item(self.card, work_type_id, quantity)
-
-                if success:
-                    self._update_items_table()
-                    self._update_total_amount()
-                    dialog.destroy()
-                    self._update_workers_table()
-                else:
-                    messagebox.showerror("Ошибка", error)
-
-            except ValueError as ve:
-                messagebox.showwarning("Предупреждение", str(ve))
-
-        save_btn = ctk.CTkButton(
-            btn_frame,
-            text="Добавить",
-            command=save_work_type,
-            width=100
-        )
-        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        cancel_btn = ctk.CTkButton(
-            btn_frame,
-            text="Отмена",
-            command=dialog.destroy,
-            width=100,
-            fg_color="#9E9E9E",
-            hover_color="#757575"
-        )
-        cancel_btn.pack(side=tk.RIGHT)
-
-        # Фокусируем окно
-        dialog.grab_set()
-        self.wait_window(dialog)
-
-    def _show_worker_selection(self) -> None:
-        """Показывает диалог для выбора работника"""
-        dialog = tk.Toplevel(self)
-        dialog.title("Выбор работника")
-        dialog.geometry("500x300")
-
-        # Центрируем окно
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (300 // 2)
-        dialog.geometry(f"+{x}+{y}")
-
-        # Поиск работника
-        search_frame = ctk.CTkFrame(dialog)
-        search_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        worker_search = AutocompleteCombobox(
-            search_frame,
-            search_function=self.card_service.get_all_workers,
-            display_key="full_name"
-        )
-        worker_search.pack(fill=tk.BOTH, expand=True)
-
-        # Кнопки действия
-        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        def save_worker():
-            """Сохраняет выбранного работника"""
-            selected_item = worker_search.selected_item
-            if not selected_item:
-                messagebox.showwarning("Предупреждение", "Выберите работника")
-                return
-
-            # Получаем ID работника
-            worker_id = selected_item.id if isinstance(selected_item, dict) else selected_item["id"]
-
-            # Проверяем, нет ли уже этого работника в списке
-            if any(w.worker_id == worker_id for w in self.card.workers):
-                messagebox.showwarning("Предупреждение", "Этот работник уже добавлен")
-                return
-
-            # Добавляем работника
-            success, error = self.card_service.add_worker(self.card, worker_id)
-
-            if success:
-                self._update_workers_table()
-                dialog.destroy()
-            else:
-                messagebox.showerror("Ошибка", error)
-
-        save_btn = ctk.CTkButton(
-            btn_frame,
-            text="Добавить",
-            command=save_worker,
-            width=100
-        )
-        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        cancel_btn = ctk.CTkButton(
-            btn_frame,
-            text="Отмена",
-            command=dialog.destroy,
-            width=100,
-            fg_color="#9E9E9E",
-            hover_color="#757575"
-        )
-        cancel_btn.pack(side=tk.RIGHT)
-
-        # Фокусируем окно
-        dialog.grab_set()
-        self.wait_window(dialog)
-
-    def _remove_selected_item(self) -> None:
-        """Удаляет выбранный элемент работы"""
-        selection = self.items_table.grid_slaves(row=len(self.card.items), column=0)
-        if not selection:
-            return
-
-        if not messagebox.askyesno("Подтверждение", "Вы действительно хотите удалить этот элемент?"):
-            return
-
-        item_id = int(selection[0].cget("text"))
-
-        # Удаляем элемент
-        success, error = self.card_service.remove_work_item(self.card, item_id)
-
-        if success:
-            self._update_items_table()
-            self._update_total_amount()
-            self._update_workers_table()
-        else:
-            messagebox.showerror("Ошибка", error)
-
-    def _remove_selected_worker(self) -> None:
-        """Удаляет выбранного работника"""
-        selection = self.workers_table.grid_slaves(row=len(self.card.workers), column=0)
-        if not selection:
-            return
-
-        if not messagebox.askyesno("Подтверждение", "Вы действительно хотите удалить этого работника?"):
-            return
-
-        worker_id = int(selection[0].cget("text"))
-
-        # Удаляем работника
-        success, error = self.card_service.remove_worker(self.card, worker_id)
-
-        if success:
-            self._update_workers_table()
-            self._update_total_amount()
-        else:
-            messagebox.showerror("Ошибка", error)
-
-    def _update_total_amount(self) -> None:
-        """Обновляет общую сумму карточки"""
-        try:
-            # Пересчитываем общую сумму
-            new_total = sum(item.amount for item in self.card.items)
-            self.card.total_amount = new_total
-
-            # Обновляем поле общей суммы
-            self.entry_fields["total_amount"].delete(0, tk.END)
-            self.entry_fields["total_amount"].insert(0, f"{new_total:.2f}")
-
-        except Exception as e:
-            self.logger.error(f"Ошибка обновления общей суммы: {e}", exc_info=True)
-            messagebox.showerror("Ошибка", f"Не удалось обновить общую сумму: {str(e)}")
-
-    def set_on_save(self, callback: Callable) -> None:
-        """
-        Устанавливает callback-функцию, которая будет вызвана после сохранения
+        Создает объект карточки работы из данных формы.
 
         Args:
-            callback: Callback-функция без аргументов
+            data: Данные формы
+
+        Returns:
+            Объект WorkCard
         """
-        self.on_save_callback = callback
+        from app.core.models.work_card import WorkCard
 
-    def clear(self) -> None:
-        """Очищает все поля формы"""
-        for field in self.entry_fields.values():
-            if isinstance(field, ctk.CTkComboBox):
-                field.set("")
-            elif hasattr(field, "delete"):
-                field.delete(0, tk.END)
+        return WorkCard(
+            id=self.card["id"] if self.card else None,
+            card_number=str(data["number"]),
+            card_date=date(data["year"], data["month"], data["day"]),
+            product_id=data["product"]["id"],
+            contract_id=data["contract"]["id"],
+            total_amount=float(self.entry_fields["total_amount"].get().replace(',', '.'))
+        )
 
-        # Очищаем таблицы
-        for table in [self.items_table, self.workers_table]:
-            for widget in table.winfo_children():
-                widget.destroy()
+    def _update_items_and_workers(self, card: 'WorkCard') -> None:
+        """
+        Обновляет элементы работы и назначения работников.
 
-        # Сбрасываем карточку
-        self.card = self.card_service.create_new_card()
+        Args:
+            card: Обновленная карточка работы
+        """
+        # Обновляем элементы работы
+        for item in card.items:
+            if item.is_new:
+                self.card_service.add_work_item(card, item)
+            elif item.is_modified:
+                self.card_service.update_work_item(card, item)
+
+        # Обновляем назначения работников
+        for worker in card.workers:
+            if worker.is_new:
+                self.card_service.add_worker_assignment(card, worker)
+            elif worker.is_modified:
+                self.card_service.update_worker_assignment(card, worker)
+
+    def _on_cancel(self) -> None:
+        """
+        Обработчик события отмены.
+        """
+        if messagebox.askyesno("Подтверждение", "Вы действительно хотите отменить изменения?"):
+            if self.on_cancel:
+                self.on_cancel({})
+
+            if self.card:
+                self.set_card(self.card)  # Сбрасываем изменения
+
+    def _add_work_item(self) -> None:
+        """
+        Открывает диалоговое окно для добавления нового элемента работы.
+        """
+        dialog = WorkItemDialog(
+            self,
+            self.card_service,
+            lambda item: self.items_table.add_item(item)
+        )
+        dialog.wait_window()
+        self._update_total_amount()
+
+    def _add_worker(self) -> None:
+        """
+        Открывает диалоговое окно для добавления нового работника.
+        """
+        dialog = WorkerAssignmentDialog(
+            self,
+            self.card_service,
+            lambda worker: self.workers_table.add_worker(worker)
+        )
+        dialog.wait_window()
+        self._update_total_amount()

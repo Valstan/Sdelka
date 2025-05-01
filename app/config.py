@@ -33,7 +33,8 @@ REPORT_SETTINGS = {
 LOGGING_SETTINGS = {
     'log_dir': 'data/logs',
     'log_file_prefix': 'app_log',
-    'log_level': 'INFO'
+    'log_level': 'INFO',
+    'log_mode': 'a'  # Добавлен ключ
 }
 
 # Пути к директориям

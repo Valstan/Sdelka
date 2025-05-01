@@ -1,7 +1,5 @@
 -- File: app/core/database/queries/products.sql
-"""
-SQL-запросы для работы с изделиями.
-"""
+-- SQL-запросы для работы с изделиями.
 
 -- Таблица изделий
 CREATE TABLE IF NOT EXISTS products (

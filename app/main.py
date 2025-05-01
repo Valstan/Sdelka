@@ -5,39 +5,50 @@
 import sys
 import logging
 from datetime import datetime
+from pathlib import Path
 
 import customtkinter as ctk
 
 from app.app_gui import AppGUI
-from app.db_manager import DatabaseManager
-from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME, LOGGING_SETTINGS
+from app.core.database.connections import DatabaseManager
+from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME, LOGGING_SETTINGS, DB_SETTINGS
 
 
-def configure_logging() -> None:
-    """Настройка системы логирования приложения."""
+def configure_logging():
+    log_dir = Path(LOGGING_SETTINGS['log_dir'])
+    log_dir.mkdir(parents=True, exist_ok=True)  # Создаем директорию
+
+    log_file = str(log_dir / f"{LOGGING_SETTINGS['log_file_prefix']}_{datetime.now().strftime('%Y%m%d')}.log")
+
+    file_handler = logging.FileHandler(
+        filename=log_file,
+        mode=LOGGING_SETTINGS.get('log_mode', 'a'),
+        encoding='utf-8'
+    )
+
     logging.basicConfig(
         level=LOGGING_SETTINGS['log_level'],
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(
-                LOGGING_SETTINGS['log_dir'] /
-                f"{LOGGING_SETTINGS['log_file_prefix']}_{datetime.now().strftime('%Y%m%d')}.log",
-                encoding='utf-8'
-            ),
-            logging.StreamHandler()
-        ]
+        handlers=[file_handler, logging.StreamHandler()]
     )
 
 def main() -> None:
     """Основная функция инициализации и запуска приложения."""
-    try:
-        # Инициализация системы логирования
-        configure_logging()
-        logger = logging.getLogger(__name__)
-        logger.info("Запуск приложения")
 
+    # Инициализация системы логирования
+    configure_logging()
+    logger = logging.getLogger(__name__)
+    logger.info("Запуск приложения")
+
+    try:
         # Инициализация базы данных
-        db_manager = DatabaseManager()
+        db_manager = DatabaseManager(DB_SETTINGS['database_path'])
+
+        # Создаем директорию, если ее нет
+        Path(db_manager.db_path).parent.mkdir(parents=True, exist_ok=True)
+
+        if DB_SETTINGS['create_backup_on_start']:
+            db_manager.create_backup()
 
         # Настройка графического интерфейса
         ctk.set_appearance_mode(APP_THEME)

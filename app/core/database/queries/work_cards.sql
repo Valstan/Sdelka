@@ -1,7 +1,5 @@
 -- File: app/core/database/queries/work_cards.sql
-"""
-SQL-запросы для работы с карточками работ.
-"""
+-- SQL-запросы для работы с карточками работ.
 
 -- Таблица нарядов
 CREATE TABLE IF NOT EXISTS work_cards (

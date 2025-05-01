@@ -6,10 +6,10 @@ File: app/core/services/worker_service.py
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
-from app.app_gui import logger
 from app.core.services.base_service import BaseService
 from app.core.models.worker import Worker
 from app.core.models.base_model import BaseModel
+from app.utils.utils import logger
 
 
 class WorkerService(BaseService):

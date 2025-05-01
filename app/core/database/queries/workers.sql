@@ -1,7 +1,5 @@
 -- File: app/core/database/queries/workers.sql
-"""
-SQL-запросы для работы с работниками предприятия.
-"""
+-- SQL-запросы для работы с работниками предприятия.
 
 -- Таблица работников
 CREATE TABLE IF NOT EXISTS workers (

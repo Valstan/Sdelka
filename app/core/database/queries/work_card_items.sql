@@ -1,7 +1,6 @@
 -- File: app/core/database/queries/work_card_items.sql
-"""
-SQL-запросы для работы с элементами карточек работ.
-"""
+-- SQL-запросы для работы с элементами карточек работ.
+
 
 -- Таблица элементов наряда
 CREATE TABLE IF NOT EXISTS work_card_items (

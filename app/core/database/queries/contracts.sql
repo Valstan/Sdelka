@@ -1,7 +1,6 @@
 -- File: app/core/database/queries/contracts.sql
-"""
-SQL-запросы для работы с контрактами.
-"""
+-- SQL-запросы для работы с контрактами.
+
 
 -- Создание таблицы contracts
 CREATE TABLE IF NOT EXISTS contracts (

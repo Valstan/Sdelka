@@ -1,26 +1,22 @@
 """
 File: app/ui/report_form.py
-Форма для генерации отчетов.
+Форма для генерации отчетов по нарядам.
 """
 import logging
 import tkinter as tk
-from tkinter import ttk
 import customtkinter as ctk
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Callable
+from datetime import date
+from typing import Any, Dict, Optional, Callable
 
-from app.core.forms.base_form import BaseForm
-from app.core.models.worker import Worker
-from app.core.models.product import Product
-from app.core.models.contract import Contract
-from app.core.models.work_type import WorkType
+import pandas as pd
+
+from app.base import BaseForm
 from app.core.services.report_service import ReportService
 from app.core.services.worker_service import WorkerService
 from app.core.services.product_service import ProductService
 from app.core.services.work_type_service import WorkTypeService
 from app.core.services.contract_service import ContractService
-from app.core.services.work_card_service import WorkCardService
-from app.ui.components.autocomplete_combobox import AutocompleteCombobox
+from app.ui.autocomplete_combobox import AutocompleteCombobox
 from app.config import UI_SETTINGS
 from app.report.report_exporter import ReportExporter
 
@@ -37,7 +33,6 @@ class ReportForm(BaseForm):
         self,
         parent: tk.Widget,
         report_service: ReportService,
-        card_service: WorkCardService,
         worker_service: WorkerService,
         product_service: ProductService,
         work_type_service: WorkTypeService,
@@ -50,26 +45,26 @@ class ReportForm(BaseForm):
         Args:
             parent: Родительский виджет
             report_service: Сервис генерации отчетов
-            card_service: Сервис работы с нарядами
-            worker_service: Сервис работы с работниками
-            product_service: Сервис работы с изделиями
-            work_type_service: Сервис работы с видами работ
-            contract_service: Сервис работы с контрактами
+            worker_service: Сервис для работы с работниками
+            product_service: Сервис для работы с изделиями
+            work_type_service: Сервис для работы с типами работ
+            contract_service: Сервис для работы с контрактами
             on_generate: Callback-функция после генерации отчета
         """
         super().__init__(parent)
         self.report_service = report_service
-        self.card_service = card_service
         self.worker_service = worker_service
         self.product_service = product_service
         self.work_type_service = work_type_service
         self.contract_service = contract_service
         self.on_generate = on_generate
         self.report_exporter = ReportExporter()
-        self.include_works_count = False
-        self.include_products_count = False
-        self.include_contracts_count = False
         self.entry_fields = {}
+
+        # Чекбоксы
+        self.include_works_var = ctk.BooleanVar(value=False)
+        self.include_products_var = ctk.BooleanVar(value=False)
+        self.include_contracts_var = ctk.BooleanVar(value=False)
 
         self._setup_ui()
 
@@ -90,12 +85,13 @@ class ReportForm(BaseForm):
             values=["Текущий месяц", "Текущий год", "Произвольный период"],
             command=self._on_period_changed
         )
+        self.entry_fields["period"].set("Текущий месяц")
         self.entry_fields["period"].pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 2. Произвольный период (скрыт по умолчанию)
         self.custom_period_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
         self.custom_period_frame.pack(fill=tk.X, pady=(0, 15))
-        self.custom_period_frame.pack_forget()
+        self.custom_period_frame.pack_forget()  # Скрываем по умолчанию
 
         # Дата "от"
         from_frame = ctk.CTkFrame(self.custom_period_frame, fg_color="transparent")
@@ -201,28 +197,25 @@ class ReportForm(BaseForm):
         )
         self.entry_fields["contract"].pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 7. Чекбоксы для статистики
+        # 7. Дополнительные параметры
         options_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
         options_frame.pack(fill=tk.X, pady=(0, 20))
 
-        # Виды работ
-        self.include_works_var = ctk.BooleanVar(value=False)
+        # Включить виды работ
         ctk.CTkCheckBox(
             options_frame,
             text="Включить количество видов работ",
             variable=self.include_works_var
         ).pack(side=tk.LEFT, padx=5)
 
-        # Изделия
-        self.include_products_var = ctk.BooleanVar(value=False)
+        # Включить изделия
         ctk.CTkCheckBox(
             options_frame,
             text="Включить количество изделий",
             variable=self.include_products_var
         ).pack(side=tk.LEFT, padx=5)
 
-        # Контракты
-        self.include_contracts_var = ctk.BooleanVar(value=False)
+        # Включить контракты
         ctk.CTkCheckBox(
             options_frame,
             text="Включить количество контрактов",
@@ -241,15 +234,14 @@ class ReportForm(BaseForm):
         )
         self.generate_button.pack(side=tk.RIGHT, padx=(5, 0))
 
-        self.export_button = ctk.CTkButton(
+        export_menu = ctk.CTkOptionMenu(
             action_frame,
-            text="Экспорт",
-            command=self._on_export,
-            **UI_SETTINGS['button_style']
+            values=["Экспорт в Excel", "Экспорт в PDF", "Экспорт в HTML"],
+            command=self._on_export
         )
-        self.export_button.pack(side=tk.RIGHT, padx=(5, 0))
+        export_menu.pack(side=tk.RIGHT, padx=(5, 0))
 
-        self.clear_button = ctk.CTkButton(
+        clear_button = ctk.CTkButton(
             action_frame,
             text="Очистить",
             command=self._on_clear,
@@ -257,9 +249,9 @@ class ReportForm(BaseForm):
             hover_color="#757575",
             **UI_SETTINGS['button_style']
         )
-        self.clear_button.pack(side=tk.RIGHT)
+        clear_button.pack(side=tk.RIGHT)
 
-        # Привязываем событие Enter к кнопке "Сформировать"
+        # Привязываем Enter
         self.bind("<Return>", lambda event: self._on_generate_report())
         self.bind("<KP_Enter>", lambda event: self._on_generate_report())
 
@@ -310,10 +302,12 @@ class ReportForm(BaseForm):
         return (date(year, month + 1, 1) - date(year, month, 1)).days
 
     def _on_generate_report(self) -> None:
-        """Обработчик события генерации отчета."""
+        """Обработчик события формирования отчета."""
         try:
-            # Собираем параметры
+            # Получаем параметры отчета
             params = self._get_report_params()
+            if not params:
+                return
 
             # Генерируем отчет
             df, summary = self.report_service.generate_report(params)
@@ -327,10 +321,10 @@ class ReportForm(BaseForm):
             self.show_error_message(str(e))
 
     def _get_report_params(self) -> Dict[str, Any]:
-        """Собирает параметры отчета из формы."""
+        """Собирает параметры для генерации отчета."""
         period = self.entry_fields["period"].get()
 
-        # Общие параметры
+        # Базовые параметры
         params = {
             "include_works_count": self.include_works_var.get(),
             "include_products_count": self.include_products_var.get(),
@@ -339,35 +333,23 @@ class ReportForm(BaseForm):
 
         # Работник
         worker = self.entry_fields["worker"].selected_item
-        if worker:
-            if isinstance(worker, dict):
-                params["worker_id"] = worker.get("id")
-            else:
-                params["worker_id"] = worker.id if worker else None
+        if worker and isinstance(worker, dict) and "id" in worker:
+            params["worker_id"] = worker["id"]
 
         # Вид работы
         work_type = self.entry_fields["work_type"].selected_item
-        if work_type:
-            if isinstance(work_type, dict):
-                params["work_type_id"] = work_type.get("id")
-            else:
-                params["work_type_id"] = work_type.id if work_type else None
+        if work_type and isinstance(work_type, dict) and "id" in work_type:
+            params["work_type_id"] = work_type["id"]
 
         # Изделие
         product = self.entry_fields["product"].selected_item
-        if product:
-            if isinstance(product, dict):
-                params["product_id"] = product.get("id")
-            else:
-                params["product_id"] = product.id if product else None
+        if product and isinstance(product, dict) and "id" in product:
+            params["product_id"] = product["id"]
 
         # Контракт
         contract = self.entry_fields["contract"].selected_item
-        if contract:
-            if isinstance(contract, dict):
-                params["contract_id"] = contract.get("id")
-            else:
-                params["contract_id"] = contract.id if contract else None
+        if contract and isinstance(contract, dict) and "id" in contract:
+            params["contract_id"] = contract["id"]
 
         # Даты
         if period == "Произвольный период":
@@ -384,63 +366,38 @@ class ReportForm(BaseForm):
                 )
                 if start_date > end_date:
                     raise ValueError("Дата начала не может быть позже даты окончания")
+
                 params["start_date"] = start_date
                 params["end_date"] = end_date
+
             except ValueError as ve:
                 raise ValueError(f"Некорректная дата: {ve}")
 
         return params
 
-    def _on_export(self) -> None:
+    def _on_export(self, value: str) -> None:
         """Обработчик события экспорта отчета."""
-        export_window = ctk.CTkToplevel(self)
-        export_window.title("Выбор формата экспорта")
-        export_window.geometry("300x150")
-        export_window.resizable(False, False)
+        try:
+            # Получаем параметры отчета
+            params = self._get_report_params()
 
-        # Центрируем окно
-        x = (export_window.winfo_screenwidth() // 2) - (300 // 2)
-        y = (export_window.winfo_screenheight() // 2) - (150 // 2)
-        export_window.geometry(f"+{x}+{y}")
+            # Генерируем отчет
+            df, summary = self.report_service.generate_report(params)
 
-        export_frame = ctk.CTkFrame(export_window)
-        export_frame.pack(pady=20)
+            if df.empty:
+                raise ValueError("Нет данных для экспорта")
 
-        ctk.CTkLabel(export_frame, text="Формат экспорта:", **UI_SETTINGS['label_style']).pack(pady=5)
-        export_format = ctk.CTkComboBox(export_frame, values=["Excel", "PDF", "HTML"])
-        export_format.pack(pady=5)
+            # Экспортируем отчет
+            export_format = value.split()[-1].lower()
+            file_path = self.report_exporter.export(df, summary, export_format=export_format)
 
-        def _export_data():
-            """Выполняет экспорт данных."""
-            try:
-                # Собираем параметры
-                params = self._get_report_params()
+            if file_path:
+                self.show_success_message(f"Отчет успешно экспортирован в {export_format.upper()}\nФайл: {file_path}")
+            else:
+                raise ValueError("Не удалось экспортировать отчет")
 
-                # Генерируем отчет
-                df, summary = self.report_service.generate_report(params)
-
-                if df.empty:
-                    raise ValueError("Нет данных для экспорта")
-
-                # Экспортируем отчет
-                file_path = self.report_exporter.export(df, summary, export_format=export_format.get())
-
-                if file_path:
-                    self.show_success_message(f"Отчет успешно экспортирован в {export_format.get()}\nФайл: {file_path}")
-                else:
-                    raise ValueError("Не удалось экспортировать отчет")
-
-            except Exception as e:
-                self.show_error_message(str(e))
-            finally:
-                export_window.destroy()
-
-        ctk.CTkButton(
-            export_frame,
-            text="Экспортировать",
-            command=_export_data,
-            **UI_SETTINGS['button_style']
-        ).pack()
+        except Exception as e:
+            self.show_error_message(f"Ошибка экспорта: {e}")
 
     def _on_clear(self) -> None:
         """Обработчик события очистки формы."""
@@ -459,26 +416,26 @@ class ReportForm(BaseForm):
         self.include_products_var.set(False)
         self.include_contracts_var.set(False)
 
-        # Вызываем callback, если он есть
+        # Вызываем callback с пустыми данными
         if self.on_generate:
             self.on_generate(pd.DataFrame(), {})
 
     def _on_worker_selected(self, worker: Dict[str, Any]) -> None:
         """Обработчик выбора работника."""
-        if worker:
-            params["worker_id"] = worker.get("id")
+        if worker and "id" in worker:
+            self.entry_fields["worker_id"] = worker["id"]
 
     def _on_work_type_selected(self, work_type: Dict[str, Any]) -> None:
         """Обработчик выбора вида работы."""
-        if work_type:
-            params["work_type_id"] = work_type.get("id")
+        if work_type and "id" in work_type:
+            self.entry_fields["work_type_id"] = work_type["id"]
 
     def _on_product_selected(self, product: Dict[str, Any]) -> None:
         """Обработчик выбора изделия."""
-        if product:
-            params["product_id"] = product.get("id")
+        if product and "id" in product:
+            self.entry_fields["product_id"] = product["id"]
 
     def _on_contract_selected(self, contract: Dict[str, Any]) -> None:
         """Обработчик выбора контракта."""
-        if contract:
-            params["contract_id"] = contract.get("id")
+        if contract and "id" in contract:
+            self.entry_fields["contract_id"] = contract["id"]

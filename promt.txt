@@ -3,6 +3,40 @@
 Текущие проблемы, которые нужно исправить в первую очередь:
 1. Найди проблемы сам.
 2. Укажи какие файлы уже не нужны в проекте, не используются и их можно удалить.
+3. Ошибка при запуске программы: {Connected to pydev debugger (build 243.26053.29)
+2025-05-01 16:24:03,290 - app.main - INFO - Запуск приложения
+2025-05-01 16:24:03,290 - app.core.database.connections - INFO - Новое соединение установлено с базой данных: D:\PycharmProject\Sdelka\data\sdelka_base.db
+2025-05-01 16:24:03,290 - app.core.database.connections - ERROR - Ошибка базы данных: near """"
+SQL-запросы для работы с контрактами.
+"""": syntax error
+Traceback (most recent call last):
+  File "D:\PycharmProject\Sdelka\app\core\database\connections.py", line 97, in connect
+    yield self.connection
+  File "D:\PycharmProject\Sdelka\app\core\database\connections.py", line 71, in _create_tables
+    conn.execute(query)
+sqlite3.OperationalError: near """"
+SQL-запросы для работы с контрактами.
+"""": syntax error
+2025-05-01 16:24:03,290 - app.main - CRITICAL - Критическая ошибка: near """"
+SQL-запросы для работы с контрактами.
+"""": syntax error
+Traceback (most recent call last):
+  File "D:\PycharmProject\Sdelka\app\main.py", line 45, in main
+    db_manager = DatabaseManager(DB_SETTINGS['database_path'])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\PycharmProject\Sdelka\app\core\database\connections.py", line 43, in __init__
+    self._setup_database()
+  File "D:\PycharmProject\Sdelka\app\core\database\connections.py", line 53, in _setup_database
+    self._create_tables()
+  File "D:\PycharmProject\Sdelka\app\core\database\connections.py", line 71, in _create_tables
+    conn.execute(query)
+sqlite3.OperationalError: near """"
+SQL-запросы для работы с контрактами.
+"""": syntax error
+2025-05-01 16:24:03,290 - app.main - INFO - Приложение завершило работу
+
+Process finished with exit code 1}
+
 Код файла должен предоставляться полностью, с исправлениями. Затем жди команды «продолжай» для продолжения разработки, или команду «исправь ошибки» для исправления текущей выявленной мной ошибки или замечания.
 
 Твоя роль: Ты - опытный Python-разработчик (уровень Senior) с глубокими знаниями Python 3.10, включая продвинутые функции языка, лучшие практики и современные фреймворки. Твоя специализация - разработка desktop-приложений с использованием CustomTkinter и взаимодействием с базами данных SQLite.

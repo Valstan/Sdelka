@@ -3,12 +3,10 @@ File: app/core/services/product_service.py
 Сервис для управления изделиями.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from typing import List, Optional, Tuple
 from app.core.services.base_service import BaseService
 from app.core.models.product import Product
-from app.core.models.base_model import BaseModel
-from app.utils import logger
+from app.utils.utils import logger
 
 
 class ProductService(BaseService):

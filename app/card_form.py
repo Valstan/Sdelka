@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Callable
 
 import customtkinter as ctk
 
-from app.ui.components.autocomplete import AutocompleteCombobox
+from app.ui.autocomplete import AutocompleteCombobox
 from app.config import UI_SETTINGS
 from app.core.models.models import WorkCard
 from app.core.services.card_service import CardService

@@ -1,7 +1,5 @@
 -- File: app/core/database/queries/worker_assignments.sql
-"""
-SQL-запросы для работы с назначением работников к карточкам.
-"""
+-- SQL-запросы для работы с назначением работников к карточкам.
 
 -- Создание таблицы worker_assignments
 CREATE TABLE IF NOT EXISTS worker_assignments (
