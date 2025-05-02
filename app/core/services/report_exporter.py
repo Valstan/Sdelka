@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
 
-from app.utils.utils import write_file, read_file
+from app.core.utils.utils import write_file, read_file
 from app.config import REPORT_SETTINGS  # Предполагается, что EXPORT_DIR указан в config
 
 logger = logging.getLogger(__name__)

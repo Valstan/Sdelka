@@ -4,11 +4,10 @@ File: app/ui/product_form.py
 """
 
 import tkinter as tk
-from tkinter import ttk
 import customtkinter as ctk
 from app.core.models.product import Product
 from app.core.services.product_service import ProductService
-from app.ui.base_form import BaseForm
+from app.ui.forms.base_form import BaseForm
 from app.config import UI_SETTINGS
 
 

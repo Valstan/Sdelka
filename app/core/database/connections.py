@@ -35,7 +35,7 @@ class DatabaseManager:
         """Настройка базы данных при запуске."""
         try:
             self._create_backup_on_start()
-            self._create_tables()
+            self._run_migrations()
             logger.info("База данных успешно инициализирована")
         except Exception as e:
             logger.error(f"Ошибка инициализации базы данных: {e}", exc_info=True)
@@ -73,6 +73,16 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Ошибка удаления резервной копии: {e}", exc_info=True)
 
+    def _run_migrations(self) -> None:
+        """Запускает миграции базы данных."""
+        try:
+            from app.core.database.migrations.migrator import DatabaseMigrator
+            migrator = DatabaseMigrator(self)
+            migrator.apply_migrations()
+        except Exception as e:
+            logger.error(f"Ошибка запуска миграций: {e}", exc_info=True)
+            raise
+
     def _create_tables(self) -> None:
         """Создает таблицы, если их нет."""
         schema_files = [
@@ -90,14 +100,15 @@ class DatabaseManager:
                         sql_script = f.read()
 
                     # Удаляем комментарии в формате Python
-                    sql_statements = [
-                        stmt for stmt in sql_script.split(";")
-                        if not stmt.strip().startswith("\"\"\"")
+                    sql_lines = [
+                        line for line in sql_script.splitlines()
+                        if not line.strip().startswith("\"\"\"")
                     ]
 
-                    for statement in sql_statements:
-                        if statement.strip():
-                            conn.execute(statement)
+                    clean_sql = "\n".join(sql_lines)
+
+                    # Выполняем скрипт целиком
+                    conn.executescript(clean_sql)
 
                     logger.debug(f"Выполнен скрипт из файла: {file_path}")
                 except Exception as e:

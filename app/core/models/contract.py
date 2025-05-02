@@ -1,40 +1,41 @@
 """
 File: app/core/models/contract.py
-Модель контракта с валидацией и бизнес-логикой.
+Модель данных для контрактов.
 """
 
-from typing import Any, Dict
 from datetime import date, datetime
+from typing import Any, Dict, Optional
 from app.core.models.base_model import BaseModel
 
-
 class Contract(BaseModel):
-    """
-    Модель контракта.
-
-    Attributes:
-        id: Уникальный идентификатор контракта
-        contract_number: Шифр контракта
-        start_date: Дата начала действия
-        end_date: Дата окончания действия
-        description: Описание контракта
-    """
+    """Модель данных для контрактов."""
 
     def __init__(
-            self,
-            id: int = None,
-            contract_number: str = "",
-            start_date: date = None,
-            end_date: date = None,
-            description: str = "",
-            created_at: datetime = None,
-            updated_at: datetime = None
+        self,
+        contract_number: str,
+        start_date: date,
+        end_date: date,
+        description: str = "",
+        id: Optional[int] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None
     ):
-        super().__init__()
-        self.id = id
+        """
+        Инициализация модели контракта.
+
+        Args:
+            contract_number: Шифр контракта
+            start_date: Дата начала
+            end_date: Дата окончания
+            description: Описание контракта
+            id: Идентификатор контракта
+            created_at: Дата создания
+            updated_at: Дата последнего обновления
+        """
+        super().__init__(id)
         self.contract_number = contract_number
-        self.start_date = start_date or date.today()
-        self.end_date = end_date or date(date.today().year, 12, 31)
+        self.start_date = start_date
+        self.end_date = end_date
         self.description = description
         self._created_at = created_at
         self._updated_at = updated_at
@@ -49,23 +50,33 @@ class Contract(BaseModel):
 
         return True
 
-    def set_updated(self) -> None:
-        """Обновляет метку времени при изменении."""
-        self._updated_at = datetime.now()
+    def to_dict(self) -> Dict[str, Any]:
+        """Преобразует модель в словарь."""
+        return {
+            "id": self.id,
+            "contract_number": self.contract_number,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "description": self.description,
+            "created_at": self._created_at.isoformat() if self._created_at else None,
+            "updated_at": self._updated_at.isoformat() if self._updated_at else None
+        }
 
-    def __eq__(self, other: Any) -> bool:
-        """Сравнение двух экземпляров Contract."""
-        if not isinstance(other, Contract):
-            return False
-
-        return self.contract_number == other.contract_number
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Contract':
+        """Создает модель из словаря."""
+        return cls(
+            id=data.get("id"),
+            contract_number=data["contract_number"],
+            start_date=date.fromisoformat(data["start_date"]) if data.get("start_date") else None,
+            end_date=date.fromisoformat(data["end_date"]) if data.get("end_date") else None,
+            description=data.get("description", ""),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None
+        )
 
     def __str__(self) -> str:
-        """Человеко-понятное представление модели."""
-        return f"{self.contract_number} ({self.start_date.strftime('%d.%m.%Y')} - {self.end_date.strftime('%d.%m.%Y')})"
-
-    def get_display_name(self) -> str:
-        """Возвращает форматированное имя для отображения."""
+        """Возвращает строковое представление контракта."""
         return f"{self.contract_number} ({self.start_date.year}-{self.end_date.year})"
 
     @property

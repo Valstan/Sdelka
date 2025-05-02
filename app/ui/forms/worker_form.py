@@ -5,7 +5,7 @@
 
 import tkinter as tk
 import customtkinter as ctk
-from app.ui.base_form import BaseForm
+from app.ui.forms.base_form import BaseForm
 from app.core.models.models import Worker
 from app.core.services.worker_service import WorkerService
 

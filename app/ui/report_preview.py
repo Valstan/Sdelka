@@ -12,7 +12,7 @@ import pandas as pd
 
 from app.config import UI_SETTINGS
 from app.config import APP_WIDTH, APP_HEIGHT
-from app.ui.work_card_form import WorkCardForm
+from app.ui.forms.work_card_form import WorkCardForm
 
 logger = logging.getLogger(__name__)
 

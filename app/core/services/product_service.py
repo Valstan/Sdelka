@@ -6,7 +6,7 @@ File: app/core/services/product_service.py
 from typing import List, Optional, Tuple
 from app.core.services.base_service import BaseService
 from app.core.models.product import Product
-from app.utils.utils import logger
+from app.core.utils.utils import logger
 
 
 class ProductService(BaseService):

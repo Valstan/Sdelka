@@ -3,13 +3,11 @@ File: app/core/services/worker_service.py
 Сервис для работы с работниками.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from typing import List, Optional, Tuple
 
 from app.core.services.base_service import BaseService
 from app.core.models.worker import Worker
-from app.core.models.base_model import BaseModel
-from app.utils.utils import logger
+from app.core.utils.utils import logger
 
 
 class WorkerService(BaseService):

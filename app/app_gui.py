@@ -6,25 +6,17 @@ File: app/ui/main_app_gui.py
 import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
-from datetime import date, datetime
 import logging
-import os
 import sys
 
-from app.core.models.worker import Worker
-from app.core.models.contract import Contract
-from app.core.models.product import Product
-from app.core.models.work_type import WorkType
-from app.core.models.work_card import WorkCard
 from app.core.services.work_card_service import WorkCardsService
 from app.core.services.report_manager import ReportManager
-from app.ui.work_card_form import WorkCardForm
-from app.ui.worker_form import WorkerForm
-from app.ui.contract_form import ContractForm
-from app.ui.product_form import ProductForm
-from app.ui.work_type_form import WorkTypeForm
-from app.ui.report_preview import ReportPreview
-from app.config import UI_SETTINGS, DIRECTORIES
+from app.ui.forms.work_card_form import WorkCardForm
+from app.ui.forms.worker_form import WorkerForm
+from app.ui.forms.contract_form import ContractForm
+from app.ui.forms.product_form import ProductForm
+from app.ui.forms.work_type_form import WorkTypeForm
+from app.config import UI_SETTINGS
 from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT
 
 logger = logging.getLogger(__name__)
