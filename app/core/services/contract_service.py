@@ -1,40 +1,47 @@
-# File: app/core/services/contract_service.py
+# app/core/services/contract_service.py
+from typing import Any, Dict, List, Optional
+from dataclasses import asdict
+from datetime import date
 
-from typing import List, Dict, Any, Optional
-from app.core.models.contract import Contract
-from app.core.database.repository.contract_repository import ContractRepository
-from app.core.database.dao.base_dao import BaseDAO
-from logging import getLogger
+from app.core.models.base_model import Contract
+from app.core.database.repositories.contract_repository import ContractRepository
+from app.core.services.base_service import BaseService
 
-logger = getLogger(__name__)
 
-class ContractService:
-    def __init__(self, dao: BaseDAO):
-        self.dao = dao
-        self.repository = ContractRepository(dao)
-    
-    def create_table(self) -> None:
-        """Создает таблицу контрактов, если её нет."""
-        self.repository.create_table()
-    
-    def create_contract(self, contract: Contract) -> int:
-        """Создает новый контракт."""
-        contract.validate()
-        return self.repository.create(contract)
-    
-    def get_all_contracts(self) -> List[Dict[str, Any]]:
-        """Получает все контракты."""
-        return self.repository.get_all()
-    
-    def get_contract(self, contract_id: int) -> Optional[Dict[str, Any]]:
-        """Получает контракт по ID."""
-        return self.repository.get_by_id(contract_id)
-    
-    def update_contract(self, contract: Contract) -> None:
-        """Обновляет контракт."""
-        contract.validate()
-        self.repository.update(contract)
-    
-    def delete_contract(self, contract_id: int) -> None:
-        """Удаляет контракт."""
-        self.repository.delete(contract_id)
+class ContractService(BaseService):
+    """
+    Сервис для работы с контрактами.
+    """
+
+    def __init__(self, db_manager: Any):
+        """
+        Инициализирует сервис контрактов.
+
+        Args:
+            db_manager: Менеджер базы данных
+        """
+        super().__init__(db_manager, ContractRepository(db_manager))
+
+    def get_active_contracts(self, date_: Optional[date] = None) -> List[Contract]:
+        """
+        Получает активные контракты на определенную дату.
+
+        Args:
+            date_: Дата (по умолчанию - текущая дата)
+
+        Returns:
+            List[Contract]: Список активных контрактов
+        """
+        return self.repository.get_active_contracts(date_)
+
+    def get_by_number(self, contract_number: str) -> Optional[Contract]:
+        """
+        Получает контракт по шифру.
+
+        Args:
+            contract_number: Шифр контракта
+
+        Returns:
+            Optional[Contract]: Контракт или None
+        """
+        return self.repository.get_by_number(contract_number)

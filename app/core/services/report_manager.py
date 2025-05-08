@@ -16,8 +16,8 @@ from app.core.services.report_service import ReportService
 from app.report.report_exporter import ReportExporter
 from app.report.report_form import ReportForm
 from app.ui.report_preview import ReportPreview
-from app.core.utils.ui_utils import UI_SETTINGS, DATE_FORMATS
-from app.core.utils.ui_utils import DIRECTORIES
+from app.utils.ui_utils import UI_SETTINGS, DATE_FORMATS
+from app.utils.ui_utils import DIRECTORIES
 
 logger = logging.getLogger(__name__)
 

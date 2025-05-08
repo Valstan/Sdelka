@@ -7,7 +7,7 @@ from typing import Optional, Callable, Dict, Any
 import customtkinter as ctk
 
 from app.core.models.work_type import WorkType
-from app.core.utils.form_validator import FormValidator
+from app.utils.form_validator import FormValidator
 from app.ui.forms.base_form import BaseForm
 
 class WorkTypeForm(BaseForm):

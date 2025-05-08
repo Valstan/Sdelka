@@ -1,221 +1,181 @@
-# File: app/core/services/work_card_service.py
-"""Сервис для работы с карточками работ."""
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
-from datetime import datetime, date
-import logging
+# app/core/services/work_card_service.py
+from typing import Any, Dict, List, Optional
+from dataclasses import asdict
+from datetime import date
 
-from app.core.models.work_card import WorkCard
+from jsonschema.exceptions import ValidationError
+
+from app.core.models.base_model import WorkCard
+from app.core.database.repositories.work_card_repository import WorkCardRepository
 from app.core.services.base_service import BaseService
-from app.core.database.connections import DatabaseManager
+from app.core.services.worker_service import WorkerService
+from app.core.services.work_type_service import WorkTypeService
+from app.core.services.product_service import ProductService
+from app.core.services.contract_service import ContractService
 
-logger = logging.getLogger(__name__)
 
+class WorkCardService(BaseService):
+    """
+    Сервис для работы с нарядами.
+    """
 
-@dataclass
-class WorkCardsService(BaseService):
-    """Сервис для работы с карточками работ."""
+    def __init__(self, db_manager: Any):
+        """
+        Инициализирует сервис нарядов.
 
-    def __init__(self, db_manager: DatabaseManager):
-        super().__init__(db_manager)
+        Args:
+            db_manager: Менеджер базы данных
+        """
+        super().__init__(db_manager, WorkCardRepository(db_manager))
 
-    def get_all_work_cards(self) -> List[WorkCard]:
-        """Получает все карточки работ."""
-        query = self.get_query_file("work_cards.sql")
-        rows = self.execute_query(query)
-        return [self._map_to_model(row) for row in rows]
+        # Инициализируем связанные сервисы
+        self.worker_service = WorkerService(db_manager)
+        self.work_type_service = WorkTypeService(db_manager)
+        self.product_service = ProductService(db_manager)
+        self.contract_service = ContractService(db_manager)
 
-    def get_work_card_by_id(self, card_id: int) -> Optional[WorkCard]:
-        """Получает карточку работы по ID."""
-        query = self.get_query_file("work_cards.sql")
-        params = (card_id,)
-        row = self.execute_query(query, params, fetch_one=True)
-        return self._map_to_model(row) if row else None
+    def get_with_details(self, work_card_id: int) -> Optional[WorkCard]:
+        """
+        Получает наряд с деталями (элементы и работники).
 
-    def get_work_card_by_number(self, number: str) -> Optional[WorkCard]:
-        """Получает карточку работы по номеру."""
-        query = self.get_query_file("work_cards.sql")
-        params = (number,)
-        row = self.execute_query(query, params, fetch_one=True)
-        return self._map_to_model(row) if row else None
+        Args:
+            work_card_id: ID наряда
 
-    def save_card(self, card: WorkCard) -> Tuple[bool, Optional[str]]:
-        """Сохраняет карточку работы (создание или обновление)."""
+        Returns:
+            Optional[WorkCard]: Наряд с деталями или None
+        """
+        return self.repository.get_with_details(work_card_id)
+
+    def create_with_details(self, work_card: WorkCard) -> WorkCard:
+        """
+        Создает наряд с деталями (элементы и работники).
+
+        Args:
+            work_card: Наряд с деталями
+
+        Returns:
+            WorkCard: Созданный наряд
+        """
         try:
-            # Обновляем общую сумму перед сохранением
-            card.total_amount = card.calculate_total_amount()
+            # Валидация данных
+            is_valid, errors = work_card.validate()
+            if not is_valid:
+                raise ValidationError(f"Ошибка валидации при создании наряда: {errors}")
 
-            if card.id:
-                return self.update_work_card(card)
-            else:
-                return self.add_work_card(card)
+            # Валидация элементов
+            for item in work_card.items:
+                is_valid, errors = item.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации элемента наряда: {errors}")
 
+            # Валидация работников
+            for worker in work_card.workers:
+                is_valid, errors = worker.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации работника по наряду: {errors}")
+
+            # Проверка существования связанных сущностей
+            if not self.product_service.exists(work_card.product_id):
+                raise NotFoundError(f"Изделие с ID {work_card.product_id} не найдено")
+
+            if not self.contract_service.exists(work_card.contract_id):
+                raise NotFoundError(f"Контракт с ID {work_card.contract_id} не найден")
+
+            for item in work_card.items:
+                if not self.work_type_service.exists(item.work_type_id):
+                    raise NotFoundError(f"Вид работы с ID {item.work_type_id} не найден")
+
+            for worker in work_card.workers:
+                if not self.worker_service.exists(worker.worker_id):
+                    raise NotFoundError(f"Работник с ID {worker.worker_id} не найден")
+
+            # Создание в БД
+            success, work_card_id = self.repository.create_with_details(work_card)
+            if not success or work_card_id is None:
+                raise DatabaseError("Ошибка создания наряда с деталями")
+
+            # Получаем созданный наряд
+            created_card = self.repository.get_with_details(work_card_id)
+            if not created_card:
+                raise DatabaseError("Не удалось получить созданный наряд")
+
+            return created_card
+
+        except ValidationError:
+            raise
+        except NotFoundError:
+            raise
         except Exception as e:
-            logger.error(f"Ошибка при сохранении карточки: {e}", exc_info=True)
-            return False, f"Ошибка при сохранении карточки: {str(e)}"
+            logger.error(f"Ошибка создания наряда с деталями: {e}", exc_info=True)
+            raise DatabaseError("Ошибка создания наряда с деталями") from e
 
-    def add_work_card(self, card: WorkCard) -> Tuple[bool, Optional[int]]:
-        """Добавляет новую карточку работы в базу данных."""
-        query = self.get_query_file("work_cards.sql")
-        params = (
-            card.card_number,
-            card.card_date,
-            card.product_id,
-            card.contract_id,
-            card.total_amount
-        )
-        result = self._save_entity(query, params, "карточка работы")
-        success, message = result
-        if success:
-            card.id = message
-            return True, card.id
-        else:
-            return False, message
+    def update_with_details(self, work_card: WorkCard) -> WorkCard:
+        """
+        Обновляет наряд с деталями (элементы и работники).
 
-    def update_work_card(self, card: WorkCard) -> Tuple[bool, Optional[str]]:
-        """Обновляет данные существующей карточки работы."""
-        query = self.get_query_file("work_cards.sql")
-        params = (
-            card.card_number,
-            card.card_date,
-            card.product_id,
-            card.contract_id,
-            card.total_amount,
-            card.id
-        )
-        return self._update_entity(query, params, "карточка работы")
+        Args:
+            work_card: Наряд с деталями
 
-    def delete_card(self, card_id: int) -> Tuple[bool, Optional[str]]:
-        """Удаляет карточку работ по ID."""
+        Returns:
+            WorkCard: Обновленный наряд
+        """
         try:
-            with self.db_manager.connect() as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute("DELETE FROM work_cards WHERE id=?", (card_id,))
-                conn.execute("DELETE FROM work_card_items WHERE work_card_id=?", (card_id,))
-                conn.execute("DELETE FROM work_card_workers WHERE work_card_id=?", (card_id,))
-                conn.commit()
-                return True, None
+            # Проверка наличия ID
+            if work_card.id is None:
+                raise ValidationError("Невозможно обновить наряд без ID")
+
+            # Валидация данных
+            is_valid, errors = work_card.validate()
+            if not is_valid:
+                raise ValidationError(f"Ошибка валидации при обновлении наряда: {errors}")
+
+            # Валидация элементов
+            for item in work_card.items:
+                is_valid, errors = item.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации элемента наряда: {errors}")
+
+            # Валидация работников
+            for worker in work_card.workers:
+                is_valid, errors = worker.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации работника по наряду: {errors}")
+
+            # Проверка существования
+            if not self.repository.exists(work_card.id):
+                raise NotFoundError(f"Наряд с ID {work_card.id} не найден")
+
+            # Проверка существования связанных сущностей
+            if not self.product_service.exists(work_card.product_id):
+                raise NotFoundError(f"Изделие с ID {work_card.product_id} не найдено")
+
+            if not self.contract_service.exists(work_card.contract_id):
+                raise NotFoundError(f"Контракт с ID {work_card.contract_id} не найден")
+
+            for item in work_card.items:
+                if not self.work_type_service.exists(item.work_type_id):
+                    raise NotFoundError(f"Вид работы с ID {item.work_type_id} не найден")
+
+            for worker in work_card.workers:
+                if not self.worker_service.exists(worker.worker_id):
+                    raise NotFoundError(f"Работник с ID {worker.worker_id} не найден")
+
+            # Обновление в БД
+            success, error = self.repository.update_with_details(work_card)
+            if not success:
+                raise DatabaseError(f"Ошибка обновления наряда с деталями: {error}")
+
+            # Получаем обновленный наряд
+            updated_card = self.repository.get_with_details(work_card.id)
+            if not updated_card:
+                raise DatabaseError("Не удалось получить обновленный наряд")
+
+            return updated_card
+
+        except ValidationError:
+            raise
+        except NotFoundError:
+            raise
         except Exception as e:
-            logger.error(f"Ошибка при удалении карточки: {e}", exc_info=True)
-            conn.rollback()
-            return False, str(e)
-
-    def add_work_item(self, card: WorkCard, work_type_id: int, quantity: int) -> Tuple[bool, Optional[str]]:
-        """Добавляет элемент работы в карточку."""
-        try:
-            # Получаем цену вида работы
-            work_type = self.work_types_service.get_work_type_by_id(work_type_id)
-            if not work_type:
-                raise ValueError("Выбранный вид работы не найден")
-
-            amount = quantity * work_type.price
-
-            query = self.get_query_file("work_card_items.sql")
-            params = (card.id, work_type_id, quantity, amount)
-            result = self._save_entity(query, params, "элемент карточки")
-            success, message = result
-            if success:
-                # Обновляем сумму для каждого работника
-                worker_amount = card.calculate_worker_amount()
-                for worker in card.workers:
-                    worker.amount = worker_amount
-            return result
-        except Exception as e:
-            logger.error(f"Ошибка при добавлении элемента работы: {e}", exc_info=True)
-            return False, str(e)
-
-    def update_work_item(self, card: WorkCard, item_index: int) -> None:
-        """Обновляет элемент работы."""
-        try:
-            item = card.items[item_index]
-            query = self.get_query_file("work_card_items.sql")
-            params = (item.quantity, item.amount, item.id)
-            success, message = self._update_entity(query, params, "элемент карточки")
-            if success:
-                # Пересчитываем общую сумму и распределяем между работниками
-                card.total_amount = card.calculate_total_amount()
-                worker_amount = card.calculate_worker_amount()
-                for worker in card.workers:
-                    worker.amount = worker_amount
-            else:
-                raise ValueError(message)
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении элемента работы: {e}", exc_info=True)
-
-    def delete_work_item(self, card: WorkCard, item_index: int) -> Tuple[bool, Optional[str]]:
-        """Удаляет элемент работы из карточки."""
-        item = card.items[item_index]
-        query = self.get_query_file("work_card_items.sql")
-        params = (item.id,)
-        result = self._delete_entity(query, params, "элемент карточки")
-        success, message = result
-        if success:
-            # Пересчитываем общую сумму и перераспределяем между работниками
-            card.total_amount = card.calculate_total_amount()
-            worker_amount = card.calculate_worker_amount()
-            for worker in card.workers:
-                worker.amount = worker_amount
-        return result
-
-    def add_worker(self, card: WorkCard, worker_id: int) -> Tuple[bool, Optional[str]]:
-        """Добавляет работника в карточку."""
-        try:
-            # Получаем данные работника
-            worker = self.worker_service.get_by_id(worker_id)
-            if not worker:
-                raise ValueError("Работник не найден")
-
-            # Рассчитываем сумму для работника
-            worker_amount = card.calculate_worker_amount()
-
-            query = self.get_query_file("work_card_workers.sql")
-            params = (card.id, worker.id, worker_amount)
-            result = self._save_entity(query, params, "назначение работника")
-            success, message = result
-            if success:
-                card.workers.append(WorkCardWorker(
-                    id=message,
-                    work_card_id=card.id,
-                    worker_id=worker.id,
-                    amount=worker_amount
-                ))
-                return True, None
-            else:
-                return False, message
-        except Exception as e:
-            logger.error(f"Ошибка при добавлении работника: {e}", exc_info=True)
-            return False, str(e)
-
-    def update_worker(self, card: WorkCard, worker_index: int) -> Tuple[bool, Optional[str]]:
-        """Обновляет данные работника в карточке."""
-        worker = card.workers[worker_index]
-        query = self.get_query_file("work_card_workers.sql")
-        params = (worker.amount, worker.id)
-        return self._update_entity(query, params, "назначение работника")
-
-    def delete_worker(self, card: WorkCard, worker_index: int) -> Tuple[bool, Optional[str]]:
-        """Удаляет работника из карточки."""
-        worker = card.workers[worker_index]
-        query = self.get_query_file("work_card_workers.sql")
-        params = (worker.id,)
-        result = self._delete_entity(query, params, "назначение работника")
-        success, message = result
-        if success:
-            del card.workers[worker_index]
-        return result
-
-    def get_all_workers(self, card_id: int) -> List[Dict[str, Any]]:
-        """Получает всех работников, участвующих в работе."""
-        query = self.get_query_file("work_card_workers.sql")
-        params = (card_id,)
-        return self.execute_query(query, params)
-
-    def get_all_work_types(self, card_id: int) -> List[Dict[str, Any]]:
-        """Получает все виды работ по карточке."""
-        query = self.get_query_file("work_card_items.sql")
-        params = (card_id,)
-        return self.execute_query(query, params)
-
-    def _map_to_model(self, row: Dict[str, Any]) -> WorkCard:
-        """Преобразует строку БД в модель WorkCard."""
-        return WorkCard(**row)
+            logger.error(f"Ошибка обновления наряда с деталями: {e}", exc_info=True)
+            raise DatabaseError("Ошибка обновления наряда с деталями") from e

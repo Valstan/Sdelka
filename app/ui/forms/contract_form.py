@@ -8,7 +8,7 @@ import customtkinter as ctk
 from app.core.models.contract import Contract
 from app.ui.components.date_field import DateField
 from app.ui.forms.base_form import BaseForm
-from app.core.utils.form_validator import FormValidator
+from app.utils.form_validator import FormValidator
 
 
 class ContractForm(BaseForm):

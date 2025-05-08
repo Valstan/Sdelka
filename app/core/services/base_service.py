@@ -1,199 +1,312 @@
-"""
-File: app/core/services/base_service.py
-Базовый сервис с общими операциями для всех сервисов.
-"""
-
-from typing import Any, Dict, List, Optional, Tuple, TypeVar
+# app/core/services/base_service.py
 from abc import ABC, abstractmethod
-from datetime import datetime
-import logging
-from sqlite3 import Connection, Row
-from app.core.database.connections import DatabaseManager
-from app.core.models.base_model import BaseModel
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from dataclasses import asdict
+from datetime import datetime, date
 
-T = TypeVar('T', bound=BaseModel)
+from app.core.models.base_model import BaseModel
+from app.core.database.repositories.base_repository import BaseRepository
+from app.core.database.database_manager import DatabaseManager
+from app.utils.validators import validate_date_range
+from app.utils.exceptions import (
+    ValidationError,
+    DatabaseError,
+    NotFoundError,
+    DuplicateError
+)
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar('T', bound=BaseModel)
+R = TypeVar('R', bound=BaseRepository)
 
 class BaseService(ABC):
     """
-    Базовый класс для всех сервисов.
-    Реализует общие методы работы с базой данных.
+    Базовый класс сервиса для работы с сущностями.
+    
+    Attributes:
+        db_manager: Менеджер базы данных
+        repository: Репозиторий для работы с сущностью
     """
-
-    def __init__(self, db_manager: DatabaseManager):
+    
+    def __init__(self, db_manager: DatabaseManager, repository: R):
+        """
+        Инициализирует сервис.
+        
+        Args:
+            db_manager: Менеджер базы данных
+            repository: Репозиторий для работы с сущностью
+        """
         self.db_manager = db_manager
-
-    @abstractmethod
-    def model_class(self) -> type:
-        """Возвращает класс модели, с которой работает сервис."""
-        pass
-
-    def _execute_query(
-            self,
-            query: str,
-            params: tuple = (),
-            fetch_one: bool = False,
-            commit: bool = False
-    ) -> Optional[Any]:
+        self.repository = repository
+        
+    def create(self, model: T) -> T:
         """
-        Выполняет SQL-запрос.
-
+        Создает новую сущность.
+        
         Args:
-            query: SQL-запрос
-            params: Параметры запроса
-            fetch_one: Вернуть одну запись?
-            commit: Выполнить коммит после выполнения?
-
+            model: Модель данных
+            
         Returns:
-            Результат выполнения запроса или None
+            T: Созданная сущность
         """
         try:
-            with self.db_manager.connect() as conn:
-                conn.row_factory = Row
-                cursor = conn.cursor()
-                cursor.execute(query, params)
-
-                if fetch_one:
-                    result = cursor.fetchone()
-                else:
-                    result = cursor.fetchall()
-
-                if commit:
-                    conn.commit()
-
-                return result
-
-        except Exception as e:
-            logger.error(f"Ошибка выполнения SQL-запроса: {e}", exc_info=True)
+            # Валидация данных
+            is_valid, errors = model.validate()
+            if not is_valid:
+                raise ValidationError(f"Ошибка валидации при создании {model.__class__.__name__}: {errors}")
+            
+            # Создание в БД
+            success, model_id = self.repository.create(model)
+            if not success or model_id is None:
+                raise DatabaseError(f"Ошибка создания {model.__class__.__name__} в БД")
+                
+            # Получаем созданную сущность
+            created_model = self.repository.get_by_id(model_id)
+            if not created_model:
+                raise DatabaseError(f"Не удалось получить созданную сущность {model.__class__.__name__}")
+                
+            return created_model
+            
+        except ValidationError:
             raise
-
-    def _map_to_model(self, row: Dict[str, Any]) -> T:
+        except Exception as e:
+            logger.error(f"Ошибка создания {model.__class__.__name__}: {e}", exc_info=True)
+            raise DatabaseError(f"Ошибка создания {model.__class__.__name__}") from e
+    
+    def get_by_id(self, model_id: int) -> Optional[T]:
         """
-        Преобразует строку базы данных в модель.
-
+        Получает сущность по ID.
+        
         Args:
-            row: Строка результата запроса
-
+            model_id: ID сущности
+            
         Returns:
-            Экземпляр модели
-        """
-        model_data = dict(row)
-
-        # Преобразование временных меток
-        for field in ['created_at', 'updated_at']:
-            if field in model_data and isinstance(model_data[field], str):
-                try:
-                    model_data[field] = datetime.fromisoformat(model_data[field])
-                except ValueError:
-                    model_data[field] = datetime.strptime(model_data[field], "%Y-%m-%d %H:%M:%S")
-
-        return self.model_class()(**model_data)
-
-    def get_all(self) -> List[T]:
-        """Возвращает все записи из таблицы."""
-        query = f"SELECT * FROM {self.table_name}"
-        rows = self._execute_query(query)
-        return [self._map_to_model(row) for row in rows]
-
-    def get_by_id(self, item_id: int) -> Optional[T]:
-        """Возвращает запись по ID."""
-        query = f"SELECT * FROM {self.table_name} WHERE id=?"
-        row = self._execute_query(query, (item_id,), fetch_one=True)
-        return self._map_to_model(row) if row else None
-
-    def delete(self, item_id: int) -> Tuple[bool, Optional[str]]:
-        """
-        Удаляет запись по ID.
-
-        Args:
-            item_id: ID записи
-
-        Returns:
-            Кортеж (успех, сообщение об ошибке)
+            Optional[T]: Сущность или None
         """
         try:
-            query = f"DELETE FROM {self.table_name} WHERE id=?"
-            self._execute_query(query, (item_id,), commit=True)
-            return True, None
+            return self.repository.get_by_id(model_id)
         except Exception as e:
-            return False, str(e)
-
-    def save(self, model: T) -> Tuple[bool, Optional[int]]:
+            logger.error(f"Ошибка получения {self.model_class.__name__} по ID: {e}", exc_info=True)
+            return None
+    
+    def get_all(self, limit: int = 100, offset: int = 0) -> List[T]:
         """
-        Сохраняет модель в базе данных.
-
+        Получает все сущности.
+        
         Args:
-            model: Экземпляр модели
-
+            limit: Количество записей для получения
+            offset: Смещение
+            
         Returns:
-            Кортеж (успех, ID новой записи)
+            List[T]: Список сущностей
         """
-        if not model.validate():
-            return False, None
-
         try:
-            if model.id:
-                success, message = self.update(model)
-                return success, model.id
-            else:
-                return self.create(model)
+            return self.repository.get_all(limit, offset)
         except Exception as e:
-            logger.error(f"Ошибка сохранения модели: {e}", exc_info=True)
-            return False, None
-
-    def create(self, model: T) -> Tuple[bool, Optional[int]]:
+            logger.error(f"Ошибка получения всех {self.model_class.__name__}: {e}", exc_info=True)
+            return []
+    
+    def update(self, model: T) -> T:
         """
-        Создает новую запись.
-
+        Обновляет сущность.
+        
         Args:
-            model: Экземпляр модели
-
+            model: Модель данных
+            
         Returns:
-            Кортеж (успех, ID новой записи)
+            T: Обновленная сущность
         """
-        raise NotImplementedError("Метод create должен быть реализован в подклассе")
-
-    def update(self, model: T) -> Tuple[bool, Optional[str]]:
+        try:
+            # Проверка наличия ID
+            if model.id is None:
+                raise ValidationError(f"Невозможно обновить {model.__class__.__name__} без ID")
+            
+            # Валидация данных
+            is_valid, errors = model.validate()
+            if not is_valid:
+                raise ValidationError(f"Ошибка валидации при обновлении {model.__class__.__name__}: {errors}")
+            
+            # Проверка существования
+            if not self.repository.exists(model.id):
+                raise NotFoundError(f"{model.__class__.__name__} с ID {model.id} не найден")
+                
+            # Обновление в БД
+            success, error = self.repository.update(model)
+            if not success:
+                raise DatabaseError(f"Ошибка обновления {model.__class__.__name__}: {error}")
+                
+            # Получаем обновленную сущность
+            updated_model = self.repository.get_by_id(model.id)
+            if not updated_model:
+                raise DatabaseError(f"Не удалось получить обновленную сущность {model.__class__.__name__}")
+                
+            return updated_model
+            
+        except ValidationError:
+            raise
+        except NotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка обновления {model.__class__.__name__}: {e}", exc_info=True)
+            raise DatabaseError(f"Ошибка обновления {model.__class__.__name__}") from e
+    
+    def delete(self, model_id: int) -> None:
         """
-        Обновляет существующую запись.
-
+        Удаляет сущность.
+        
         Args:
-            model: Экземпляр модели
-
-        Returns:
-            Кортеж (успех, сообщение об ошибке)
+            model_id: ID сущности
         """
-        raise NotImplementedError("Метод update должен быть реализован в подклассе")
-
+        try:
+            # Проверка существования
+            if not self.repository.exists(model_id):
+                raise NotFoundError(f"{self.model_class.__name__} с ID {model_id} не найден")
+                
+            # Удаление из БД
+            success, error = self.repository.delete(model_id)
+            if not success:
+                raise DatabaseError(f"Ошибка удаления {self.model_class.__name__}: {error}")
+                
+        except NotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка удаления {self.model_class.__name__}: {e}", exc_info=True)
+            raise DatabaseError(f"Ошибка удаления {self.model_class.__name__}") from e
+    
     def search(self, criteria: Dict[str, Any]) -> List[T]:
         """
-        Поиск записей по критериям.
-
+        Выполняет поиск сущностей по критериям.
+        
         Args:
             criteria: Словарь с условиями поиска
-
+            
         Returns:
-            Список подходящих записей
+            List[T]: Список подходящих сущностей
         """
-        conditions = []
-        params = []
-
-        for field, value in criteria.items():
-            if value is not None:
-                if isinstance(value, str):
-                    conditions.append(f"{field} LIKE ?")
-                    params.append(f"%{value}%")
-                else:
-                    conditions.append(f"{field} = ?")
-                    params.append(value)
-
-        where_clause = " AND ".join(conditions) if conditions else ""
-        query = f"SELECT * FROM {self.table_name}"
-
-        if where_clause:
-            query += f" WHERE {where_clause}"
-
-        rows = self._execute_query(query, tuple(params))
-        return [self._map_to_model(row) for row in rows]
+        try:
+            return self.repository.search(criteria)
+        except Exception as e:
+            logger.error(f"Ошибка поиска {self.model_class.__name__}: {e}", exc_info=True)
+            return []
+    
+    def exists(self, model_id: int) -> bool:
+        """
+        Проверяет существование сущности.
+        
+        Args:
+            model_id: ID сущности
+            
+        Returns:
+            bool: True, если сущность существует
+        """
+        try:
+            return self.repository.exists(model_id)
+        except Exception as e:
+            logger.error(f"Ошибка проверки существования {self.model_class.__name__}: {e}", exc_info=True)
+            return False
+    
+    def count(self) -> int:
+        """
+        Возвращает количество сущностей.
+        
+        Returns:
+            int: Количество сущностей
+        """
+        try:
+            return self.repository.count()
+        except Exception as e:
+            logger.error(f"Ошибка получения количества {self.model_class.__name__}: {e}", exc_info=True)
+            return 0
+    
+    def bulk_create(self, models: List[T]) -> List[T]:
+        """
+        Создает несколько сущностей.
+        
+        Args:
+            models: Список моделей
+            
+        Returns:
+            List[T]: Созданные сущности
+        """
+        try:
+            # Валидация данных
+            for model in models:
+                is_valid, errors = model.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации при массовом создании {model.__class__.__name__}: {errors}")
+            
+            # Массовое создание в БД
+            success, error = self.repository.bulk_create(models)
+            if not success:
+                raise DatabaseError(f"Ошибка массового создания {models[0].__class__.__name__}: {error}")
+                
+            # Получаем созданные сущности
+            created_ids = [model.id for model in models if model.id]
+            if not created_ids:
+                return []
+                
+            return [model for model in self.repository.get_all() if model.id in created_ids]
+            
+        except ValidationError:
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка массового создания {models[0].__class__.__name__}: {e}", exc_info=True)
+            raise DatabaseError(f"Ошибка массового создания {models[0].__class__.__name__}") from e
+    
+    def bulk_update(self, models: List[T]) -> List[T]:
+        """
+        Обновляет несколько сущностей.
+        
+        Args:
+            models: Список моделей
+            
+        Returns:
+            List[T]: Обновленные сущности
+        """
+        try:
+            # Проверка наличия ID
+            for model in models:
+                if model.id is None:
+                    raise ValidationError(f"Невозможно обновить {model.__class__.__name__} без ID")
+            
+            # Валидация данных
+            for model in models:
+                is_valid, errors = model.validate()
+                if not is_valid:
+                    raise ValidationError(f"Ошибка валидации при массовом обновлении {model.__class__.__name__}: {errors}")
+            
+            # Проверка существования
+            for model in models:
+                if not self.repository.exists(model.id):
+                    raise NotFoundError(f"{model.__class__.__name__} с ID {model.id} не найден")
+                    
+            # Массовое обновление в БД
+            success, error = self.repository.bulk_update(models)
+            if not success:
+                raise DatabaseError(f"Ошибка массового обновления {models[0].__class__.__name__}: {error}")
+                
+            # Получаем обновленные сущности
+            updated_ids = [model.id for model in models if model.id]
+            if not updated_ids:
+                return []
+                
+            return [model for model in self.repository.get_all() if model.id in updated_ids]
+            
+        except ValidationError:
+            raise
+        except NotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка массового обновления {models[0].__class__.__name__}: {e}", exc_info=True)
+            raise DatabaseError(f"Ошибка массового обновления {models[0].__class__.__name__}") from e
+    
+    @property
+    def model_class(self) -> Type[T]:
+        """
+        Возвращает класс модели.
+        
+        Returns:
+            Type[T]: Класс модели
+        """
+        return self.repository.model_class
