@@ -1,10 +1,9 @@
 # app/core/services/work_type_service.py
-from typing import Any, Dict, List, Optional
-from dataclasses import asdict
+from typing import Any, List, Optional
 from datetime import date
 
-from app.core.models.base_model import WorkType
-from app.core.database.repositories.work_type_repository import WorkTypeRepository
+from app.core.models.base import WorkType
+from app.core.repositories.work_type_repository import WorkTypeRepository
 from app.core.services.base_service import BaseService
 
 class WorkTypeService(BaseService):

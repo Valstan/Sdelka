@@ -1,4 +1,4 @@
-# app/core/models/base_model.py
+# app/core/models/base.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime

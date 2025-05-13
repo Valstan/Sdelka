@@ -1,25 +1,21 @@
 # app/core/services/report_service.py
 import logging
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import asdict
-from datetime import datetime, date
+from pathlib import Path
+from typing import Any, Dict, Tuple
+from datetime import datetime
 
 import pandas as pd
 
 from app.config import DATE_FORMATS
-from app.core.models.base_model import WorkCard, WorkType, Worker, Product, Contract
-from app.core.database.repositories.work_card_repository import WorkCardRepository
-from app.core.database.repositories.work_type_repository import WorkTypeRepository
-from app.core.database.repositories.worker_repository import WorkerRepository
-from app.core.database.repositories.product_repository import ProductRepository
-from app.core.database.repositories.contract_repository import ContractRepository
-from app.core.services.base_service import BaseService
+from app.core.repositories.work_card_repository import WorkCardRepository
+from app.core.repositories.work_type_repository import WorkTypeRepository
+from app.core.repositories.worker_repository import WorkerRepository
+from app.core.repositories.product_repository import ProductRepository
+from app.core.repositories.contract_repository import ContractRepository
 from app.core.services.worker_service import WorkerService
 from app.core.services.work_type_service import WorkTypeService
 from app.core.services.product_service import ProductService
 from app.core.services.contract_service import ContractService
-from app.utils.validators import validate_date_range
-from app.utils.formatters import format_currency
 
 logger = logging.getLogger(__name__)
 

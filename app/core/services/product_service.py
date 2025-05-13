@@ -1,9 +1,8 @@
 # app/core/services/product_service.py
-from typing import Any, Dict, List, Optional
-from dataclasses import asdict
+from typing import Any, Optional
 
-from app.core.models.base_model import Product
-from app.core.database.repositories.product_repository import ProductRepository
+from app.core.models.base import Product
+from app.core.repositories.product_repository import ProductRepository
 from app.core.services.base_service import BaseService
 
 class ProductService(BaseService):

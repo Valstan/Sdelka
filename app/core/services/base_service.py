@@ -1,18 +1,15 @@
 # app/core/services/base_service.py
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
-from dataclasses import asdict
-from datetime import datetime, date
+import logging
+from abc import ABC
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
-from app.core.models.base_model import BaseModel
-from app.core.database.repositories.base_repository import BaseRepository
+from app.core.models.base import BaseModel
+from app.core.repositories.base_repository import BaseRepository
 from app.core.database.database_manager import DatabaseManager
-from app.utils.validators import validate_date_range
 from app.utils.exceptions import (
     ValidationError,
     DatabaseError,
-    NotFoundError,
-    DuplicateError
+    NotFoundError
 )
 
 logger = logging.getLogger(__name__)

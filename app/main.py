@@ -10,7 +10,7 @@ from pathlib import Path
 import customtkinter as ctk
 
 from app.app_gui import AppGUI
-from app.core.database.connections import DatabaseManager
+from app.core.database.database_manager import DatabaseManager
 from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT, APP_THEME, LOGGING_SETTINGS, DB_SETTINGS
 
 

@@ -1,75 +1,94 @@
 """
-File: app/core/models/work_type.py
-Модель вида работы с валидацией и бизнес-логикой.
+Модель вида работы
 """
 
-from typing import Any, Dict
-from datetime import date, datetime
-from app.core.models.base_model import BaseModel
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
+from app.core.models.base import BaseModel
 
 
+@dataclass
 class WorkType(BaseModel):
     """
-    Модель вида работы.
+    Модель вида работы
 
     Attributes:
-        id: Уникальный идентификатор вида работы
-        name: Название вида работы
-        unit: Единица измерения (штуки, комплекты)
-        price: Цена за единицу
+        name: Наименование работы
+        unit: Единица измерения ('штуки', 'комплекты')
+        price: Цена (в рублях)
         valid_from: Дата начала действия цены
+        created_at: Дата создания записи
+        updated_at: Дата последнего обновления
     """
 
-    def __init__(
-            self,
-            id: int = None,
-            name: str = "",
-            unit: str = "штуки",
-            price: float = 0.0,
-            valid_from: date = None,
-            created_at: datetime = None,
-            updated_at: datetime = None
-    ):
-        super().__init__()
-        self.id = id
-        self.name = name
-        self.unit = unit
-        self.price = price
-        self.valid_from = valid_from or date.today()
-        self._created_at = created_at
-        self._updated_at = updated_at
+    name: str = ""
+    unit: str = "штуки"
+    price: float = 0.0
+    valid_from: Optional[date] = None
+    created_at: Optional[date] = None
+    updated_at: Optional[date] = None
 
-    def validate(self) -> bool:
-        """Валидирует данные вида работы."""
-        if not self.name.strip():
-            raise ValueError("Название вида работы обязательно")
+    def __post_init__(self):
+        """Инициализация при создании объекта"""
+        if not self.created_at:
+            self.created_at = date.today()
+        self.updated_at = date.today()
 
-        if self.unit not in ("штуки", "комплекты"):
-            raise ValueError("Недопустимая единица измерения")
+    def validate(self) -> tuple[bool, list[str]]:
+        """
+        Проверяет валидность данных вида работы
 
-        if self.price < 0:
-            raise ValueError("Цена не может быть отрицательной")
+        Returns:
+            tuple[bool, list[str]]: (успех, список ошибок)
+        """
+        pass
 
-        if self.valid_from < date(2000, 1, 1):
-            raise ValueError("Дата начала действия слишком ранняя")
+    def update_timestamp(self) -> None:
+        """
+        Обновляет метку времени при изменении данных
+        """
+        self.updated_at = date.today()
 
-        return True
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление вида работы
 
-    def set_updated(self) -> None:
-        """Обновляет метку времени при изменении."""
-        self._updated_at = datetime.now()
+        Returns:
+            str: Наименование работы и цена
+        """
+        return f"{self.name} ({self.unit}, {self.price} руб.)"
 
-    def __eq__(self, other: Any) -> bool:
-        """Сравнение двух экземпляров WorkType."""
+    def __eq__(self, other: object) -> bool:
+        """
+        Сравнивает два экземпляра WorkType
+
+        Args:
+            other: Объект для сравнения
+
+        Returns:
+            bool: True, если объекты равны
+        """
         if not isinstance(other, WorkType):
             return False
 
-        return self.name == other.name and self.unit == other.unit
+        return (
+            self.name == other.name and
+            self.unit == other.unit and
+            self.price == other.price and
+            self.valid_from == other.valid_from
+        )
 
-    def __str__(self) -> str:
-        """Человеко-понятное представление модели."""
-        return f"{self.name} ({self.unit}, {self.price} руб.)"
+    def __hash__(self) -> int:
+        """
+        Возвращает хэш-значение для экземпляра WorkType
 
-    def get_display_name(self) -> str:
-        """Возвращает форматированное имя для отображения."""
-        return f"{self.name} ({self.unit}, {self.price:.2f} руб.)"
+        Returns:
+            int: Хэш-значение
+        """
+        return hash((
+            self.name,
+            self.unit,
+            self.price,
+            self.valid_from
+        ))

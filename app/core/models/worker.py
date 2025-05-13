@@ -1,84 +1,111 @@
 """
-File: app/core/models/worker.py
-Модель работника предприятия.
+Модель работника предприятия
 """
 
-from typing import Any, Dict
+from dataclasses import dataclass
 from datetime import datetime
-from app.core.models.base_model import BaseModel
+from typing import Optional
+from app.core.models.base import BaseModel
+from app.utils.validators.validators import WorkerValidator
 
 
+@dataclass
 class Worker(BaseModel):
     """
-    Модель работника предприятия.
+    Модель работника предприятия
 
     Attributes:
-        id: Уникальный идентификатор работника
-        last_name: Фамилия
-        first_name: Имя
-        middle_name: Отчество
-        workshop_number: Номер цеха
-        position: Должность
+        last_name: Фамилия работника
+        first_name: Имя работника
+        middle_name: Отчество работника
         employee_id: Табельный номер
+        workshop_number: Номер цеха
+        created_at: Дата создания записи
+        updated_at: Дата последнего обновления
     """
 
-    def __init__(
-            self,
-            id: int = None,
-            last_name: str = "",
-            first_name: str = "",
-            middle_name: str = "",
-            workshop_number: int = 1,
-            position: str = "",
-            employee_id: str = "",
-            created_at: datetime = None,
-            updated_at: datetime = None
-    ):
-        super().__init__()
-        self.id = id
-        self.last_name = last_name
-        self.first_name = first_name
-        self.middle_name = middle_name
-        self.workshop_number = workshop_number
-        self.position = position
-        self.employee_id = employee_id
-        self._created_at = created_at
-        self._updated_at = updated_at
+    last_name: str = ""
+    first_name: str = ""
+    middle_name: str = ""
+    employee_id: int = 0
+    workshop_number: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    def validate(self) -> bool:
-        """Валидирует данные работника."""
-        if not self.last_name.strip():
-            raise ValueError("Фамилия работника обязательна")
+    def __post_init__(self):
+        """Инициализация при создании объекта"""
+        if not self.created_at:
+            self.created_at = datetime.now()
+        self.updated_at = datetime.now()
 
-        if not self.first_name.strip():
-            raise ValueError("Имя работника обязательно")
+    def validate(self) -> tuple[bool, list[str]]:
+        """
+        Проверяет валидность данных работника
 
-        if not self.employee_id.strip():
-            raise ValueError("Табельный номер обязателен")
+        Returns:
+            tuple[bool, list[str]]: (успех, список ошибок)
+        """
+        validator = WorkerValidator()
+        return validator.validate_worker(self)
 
-        if self.workshop_number < 1:
-            raise ValueError("Номер цеха должен быть положительным числом")
+    def get_full_name(self) -> str:
+        """
+        Возвращает полное имя работника
 
-        return True
+        Returns:
+            str: Полное имя в формате "Фамилия И.О."
+        """
+        if self.middle_name:
+            return f"{self.last_name} {self.first_name[0]}.{self.middle_name[0]}."
+        return f"{self.last_name} {self.first_name[0]}."
 
-    def set_updated(self) -> None:
-        """Обновляет метку времени при изменении."""
-        self._updated_at = datetime.now()
+    def update_timestamp(self) -> None:
+        """
+        Обновляет метку времени при изменении данных
+        """
+        self.updated_at = datetime.now()
 
-    def __eq__(self, other: Any) -> bool:
-        """Сравнение двух экземпляров Worker."""
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление работника
+
+        Returns:
+            str: Полное имя работника
+        """
+        return self.get_full_name()
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Сравнивает два экземпляра Worker
+
+        Args:
+            other: Объект для сравнения
+
+        Returns:
+            bool: True, если объекти равны
+        """
         if not isinstance(other, Worker):
             return False
 
-        return self.employee_id == other.employee_id
+        return (
+            self.employee_id == other.employee_id and
+            self.last_name == other.last_name and
+            self.first_name == other.first_name and
+            self.middle_name == other.middle_name and
+            self.workshop_number == other.workshop_number
+        )
 
-    def full_name(self) -> str:
-        """Возвращает полное имя работника."""
-        parts = [self.last_name, self.first_name]
-        if self.middle_name:
-            parts.append(f"{self.middle_name[0]}.")
-        return " ".join(parts)
+    def __hash__(self) -> int:
+        """
+        Возвращает хэш-значение для экземпляра Worker
 
-    def short_name(self) -> str:
-        """Краткое имя для отображения в списках."""
-        return f"{self.last_name} {self.first_name[0]}."
+        Returns:
+            int: Хэш-значение
+        """
+        return hash((
+            self.employee_id,
+            self.last_name,
+            self.first_name,
+            self.middle_name,
+            self.workshop_number
+        ))

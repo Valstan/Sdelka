@@ -6,7 +6,6 @@ import tkinter as tk
 from datetime import date
 from tkinter import ttk, messagebox
 from typing import List, Dict, Any, Callable
-
 import customtkinter as ctk
 
 from app.ui.autocomplete import AutocompleteCombobox

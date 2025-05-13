@@ -5,7 +5,7 @@ File: app/core/models/work_card_worker.py
 
 from typing import Any, Dict
 from datetime import date, datetime
-from app.core.models.base_model import BaseModel
+from app.core.models.base import BaseModel
 
 
 class WorkCardWorker(BaseModel):

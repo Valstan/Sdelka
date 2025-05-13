@@ -9,7 +9,6 @@ import customtkinter as ctk
 import logging
 import sys
 
-from app.core.services.work_card_service import WorkCardsService
 from app.core.services.report_manager import ReportManager
 from app.ui.forms.work_card_form import WorkCardForm
 from app.ui.forms.worker_form import WorkerForm
@@ -18,6 +17,7 @@ from app.ui.forms.product_form import ProductForm
 from app.ui.forms.work_type_form import WorkTypeForm
 from app.config import UI_SETTINGS
 from app.config import APP_TITLE, APP_WIDTH, APP_HEIGHT
+from app.core.services.work_card_service import WorkCardService
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AppGUI:
         """
         self.root = root
         self.db_manager = db_manager
-        self.card_service = WorkCardsService(db_manager)
+        self.card_service = WorkCardService(db_manager)
         self.report_manager = ReportManager(root, db_manager, self.card_service)
         self.current_form = None
         self._setup_root()

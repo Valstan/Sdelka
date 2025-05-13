@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 from future.backports.datetime import date
 
 from app.core.models.models import WorkCard, WorkCardItem, WorkCardWorker
-from app.base import BaseService
+from app.core.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 

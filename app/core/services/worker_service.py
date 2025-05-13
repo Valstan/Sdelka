@@ -1,9 +1,8 @@
 # app/core/services/worker_service.py
-from typing import Any, Dict, List, Optional
-from dataclasses import asdict
+from typing import Any, Optional
 
-from app.core.models.base_model import Worker
-from app.core.database.repositories.worker_repository import WorkerRepository
+from app.core.models.base import Worker
+from app.core.repositories.worker_repository import WorkerRepository
 from app.core.services.base_service import BaseService
 
 class WorkerService(BaseService):

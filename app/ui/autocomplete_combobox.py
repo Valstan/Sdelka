@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Callable, Union
 from datetime import date
 import logging
 
-from app.core.models.base_model import BaseModel
+from app.core.models.base import BaseModel
 
 logger = logging.getLogger(__name__)
 

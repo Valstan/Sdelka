@@ -1,91 +1,119 @@
 """
-File: app/core/models/contract.py
-Модель данных для контрактов.
+Модель контракта
 """
 
-from datetime import date, datetime
-from typing import Any, Dict, Optional
-from app.core.models.base_model import BaseModel
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
+from app.core.models.base import BaseModel
 
+
+@dataclass
 class Contract(BaseModel):
-    """Модель данных для контрактов."""
+    """
+    Модель контракта
 
-    def __init__(
-        self,
-        contract_number: str,
-        start_date: date,
-        end_date: date,
-        description: str = "",
-        id: Optional[int] = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None
-    ):
+    Attributes:
+        contract_number: Шифр контракта
+        start_date: Дата начала
+        end_date: Дата окончания
+        description: Описание контракта
+        created_at: Дата создания записи
+        updated_at: Дата последнего обновления
+    """
+
+    contract_number: str = ""
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    description: str = ""
+    created_at: Optional[date] = None
+    updated_at: Optional[date] = None
+
+    def __post_init__(self):
+        """Инициализация при создании объекта"""
+        if not self.created_at:
+            self.created_at = date.today()
+        self.updated_at = date.today()
+
+    def validate(self) -> tuple[bool, list[str]]:
         """
-        Инициализация модели контракта.
+        Проверяет валидность данных контракта
 
-        Args:
-            contract_number: Шифр контракта
-            start_date: Дата начала
-            end_date: Дата окончания
-            description: Описание контракта
-            id: Идентификатор контракта
-            created_at: Дата создания
-            updated_at: Дата последнего обновления
+        Returns:
+            tuple[bool, list[str]]: (успех, список ошибок)
         """
-        super().__init__(id)
-        self.contract_number = contract_number
-        self.start_date = start_date
-        self.end_date = end_date
-        self.description = description
-        self._created_at = created_at
-        self._updated_at = updated_at
+        pass
 
-    def validate(self) -> bool:
-        """Валидирует данные контракта."""
-        if not self.contract_number.strip():
-            raise ValueError("Шифр контракта обязателен")
-
-        if self.start_date > self.end_date:
-            raise ValueError("Дата начала не может быть позже даты окончания")
-
-        return True
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Преобразует модель в словарь."""
-        return {
-            "id": self.id,
-            "contract_number": self.contract_number,
-            "start_date": self.start_date.isoformat() if self.start_date else None,
-            "end_date": self.end_date.isoformat() if self.end_date else None,
-            "description": self.description,
-            "created_at": self._created_at.isoformat() if self._created_at else None,
-            "updated_at": self._updated_at.isoformat() if self._updated_at else None
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Contract':
-        """Создает модель из словаря."""
-        return cls(
-            id=data.get("id"),
-            contract_number=data["contract_number"],
-            start_date=date.fromisoformat(data["start_date"]) if data.get("start_date") else None,
-            end_date=date.fromisoformat(data["end_date"]) if data.get("end_date") else None,
-            description=data.get("description", ""),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None
-        )
+    def update_timestamp(self) -> None:
+        """
+        Обновляет метку времени при изменении данных
+        """
+        self.updated_at = date.today()
 
     def __str__(self) -> str:
-        """Возвращает строковое представление контракта."""
-        return f"{self.contract_number} ({self.start_date.year}-{self.end_date.year})"
+        """
+        Возвращает строковое представление контракта
+
+        Returns:
+            str: Шифр контракта и период действия
+        """
+        if self.start_date and self.end_date:
+            return f"{self.contract_number} ({self.start_date.year}-{self.end_date.year})"
+        return self.contract_number
 
     @property
     def duration_days(self) -> int:
-        """Возвращает длительность контракта в днях."""
-        return (self.end_date - self.start_date).days
+        """
+        Возвращает длительность контракта в днях
+
+        Returns:
+            int: Количество дней действия контракта
+        """
+        if self.start_date and self.end_date:
+            return (self.end_date - self.start_date).days
+        return 0
 
     @property
     def is_active(self) -> bool:
-        """Проверяет, активен ли контракт."""
+        """
+        Проверяет, активен ли контракт
+
+        Returns:
+            bool: True, если контракт активен
+        """
         today = date.today()
+        if not self.start_date or not self.end_date:
+            return False
         return self.start_date <= today <= self.end_date
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Сравнивает два экземпляра Contract
+
+        Args:
+            other: Объект для сравнения
+
+        Returns:
+            bool: True, если объекты равны
+        """
+        if not isinstance(other, Contract):
+            return False
+
+        return (
+                self.contract_number == other.contract_number and
+                self.start_date == other.start_date and
+                self.end_date == other.end_date
+        )
+
+    def __hash__(self) -> int:
+        """
+        Возвращает хэш-значение для экземпляра Contract
+
+        Returns:
+            int: Хэш-значение
+        """
+        return hash((
+            self.contract_number,
+            self.start_date,
+            self.end_date
+        ))

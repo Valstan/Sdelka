@@ -1,138 +1,162 @@
 """
-File: app/core/models/work_card.py
-Модель наряда работ с валидацией и бизнес-логикой.
+Модель наряда работы
 """
 
-from typing import Any, Dict, List
-from datetime import date, datetime
-from app.core.models.base_model import BaseModel
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional, List
+from app.core.models.base import BaseModel
 from app.core.models.work_card_item import WorkCardItem
-from app.core.models.work_card_worker import WorkCardWorker
 
 
+@dataclass
 class WorkCard(BaseModel):
     """
-    Модель наряда работ.
+    Модель наряда работы
 
     Attributes:
-        id: Уникальный идентификатор наряда
         card_number: Номер наряда
         card_date: Дата наряда
-        product_id: ID изделия (по справочнику)
-        contract_id: ID контракта (по справочнику)
-        workers: Список работников по наряду
-        items: Список выполненных работ
-        total_amount: Общая сумма по наряду
+        product_id: ID изделия
+        contract_id: ID контракта
+        total_amount: Итоговая сумма карточки в рублях
+        items: Список элементов наряда (работ)
+        worker_ids: Список ID работников бригады
+        created_at: Дата создания записи
+        updated_at: Дата последнего обновления
     """
 
-    def __init__(
-            self,
-            id: int = None,
-            card_number: str = "",
-            card_date: date = None,
-            product_id: int = None,
-            contract_id: int = None,
-            workers: List[WorkCardWorker] = None,
-            items: List[WorkCardItem] = None,
-            total_amount: float = 0.0,
-            created_at: datetime = None,
-            updated_at: datetime = None
-    ):
-        super().__init__()
-        self.id = id
-        self.card_number = card_number
-        self.card_date = card_date or date.today()
-        self.product_id = product_id
-        self.contract_id = contract_id
-        self.workers = workers or []
-        self.items = items or []
-        self.total_amount = total_amount
-        self._created_at = created_at
-        self._updated_at = updated_at
+    card_number: str = ""
+    card_date: Optional[date] = None
+    product_id: int = 0
+    contract_id: int = 0
+    total_amount: float = 0.0
+    items: List[WorkCardItem] = None
+    worker_ids: List[int] = None
+    created_at: Optional[date] = None
+    updated_at: Optional[date] = None
 
-    def validate(self) -> bool:
-        """Проверяет корректность данных наряда."""
-        if not self.card_number.strip():
-            raise ValueError("Номер наряда обязателен")
+    def __post_init__(self):
+        """Инициализация при создании объекта"""
+        super().__post_init__()
 
-        if self.card_date > date.today():
-            raise ValueError("Дата наряда не может быть в будущем")
+        if self.items is None:
+            self.items = []
 
-        if self.product_id is None:
-            raise ValueError("Не выбрано изделие")
+        if self.worker_ids is None:
+            self.worker_ids = []
 
-        if self.contract_id is None:
-            raise ValueError("Не выбран контракт")
+        if not self.card_date:
+            self.card_date = date.today()
 
-        if not self.workers:
-            raise ValueError("В наряде должен быть хотя бы один работник")
+    def validate(self) -> tuple[bool, list[str]]:
+        """
+        Проверяет валидность данных наряда
 
-        if not self.items:
-            raise ValueError("В наряде должна быть хотя бы одна работа")
+        Returns:
+            tuple[bool, list[str]]: (успех, список ошибок)
+        """
+        pass
 
-        return True
+    def update_timestamp(self) -> None:
+        """
+        Обновляет метку времени при изменении данных
+        """
+        self.updated_at = date.today()
 
-    def set_updated(self) -> None:
-        """Обновляет метку времени при изменении."""
-        self._updated_at = datetime.now()
+    def calculate_worker_amounts(self) -> dict[int, float]:
+        """
+        Рассчитывает сумму для каждого работника бригады
 
-    def __eq__(self, other: Any) -> bool:
-        """Сравнение двух экземпляров WorkCard."""
+        Returns:
+            dict[int, float]: Словарь с ID работника и суммой
+        """
+        worker_amounts = {}
+
+        if not self.worker_ids:
+            return worker_amounts
+
+        worker_count = len(self.worker_ids)
+        if worker_count == 0:
+            return worker_amounts
+
+        amount_per_worker = self.total_amount / worker_count
+
+        for worker_id in self.worker_ids:
+            worker_amounts[worker_id] = amount_per_worker
+
+        return worker_amounts
+
+    def add_item(self, item: WorkCardItem) -> None:
+        """
+        Добавляет элемент наряда
+
+        Args:
+            item: Элемент наряда
+        """
+        if item.work_card_id and item.work_card_id != self.id:
+            raise ValueError("Элемент принадлежит другому наряду")
+
+        item.work_card_id = self.id
+        self.items.append(item)
+        self._recalculate_total()
+
+    def remove_item(self, item: WorkCardItem) -> None:
+        """
+        Удаляет элемент наряда
+
+        Args:
+            item: Элемент наряда
+        """
+        if item in self.items:
+            self.items.remove(item)
+            self._recalculate_total()
+
+    def _recalculate_total(self) -> None:
+        """
+        Пересчитывает общую сумму наряда
+        """
+        self.total_amount = sum(item.amount for item in self.items)
+
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление наряда
+
+        Returns:
+            str: Номер наряда и дата
+        """
+        return f"{self.card_number} ({self.card_date})"
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Сравнивает два экземпляра WorkCard
+
+        Args:
+            other: Объект для сравнения
+
+        Returns:
+            bool: True, если объекты равны
+        """
         if not isinstance(other, WorkCard):
             return False
 
-        return self.card_number == other.card_number
+        return (
+            self.card_number == other.card_number and
+            self.card_date == other.card_date and
+            self.product_id == other.product_id and
+            self.contract_id == other.contract_id
+        )
 
-    def __str__(self) -> str:
-        """Человеко-понятное представление модели."""
-        return f"Наряд {self.card_number} от {self.card_date.strftime('%d.%m.%Y')} - {self.total_amount:.2f} руб."
+    def __hash__(self) -> int:
+        """
+        Возвращает хэш-значение для экземпляра WorkCard
 
-    def calculate_total_amount(self) -> float:
-        """Рассчитывает общую сумму по наряду."""
-        return sum(item.amount for item in self.items)
-
-    def calculate_worker_amount(self) -> float:
-        """Рассчитывает сумму каждому работнику."""
-        if not self.items or not self.workers:
-            return 0.0
-
-        return self.total_amount / len(self.workers)
-
-    def add_worker(self, worker: WorkCardWorker) -> None:
-        """Добавляет работника в наряд."""
-        if not any(w.worker_id == worker.worker_id for w in self.workers):
-            self.workers.append(worker)
-            self.update_worker_amounts()
-
-    def remove_worker(self, worker_index: int) -> None:
-        """Удаляет работника из наряда."""
-        if 0 <= worker_index < len(self.workers):
-            self.workers.pop(worker_index)
-            self.update_worker_amounts()
-
-    def add_work_item(self, item: WorkCardItem) -> None:
-        """Добавляет элемент работы в наряд."""
-        self.items.append(item)
-        self.total_amount = self.calculate_total_amount()
-        self.update_worker_amounts()
-
-    def remove_work_item(self, item_index: int) -> None:
-        """Удаляет элемент работы из наряда."""
-        if 0 <= item_index < len(self.items):
-            self.items.pop(item_index)
-            self.total_amount = self.calculate_total_amount()
-            self.update_worker_amounts()
-
-    def update_worker_amounts(self) -> None:
-        """Обновляет сумму для каждого работника в наряде."""
-        if not self.items:
-            worker_amount = 0.0
-        else:
-            worker_amount = self.calculate_worker_amount()
-
-        for worker in self.workers:
-            worker.amount = worker_amount
-
-    def get_display_name(self) -> str:
-        """Возвращает форматированное имя для отображения."""
-        return f"{self.card_number} ({self.card_date.strftime('%d.%m.%Y')})"
+        Returns:
+            int: Хэш-значение
+        """
+        return hash((
+            self.card_number,
+            self.card_date,
+            self.product_id,
+            self.contract_id
+        ))

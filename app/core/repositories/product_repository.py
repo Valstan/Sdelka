@@ -1,9 +1,8 @@
 # app/core/database/repositories/product_repository.py
 from typing import Any, Dict, List, Optional
-from dataclasses import asdict
 
-from app.core.models.base_model import Product
-from app.core.database.repositories.base_repository import BaseRepository
+from app.core.models.base import Product
+from app.core.repositories.base_repository import BaseRepository
 
 
 class ProductRepository(BaseRepository):

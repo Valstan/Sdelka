@@ -1,63 +1,86 @@
 """
-File: app/core/models/product.py
-Модель изделия с валидацией и бизнес-логикой.
+Модель изделия
 """
 
-from typing import Any, Dict
-from datetime import datetime
-from app.core.models.base_model import BaseModel
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
+from app.core.models.base import BaseModel
 
 
+@dataclass
 class Product(BaseModel):
     """
-    Модель изделия.
+    Модель изделия
 
     Attributes:
-        id: Уникальный идентификатор изделия
-        product_code: Шифр изделия
         name: Наименование изделия
+        code: Номер изделия (уникальный)
+        created_at: Дата создания записи
+        updated_at: Дата последнего обновления
     """
 
-    def __init__(
-            self,
-            id: int = None,
-            product_code: str = "",
-            name: str = "",
-            created_at: datetime = None,
-            updated_at: datetime = None
-    ):
-        super().__init__()
-        self.id = id
-        self.product_code = product_code
-        self.name = name
-        self._created_at = created_at
-        self._updated_at = updated_at
+    name: str = ""
+    code: str = ""
+    created_at: Optional[date] = None
+    updated_at: Optional[date] = None
 
-    def validate(self) -> bool:
-        """Валидирует данные изделия."""
-        if not self.product_code.strip():
-            raise ValueError("Шифр изделия обязателен")
+    def __post_init__(self):
+        """Инициализация при создании объекта"""
+        if not self.created_at:
+            self.created_at = date.today()
+        self.updated_at = date.today()
 
-        if not self.name.strip():
-            raise ValueError("Наименование изделия обязательно")
+    def validate(self) -> tuple[bool, list[str]]:
+        """
+        Проверяет валидность данных изделия
 
-        return True
+        Returns:
+            tuple[bool, list[str]]: (успех, список ошибок)
+        """
+        pass
 
-    def set_updated(self) -> None:
-        """Обновляет метку времени при изменении."""
-        self._updated_at = datetime.now()
+    def update_timestamp(self) -> None:
+        """
+        Обновляет метку времени при изменении данных
+        """
+        self.updated_at = date.today()
 
-    def __eq__(self, other: Any) -> bool:
-        """Сравнение двух экземпляров Product."""
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление изделия
+
+        Returns:
+            str: Наименование изделия и его код
+        """
+        return f"{self.name} ({self.code})"
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Сравнивает два экземпляра Product
+
+        Args:
+            other: Объект для сравнения
+
+        Returns:
+            bool: True, если объекты равны
+        """
         if not isinstance(other, Product):
             return False
 
-        return self.product_code == other.product_code
+        return (
+            self.code == other.code and
+            self.name == other.name
+        )
 
-    def __str__(self) -> str:
-        """Человеко-понятное представление модели."""
-        return f"{self.product_code} - {self.name}"
+    def __hash__(self) -> int:
+        """
+        Возвращает хэш-значение для экземпляра Product
 
-    def get_display_name(self) -> str:
-        """Возвращает форматированное имя для отображения."""
-        return f"{self.product_code} - {self.name[:30]}..."
+        Returns:
+            int: Хэш-значение
+        """
+        return hash((
+            self.code,
+            self.name
+        ))

@@ -1,10 +1,9 @@
 # app/core/services/contract_service.py
-from typing import Any, Dict, List, Optional
-from dataclasses import asdict
+from typing import Any, List, Optional
 from datetime import date
 
-from app.core.models.base_model import Contract
-from app.core.database.repositories.contract_repository import ContractRepository
+from app.core.models.base import Contract
+from app.core.repositories.contract_repository import ContractRepository
 from app.core.services.base_service import BaseService
 
 
