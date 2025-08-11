@@ -1,0 +1,1 @@
+"""Reporting strategies and factory for HTML, PDF, and Excel exports."""

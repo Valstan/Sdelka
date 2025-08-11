@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    h1 { margin-bottom: 0; }
+    .filters { color: #666; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; }
+    th { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  {% if filters %}
+  <div class="filters">Фильтры: {% for k, v in filters.items() %}<strong>{{ k }}</strong>: {{ v }} {% if not loop.last %}|{% endif %}{% endfor %}</div>
+  {% endif %}
+  {{ table | safe }}
+</body>
+</html>

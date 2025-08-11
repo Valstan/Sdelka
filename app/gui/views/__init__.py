@@ -1,0 +1,1 @@
+"""GUI views (tabs) for different entities."""

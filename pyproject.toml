@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+addopts = "-q --cov=app --cov-report=term-missing:skip-covered --cov-fail-under=95"
+python_files = ["test_*.py"]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+  "app/gui/*",
+  "app/main.py"
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
