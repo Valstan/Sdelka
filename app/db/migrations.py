@@ -17,12 +17,8 @@ def initialize_database() -> None:
     ensure_directories()
     db = Database.instance()
     sql = _read_queries_file()
-    # Split by statement delimiter ; on line ends, keep simple for DDL
-    statements = [s.strip() for s in sql.split(";\n") if s.strip()]
-    for stmt in statements:
-        if stmt.startswith("--"):  # skip top comments
-            continue
-        db.execute(stmt)
+    # Execute full SQL script to handle Windows newlines and complex statements
+    db.connection.executescript(sql)
 
 
 def destroy_database_for_tests() -> None:
