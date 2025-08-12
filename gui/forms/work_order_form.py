@@ -33,6 +33,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_product_id: Optional[int] = None
         self.selected_workers: dict[int, str] = {}
         self.item_rows: list[ItemRow] = []
+        self.editing_order_id: Optional[int] = None
 
         self._build_ui()
         self._update_totals()
@@ -154,7 +155,14 @@ class WorkOrdersForm(ctk.CTkFrame):
         ctk.CTkLabel(totals_frame, text="На одного, руб:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         ctk.CTkLabel(totals_frame, textvariable=self.per_worker_var).grid(row=0, column=3, sticky="w", padx=5, pady=5)
 
-        ctk.CTkButton(totals_frame, text="Сохранить наряд", command=self._save).grid(row=0, column=4, padx=10, pady=5)
+        actions = ctk.CTkFrame(totals_frame)
+        actions.grid(row=0, column=4, padx=10, pady=5)
+        self.save_btn = ctk.CTkButton(actions, text="Сохранить", command=self._save)
+        self.save_btn.pack(side="left", padx=4)
+        self.update_btn = ctk.CTkButton(actions, text="Обновить", command=self._update, fg_color="#2563eb")
+        self.update_btn.pack(side="left", padx=4)
+        self.delete_btn = ctk.CTkButton(actions, text="Удалить", command=self._delete, fg_color="#b91c1c", hover_color="#7f1d1d")
+        self.delete_btn.pack(side="left", padx=4)
 
         # Right-side: existing orders list
         ctk.CTkLabel(right, text="Список нарядов").pack(padx=10, pady=(10, 0), anchor="w")
@@ -423,30 +431,74 @@ class WorkOrdersForm(ctk.CTkFrame):
             self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
 
     def _on_order_select(self, _evt=None) -> None:
-        # TODO: Загрузка существующего наряда для редактирования (в следующем шаге)
-        pass
+        sel = self.orders_tree.selection()
+        if not sel:
+            return
+        work_order_id = int(sel[0])
+        try:
+            from services.work_orders import load_work_order  # lazy import
+            with get_connection(CONFIG.db_path) as conn:
+                data = load_work_order(conn, work_order_id)
+        except Exception as exc:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить наряд: {exc}")
+            return
+        self._fill_form_from_loaded(data)
 
-    # ---- Save ----
-    def _save(self) -> None:
+    def _fill_form_from_loaded(self, data) -> None:
+        self.editing_order_id = data.id
+        self.date_var.set(data.date)
+        # contract text
+        with get_connection(CONFIG.db_path) as conn:
+            c = conn.execute("SELECT code FROM contracts WHERE id=?", (data.contract_id,)).fetchone()
+            p = conn.execute("SELECT name, product_no FROM products WHERE id=?", (data.product_id,)).fetchone() if data.product_id else None
+        self.contract_entry.delete(0, "end")
+        if c:
+            self.contract_entry.insert(0, c["code"])  # display
+        self.selected_contract_id = data.contract_id
+        self.product_entry.delete(0, "end")
+        if p:
+            self.product_entry.insert(0, f"{p['product_no']} — {p['name']}")
+        self.selected_product_id = data.product_id
+        # items
+        self._clear_items()
+        for (job_type_id, name, qty, unit_price, line_amount) in data.items:
+            self.item_rows.append(ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=line_amount))
+            self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{line_amount:.2f}"))
+        # workers
+        self.selected_workers.clear()
+        with get_connection(CONFIG.db_path) as conn:
+            for wid in data.worker_ids:
+                r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
+                self.selected_workers[wid] = r["full_name"] if r else str(wid)
+        for w in self.workers_list.winfo_children():
+            w.destroy()
+        for wid, name in self.selected_workers.items():
+            row = ctk.CTkFrame(self.workers_list)
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=name).pack(side="left")
+            ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda i=wid: self._remove_worker(i)).pack(side="right")
+        self._update_totals()
+
+    # ---- Save/Update/Delete ----
+    def _build_input(self) -> Optional[WorkOrderInput]:
         if not self.item_rows:
             messagebox.showwarning("Проверка", "Добавьте хотя бы одну строку работ")
-            return
+            return None
         if not self.selected_contract_id:
             messagebox.showwarning("Проверка", "Выберите контракт из подсказок")
-            return
+            return None
         date_str = self.date_var.get().strip()
         try:
             validate_date(date_str)
         except Exception as exc:
             messagebox.showwarning("Проверка", str(exc))
-            return
+            return None
         worker_ids = list(self.selected_workers.keys())
         if not worker_ids:
             messagebox.showwarning("Проверка", "Добавьте работников в бригаду")
-            return
-
+            return None
         items = [WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity) for i in self.item_rows]
-        wo = WorkOrderInput(
+        return WorkOrderInput(
             date=date_str,
             product_id=self.selected_product_id,
             contract_id=int(self.selected_contract_id),
@@ -454,6 +506,10 @@ class WorkOrdersForm(ctk.CTkFrame):
             worker_ids=worker_ids,
         )
 
+    def _save(self) -> None:
+        wo = self._build_input()
+        if not wo:
+            return
         try:
             with get_connection(CONFIG.db_path) as conn:
                 _id = create_work_order(conn, wo)
@@ -463,12 +519,47 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception as exc:
             messagebox.showerror("Ошибка", f"Не удалось сохранить наряд: {exc}")
             return
-
         messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
         self._reset_form()
         self._load_recent_orders()
 
+    def _update(self) -> None:
+        if not self.editing_order_id:
+            messagebox.showwarning("Проверка", "Выберите наряд в списке справа")
+            return
+        wo = self._build_input()
+        if not wo:
+            return
+        try:
+            from services.work_orders import update_work_order  # lazy import
+            with get_connection(CONFIG.db_path) as conn:
+                update_work_order(conn, self.editing_order_id, wo)
+        except Exception as exc:
+            messagebox.showerror("Ошибка", f"Не удалось обновить наряд: {exc}")
+            return
+        messagebox.showinfo("Сохранено", "Наряд обновлен")
+        self._reset_form()
+        self._load_recent_orders()
+
+    def _delete(self) -> None:
+        if not self.editing_order_id:
+            messagebox.showwarning("Проверка", "Выберите наряд в списке справа")
+            return
+        if not messagebox.askyesno("Подтверждение", "Удалить выбранный наряд?"):
+            return
+        try:
+            from services.work_orders import delete_work_order  # lazy import
+            with get_connection(CONFIG.db_path) as conn:
+                delete_work_order(conn, self.editing_order_id)
+        except Exception as exc:
+            messagebox.showerror("Ошибка", f"Не удалось удалить наряд: {exc}")
+            return
+        messagebox.showinfo("Готово", "Наряд удален")
+        self._reset_form()
+        self._load_recent_orders()
+
     def _reset_form(self) -> None:
+        self.editing_order_id = None
         self.selected_contract_id = None
         self.selected_product_id = None
         self.selected_workers.clear()

@@ -262,6 +262,21 @@ def insert_work_order(conn: sqlite3.Connection, order_no: int, date: str, produc
     return cur.lastrowid
 
 
+def update_work_order_header(conn: sqlite3.Connection, work_order_id: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> None:
+    conn.execute(
+        "UPDATE work_orders SET date=?, product_id=?, contract_id=?, total_amount=? WHERE id=?",
+        (date, product_id, contract_id, total_amount, work_order_id),
+    )
+
+
+def delete_work_order_items(conn: sqlite3.Connection, work_order_id: int) -> None:
+    conn.execute("DELETE FROM work_order_items WHERE work_order_id = ?", (work_order_id,))
+
+
+def delete_work_order(conn: sqlite3.Connection, work_order_id: int) -> None:
+    conn.execute("DELETE FROM work_orders WHERE id = ?", (work_order_id,))
+
+
 def update_work_order_total(conn: sqlite3.Connection, work_order_id: int, total_amount: float) -> None:
     conn.execute("UPDATE work_orders SET total_amount = ? WHERE id = ?", (total_amount, work_order_id))
 
@@ -293,3 +308,42 @@ def next_order_no(conn: sqlite3.Connection) -> int:
 def fetch_work_orders(conn: sqlite3.Connection, where_sql: str = "", params: Sequence[Any] | None = None) -> list[sqlite3.Row]:
     sql = "SELECT * FROM work_orders " + (f"WHERE {where_sql} " if where_sql else "") + "ORDER BY date DESC, order_no DESC"
     return conn.execute(sql, params or []).fetchall()
+
+
+def get_work_order_header(conn: sqlite3.Connection, work_order_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT wo.*, c.code AS contract_code, p.name AS product_name, p.product_no AS product_no
+        FROM work_orders wo
+        LEFT JOIN contracts c ON c.id = wo.contract_id
+        LEFT JOIN products p ON p.id = wo.product_id
+        WHERE wo.id = ?
+        """,
+        (work_order_id,),
+    ).fetchone()
+
+
+def get_work_order_items(conn: sqlite3.Connection, work_order_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT woi.*, jt.name AS job_name
+        FROM work_order_items woi
+        JOIN job_types jt ON jt.id = woi.job_type_id
+        WHERE woi.work_order_id = ?
+        ORDER BY woi.id
+        """,
+        (work_order_id,),
+    ).fetchall()
+
+
+def get_work_order_workers(conn: sqlite3.Connection, work_order_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT wow.worker_id, w.full_name
+        FROM work_order_workers wow
+        JOIN workers w ON w.id = wow.worker_id
+        WHERE wow.work_order_id = ?
+        ORDER BY w.full_name
+        """,
+        (work_order_id,),
+    ).fetchall()
