@@ -6,6 +6,7 @@ from gui.forms.workers_form import WorkersForm
 from gui.forms.job_types_form import JobTypesForm
 from gui.forms.products_form import ProductsForm
 from gui.forms.contracts_form import ContractsForm
+from gui.forms.work_order_form import WorkOrdersForm
 
 
 class AppWindow(ctk.CTk):
@@ -25,8 +26,8 @@ class AppWindow(ctk.CTk):
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
-        # Заглушка для Нарядов
-        ctk.CTkLabel(self.tab_orders, text="Форма нарядов (в разработке)").pack(pady=20)
+        # Наряды
+        WorkOrdersForm(self.tab_orders).pack(expand=True, fill="both")
 
         # Подвкладки справочников
         refs_tabs = ctk.CTkTabview(self.tab_refs)
