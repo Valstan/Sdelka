@@ -4,6 +4,8 @@ import logging
 import sqlite3
 from typing import Iterable
 
+from utils.text import normalize_for_search
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,27 +13,36 @@ DDL_TABLES_SQL = r"""
 CREATE TABLE IF NOT EXISTS workers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT NOT NULL UNIQUE,
+    full_name_norm TEXT,
     dept TEXT,
+    dept_norm TEXT,
     position TEXT,
-    personnel_no TEXT NOT NULL UNIQUE
+    position_norm TEXT,
+    personnel_no TEXT NOT NULL UNIQUE,
+    personnel_no_norm TEXT
 );
 
 CREATE TABLE IF NOT EXISTS job_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    name_norm TEXT,
     unit TEXT NOT NULL,
+    unit_norm TEXT,
     price NUMERIC NOT NULL CHECK (price >= 0)
 );
 
 CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    product_no TEXT NOT NULL UNIQUE
+    name_norm TEXT,
+    product_no TEXT NOT NULL UNIQUE,
+    product_no_norm TEXT
 );
 
 CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
+    code_norm TEXT,
     start_date TEXT,
     end_date TEXT,
     description TEXT
@@ -70,9 +81,17 @@ CREATE TABLE IF NOT EXISTS work_order_workers (
 
 DDL_INDEXES = (
     ("idx_workers_full_name", "workers", ("full_name",), "CREATE INDEX IF NOT EXISTS idx_workers_full_name ON workers(full_name)"),
+    ("idx_workers_full_name_norm", "workers", ("full_name_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_full_name_norm ON workers(full_name_norm)"),
+    ("idx_workers_dept_norm", "workers", ("dept_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_dept_norm ON workers(dept_norm)"),
+    ("idx_workers_position_norm", "workers", ("position_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_position_norm ON workers(position_norm)"),
     ("idx_job_types_name", "job_types", ("name",), "CREATE INDEX IF NOT EXISTS idx_job_types_name ON job_types(name)"),
+    ("idx_job_types_name_norm", "job_types", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_job_types_name_norm ON job_types(name_norm)"),
+    ("idx_job_types_unit_norm", "job_types", ("unit_norm",), "CREATE INDEX IF NOT EXISTS idx_job_types_unit_norm ON job_types(unit_norm)"),
     ("idx_products_name_no", "products", ("name", "product_no"), "CREATE INDEX IF NOT EXISTS idx_products_name_no ON products(name, product_no)"),
+    ("idx_products_name_norm", "products", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_products_name_norm ON products(name_norm)"),
+    ("idx_products_no_norm", "products", ("product_no_norm",), "CREATE INDEX IF NOT EXISTS idx_products_no_norm ON products(product_no_norm)"),
     ("idx_contracts_code", "contracts", ("code",), "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)"),
+    ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
     ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
 )
 
@@ -82,11 +101,13 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
 
     - Создает таблицы, если отсутствуют
     - Мигрирует legacy-версии (workers без full_name -> с full_name)
+    - Добавляет нормализованные колонки *_norm и заполняет их
     - Создает индексы только если существуют нужные колонки
     """
     conn.executescript(DDL_TABLES_SQL)
 
     migrate_workers_if_needed(conn)
+    add_norm_columns_and_backfill(conn)
 
     create_indexes_if_possible(conn)
 
@@ -114,29 +135,30 @@ def migrate_workers_if_needed(conn: sqlite3.Connection) -> None:
     if "full_name" in cols and "personnel_no" in cols:
         return  # up-to-date
 
-    # Try to detect legacy columns
     legacy_name_col = None
     for candidate in ("name", "fio"):
         if candidate in cols:
             legacy_name_col = candidate
             break
 
-    # Recreate table with new schema and move data
     conn.execute("ALTER TABLE workers RENAME TO workers_old")
     conn.executescript(
         """
         CREATE TABLE workers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT NOT NULL UNIQUE,
+            full_name_norm TEXT,
             dept TEXT,
+            dept_norm TEXT,
             position TEXT,
-            personnel_no TEXT NOT NULL UNIQUE
+            position_norm TEXT,
+            personnel_no TEXT NOT NULL UNIQUE,
+            personnel_no_norm TEXT
         );
         """
     )
 
     if legacy_name_col:
-        # copy with mapping
         conn.execute(
             f"""
             INSERT INTO workers(full_name, dept, position, personnel_no)
@@ -148,11 +170,76 @@ def migrate_workers_if_needed(conn: sqlite3.Connection) -> None:
             WHERE {legacy_name_col} IS NOT NULL AND TRIM({legacy_name_col}) <> ''
             """
         )
-    else:
-        # If no legacy name, try to build from available fields (may insert none)
-        pass
-
     conn.execute("DROP TABLE workers_old")
+
+
+def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
+    def ensure_col(table: str, col: str) -> None:
+        cols = set(get_table_columns(conn, table))
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
+
+    # Ensure columns
+    for table, cols in (
+        ("workers", ("full_name_norm", "dept_norm", "position_norm", "personnel_no_norm")),
+        ("job_types", ("name_norm", "unit_norm")),
+        ("products", ("name_norm", "product_no_norm")),
+        ("contracts", ("code_norm",)),
+    ):
+        if table_exists(conn, table):
+            for c in cols:
+                ensure_col(table, c)
+
+    # Backfill with Python casefold for Unicode
+    # Workers
+    if table_exists(conn, "workers"):
+        rows = conn.execute("SELECT id, full_name, dept, position, personnel_no FROM workers").fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE workers SET full_name_norm=?, dept_norm=?, position_norm=?, personnel_no_norm=? WHERE id=?",
+                (
+                    normalize_for_search(r["full_name"]),
+                    normalize_for_search(r["dept"]),
+                    normalize_for_search(r["position"]),
+                    normalize_for_search(r["personnel_no"]),
+                    r["id"],
+                ),
+            )
+    # job_types
+    if table_exists(conn, "job_types"):
+        rows = conn.execute("SELECT id, name, unit FROM job_types").fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE job_types SET name_norm=?, unit_norm=? WHERE id=?",
+                (
+                    normalize_for_search(r["name"]),
+                    normalize_for_search(r["unit"]),
+                    r["id"],
+                ),
+            )
+    # products
+    if table_exists(conn, "products"):
+        rows = conn.execute("SELECT id, name, product_no FROM products").fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE products SET name_norm=?, product_no_norm=? WHERE id=?",
+                (
+                    normalize_for_search(r["name"]),
+                    normalize_for_search(r["product_no"]),
+                    r["id"],
+                ),
+            )
+    # contracts
+    if table_exists(conn, "contracts"):
+        rows = conn.execute("SELECT id, code FROM contracts").fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE contracts SET code_norm=? WHERE id=?",
+                (
+                    normalize_for_search(r["code"]),
+                    r["id"],
+                ),
+            )
 
 
 def create_indexes_if_possible(conn: sqlite3.Connection) -> None:
