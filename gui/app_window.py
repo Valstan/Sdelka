@@ -7,6 +7,7 @@ from gui.forms.job_types_form import JobTypesForm
 from gui.forms.products_form import ProductsForm
 from gui.forms.contracts_form import ContractsForm
 from gui.forms.work_order_form import WorkOrdersForm
+from gui.forms.reports_view import ReportsView
 
 
 class AppWindow(ctk.CTk):
@@ -42,6 +43,8 @@ class AppWindow(ctk.CTk):
         ProductsForm(tab_products).pack(expand=True, fill="both")
         ContractsForm(tab_contracts).pack(expand=True, fill="both")
 
+        # Отчеты
+        ReportsView(self.tab_reports).pack(expand=True, fill="both")
+
         ctk.CTkLabel(self.tab_import, text="Импорт/Экспорт (в разработке)").pack(pady=20)
-        ctk.CTkLabel(self.tab_reports, text="Отчеты (в разработке)").pack(pady=20)
         ctk.CTkLabel(self.tab_settings, text="Настройки (в разработке)").pack(pady=20)
