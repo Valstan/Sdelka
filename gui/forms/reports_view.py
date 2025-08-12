@@ -210,9 +210,46 @@ class ReportsView(ctk.CTkFrame):
         self.contract_entry.insert(0, label)
         self.sg_contract.place_forget()
 
+    def _localize_df_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Общий словарь для потенциально англ. колонок -> русские названия
+        mapping = {
+            # workers
+            "id": "Идентификатор",
+            "full_name": "ФИО",
+            "dept": "Цех",
+            "position": "Должность",
+            "personnel_no": "Табельный номер",
+            # job_types
+            "name": "Наименование",
+            "unit": "Ед. изм.",
+            "price": "Цена",
+            # products
+            "product_no": "Номер изделия",
+            # contracts
+            "code": "Шифр контракта",
+            "start_date": "Дата начала",
+            "end_date": "Дата окончания",
+            "description": "Описание",
+            # work_orders
+            "order_no": "№ наряда",
+            "date": "Дата",
+            "product_id": "ID изделия",
+            "contract_id": "ID контракта",
+            "total_amount": "Итоговая сумма",
+            # items
+            "work_order_id": "ID наряда",
+            "job_type_id": "ID вида работ",
+            "quantity": "Количество",
+            "unit_price": "Цена",
+            "line_amount": "Сумма",
+            "worker_id": "ID работника",
+        }
+        # Если df уже с русскими заголовками, rename ничего не изменит
+        return df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+
     def _build_report(self) -> None:
         with get_connection(CONFIG.db_path) as conn:
-            self._df = work_orders_report_df(
+            df = work_orders_report_df(
                 conn,
                 date_from=self.date_from.get().strip() or None,
                 date_to=self.date_to.get().strip() or None,
@@ -222,6 +259,7 @@ class ReportsView(ctk.CTkFrame):
                 product_id=self._selected_product_id,
                 contract_id=self._selected_contract_id,
             )
+        self._df = self._localize_df_columns(df)
         self._render_preview(self._df)
 
     def _render_preview(self, df: pd.DataFrame) -> None:
