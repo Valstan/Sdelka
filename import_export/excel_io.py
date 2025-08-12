@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import logging
 import sqlite3
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import pandas as pd
 
@@ -74,6 +74,47 @@ def import_contracts_from_excel(conn: sqlite3.Connection, file_path: str | Path)
 
 def export_table_to_excel(conn: sqlite3.Connection, table: str, file_path: str | Path) -> Path:
     df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+    file_path = Path(file_path)
+    df.to_excel(file_path, index=False)
+    return file_path
+
+
+def export_all_tables_to_excel(conn: sqlite3.Connection, dir_path: str | Path) -> list[Path]:
+    dir_path = Path(dir_path)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    outputs: list[Path] = []
+    for table in ("workers", "job_types", "products", "contracts", "work_orders", "work_order_items", "work_order_workers"):
+        path = dir_path / f"{table}.xlsx"
+        export_table_to_excel(conn, table, path)
+        outputs.append(path)
+    return outputs
+
+
+# Templates
+
+def generate_workers_template(file_path: str | Path) -> Path:
+    df = pd.DataFrame({"full_name": [], "dept": [], "position": [], "personnel_no": []})
+    file_path = Path(file_path)
+    df.to_excel(file_path, index=False)
+    return file_path
+
+
+def generate_job_types_template(file_path: str | Path) -> Path:
+    df = pd.DataFrame({"name": [], "unit": [], "price": []})
+    file_path = Path(file_path)
+    df.to_excel(file_path, index=False)
+    return file_path
+
+
+def generate_products_template(file_path: str | Path) -> Path:
+    df = pd.DataFrame({"name": [], "product_no": []})
+    file_path = Path(file_path)
+    df.to_excel(file_path, index=False)
+    return file_path
+
+
+def generate_contracts_template(file_path: str | Path) -> Path:
+    df = pd.DataFrame({"code": [], "start_date": [], "end_date": [], "description": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path

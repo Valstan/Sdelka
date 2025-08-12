@@ -8,6 +8,7 @@ from gui.forms.products_form import ProductsForm
 from gui.forms.contracts_form import ContractsForm
 from gui.forms.work_order_form import WorkOrdersForm
 from gui.forms.reports_view import ReportsView
+from gui.forms.import_export_view import ImportExportView
 
 
 class AppWindow(ctk.CTk):
@@ -46,5 +47,7 @@ class AppWindow(ctk.CTk):
         # Отчеты
         ReportsView(self.tab_reports).pack(expand=True, fill="both")
 
-        ctk.CTkLabel(self.tab_import, text="Импорт/Экспорт (в разработке)").pack(pady=20)
+        # Импорт/Экспорт
+        ImportExportView(self.tab_import).pack(expand=True, fill="both")
+
         ctk.CTkLabel(self.tab_settings, text="Настройки (в разработке)").pack(pady=20)
