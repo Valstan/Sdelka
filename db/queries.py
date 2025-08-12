@@ -16,9 +16,38 @@ def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, po
     return cur.lastrowid or cur.rowcount
 
 
+def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> None:
+    conn.execute(
+        "UPDATE workers SET full_name = ?, dept = ?, position = ?, personnel_no = ? WHERE id = ?",
+        (full_name, dept, position, personnel_no, worker_id),
+    )
+
+
+def delete_worker(conn: sqlite3.Connection, worker_id: int) -> None:
+    conn.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
+
+
 def get_worker_by_personnel_no(conn: sqlite3.Connection, personnel_no: str) -> sqlite3.Row | None:
     cur = conn.execute("SELECT * FROM workers WHERE personnel_no = ?", (personnel_no,))
     return cur.fetchone()
+
+
+def get_worker_by_id(conn: sqlite3.Connection, worker_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM workers WHERE id = ?", (worker_id,)).fetchone()
+
+
+def list_workers(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
+    if prefix:
+        like = f"{prefix}%"
+        sql = "SELECT * FROM workers WHERE full_name LIKE ? ORDER BY full_name"
+        params: Sequence[Any] = (like,)
+    else:
+        sql = "SELECT * FROM workers ORDER BY full_name"
+        params = ()
+    if limit:
+        sql += " LIMIT ?"
+        params = (*params, limit)
+    return conn.execute(sql, params).fetchall()
 
 
 def search_workers_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[sqlite3.Row]:

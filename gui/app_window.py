@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import customtkinter as ctk
 
+from gui.forms.workers_form import WorkersForm
+
 
 class AppWindow(ctk.CTk):
     def __init__(self) -> None:
@@ -22,7 +24,17 @@ class AppWindow(ctk.CTk):
 
         # Заглушки контента
         ctk.CTkLabel(self.tab_orders, text="Форма нарядов (в разработке)").pack(pady=20)
-        ctk.CTkLabel(self.tab_refs, text="Справочники (в разработке)").pack(pady=20)
+
+        # Подвкладки справочников
+        refs_tabs = ctk.CTkTabview(self.tab_refs)
+        refs_tabs.pack(expand=True, fill="both", padx=10, pady=10)
+        tab_workers = refs_tabs.add("Работники")
+        refs_tabs.add("Виды работ")
+        refs_tabs.add("Изделия")
+        refs_tabs.add("Контракты")
+
+        WorkersForm(tab_workers).pack(expand=True, fill="both")
+
         ctk.CTkLabel(self.tab_import, text="Импорт/Экспорт (в разработке)").pack(pady=20)
         ctk.CTkLabel(self.tab_reports, text="Отчеты (в разработке)").pack(pady=20)
         ctk.CTkLabel(self.tab_settings, text="Настройки (в разработке)").pack(pady=20)
