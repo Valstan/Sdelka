@@ -12,6 +12,77 @@ from db import queries as q
 logger = logging.getLogger(__name__)
 
 
+# Настройки экспорта человеческих заголовков и набора колонок
+TABLE_EXPORT_CONFIG: dict[str, dict] = {
+    "workers": {
+        "columns": ["id", "full_name", "dept", "position", "personnel_no"],
+        "headers": {
+            "id": "Идентификатор",
+            "full_name": "ФИО",
+            "dept": "Цех",
+            "position": "Должность",
+            "personnel_no": "Табельный номер",
+        },
+    },
+    "job_types": {
+        "columns": ["id", "name", "unit", "price"],
+        "headers": {
+            "id": "Идентификатор",
+            "name": "Вид работ",
+            "unit": "Ед. изм.",
+            "price": "Цена",
+        },
+    },
+    "products": {
+        "columns": ["id", "name", "product_no"],
+        "headers": {
+            "id": "Идентификатор",
+            "name": "Наименование",
+            "product_no": "Номер изделия",
+        },
+    },
+    "contracts": {
+        "columns": ["id", "code", "start_date", "end_date", "description"],
+        "headers": {
+            "id": "Идентификатор",
+            "code": "Шифр контракта",
+            "start_date": "Дата начала",
+            "end_date": "Дата окончания",
+            "description": "Описание",
+        },
+    },
+    "work_orders": {
+        "columns": ["id", "order_no", "date", "product_id", "contract_id", "total_amount"],
+        "headers": {
+            "id": "Идентификатор",
+            "order_no": "№ наряда",
+            "date": "Дата",
+            "product_id": "ID изделия",
+            "contract_id": "ID контракта",
+            "total_amount": "Итоговая сумма",
+        },
+    },
+    "work_order_items": {
+        "columns": ["id", "work_order_id", "job_type_id", "quantity", "unit_price", "line_amount"],
+        "headers": {
+            "id": "Идентификатор",
+            "work_order_id": "ID наряда",
+            "job_type_id": "ID вида работ",
+            "quantity": "Количество",
+            "unit_price": "Цена",
+            "line_amount": "Сумма",
+        },
+    },
+    "work_order_workers": {
+        "columns": ["work_order_id", "worker_id"],
+        "headers": {
+            "work_order_id": "ID наряда",
+            "worker_id": "ID работника",
+        },
+    },
+}
+
+
 # Importers
 
 def import_workers_from_excel(conn: sqlite3.Connection, file_path: str | Path) -> int:
@@ -73,7 +144,13 @@ def import_contracts_from_excel(conn: sqlite3.Connection, file_path: str | Path)
 # Exporters
 
 def export_table_to_excel(conn: sqlite3.Connection, table: str, file_path: str | Path) -> Path:
-    df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+    cfg = TABLE_EXPORT_CONFIG.get(table)
+    if cfg and cfg.get("columns"):
+        cols = ", ".join(cfg["columns"])
+        df = pd.read_sql_query(f"SELECT {cols} FROM {table}", conn)
+        df.rename(columns=cfg.get("headers", {}), inplace=True)
+    else:
+        df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path
