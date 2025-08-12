@@ -25,3 +25,15 @@ def suggest_products(conn: sqlite3.Connection, prefix: str, limit: int | None = 
 def suggest_contracts(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[tuple[int, str]]:
     rows = q.search_contracts_by_prefix(conn, prefix, limit or CONFIG.autocomplete_limit)
     return [(r["id"], r["code"]) for r in rows]
+
+
+def suggest_depts(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[str]:
+    return q.distinct_depts_by_prefix(conn, prefix, limit or CONFIG.autocomplete_limit)
+
+
+def suggest_positions(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[str]:
+    return q.distinct_positions_by_prefix(conn, prefix, limit or CONFIG.autocomplete_limit)
+
+
+def suggest_personnel_nos(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[str]:
+    return q.personnel_numbers_by_prefix(conn, prefix, limit or CONFIG.autocomplete_limit)

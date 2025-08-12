@@ -10,7 +10,6 @@ def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, po
     sql = """
     INSERT INTO workers(full_name, dept, position, personnel_no)
     VALUES (?, ?, ?, ?)
-    ON CONFLICT(full_name) DO UPDATE SET dept=excluded.dept, position=excluded.position
     """
     cur = conn.execute(sql, (full_name, dept, position, personnel_no))
     return cur.lastrowid or cur.rowcount
@@ -30,6 +29,10 @@ def delete_worker(conn: sqlite3.Connection, worker_id: int) -> None:
 def get_worker_by_personnel_no(conn: sqlite3.Connection, personnel_no: str) -> sqlite3.Row | None:
     cur = conn.execute("SELECT * FROM workers WHERE personnel_no = ?", (personnel_no,))
     return cur.fetchone()
+
+
+def get_worker_by_full_name(conn: sqlite3.Connection, full_name: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM workers WHERE full_name = ?", (full_name,)).fetchone()
 
 
 def get_worker_by_id(conn: sqlite3.Connection, worker_id: int) -> sqlite3.Row | None:
@@ -54,6 +57,24 @@ def search_workers_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) 
     like = f"{prefix}%"
     cur = conn.execute("SELECT * FROM workers WHERE full_name LIKE ? ORDER BY full_name LIMIT ?", (like, limit))
     return cur.fetchall()
+
+
+def distinct_depts_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
+    like = f"{prefix}%"
+    rows = conn.execute("SELECT DISTINCT dept FROM workers WHERE dept LIKE ? ORDER BY dept LIMIT ?", (like, limit)).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+def distinct_positions_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
+    like = f"{prefix}%"
+    rows = conn.execute("SELECT DISTINCT position FROM workers WHERE position LIKE ? ORDER BY position LIMIT ?", (like, limit)).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+def personnel_numbers_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
+    like = f"{prefix}%"
+    rows = conn.execute("SELECT personnel_no FROM workers WHERE personnel_no LIKE ? ORDER BY personnel_no LIMIT ?", (like, limit)).fetchall()
+    return [r[0] for r in rows if r[0]]
 
 
 # Job Types

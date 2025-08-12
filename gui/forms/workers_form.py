@@ -8,6 +8,7 @@ from config.settings import CONFIG
 from db.sqlite import get_connection
 from services import reference_data as ref
 from services import suggestions
+from db import queries as q
 
 
 class WorkersForm(ctk.CTkFrame):
@@ -33,13 +34,19 @@ class WorkersForm(ctk.CTkFrame):
         self.full_name_entry.bind("<KeyRelease>", self._on_name_key)
 
         ctk.CTkLabel(form, text="Цех").grid(row=0, column=2, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.dept_var, width=150).grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        self.dept_entry = ctk.CTkEntry(form, textvariable=self.dept_var, width=150)
+        self.dept_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        self.dept_entry.bind("<KeyRelease>", self._on_dept_key)
 
         ctk.CTkLabel(form, text="Должность").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.position_var, width=300).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        self.position_entry = ctk.CTkEntry(form, textvariable=self.position_var, width=300)
+        self.position_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        self.position_entry.bind("<KeyRelease>", self._on_position_key)
 
         ctk.CTkLabel(form, text="Таб. номер").grid(row=1, column=2, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.personnel_no_var, width=150).grid(row=1, column=3, sticky="w", padx=5, pady=5)
+        self.personnel_entry = ctk.CTkEntry(form, textvariable=self.personnel_no_var, width=150)
+        self.personnel_entry.grid(row=1, column=3, sticky="w", padx=5, pady=5)
+        self.personnel_entry.bind("<KeyRelease>", self._on_personnel_key)
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=10)
@@ -65,9 +72,15 @@ class WorkersForm(ctk.CTkFrame):
 
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        # Список подсказок под полем ФИО
+        # Списки подсказок под полями
         self.suggest_frame = ctk.CTkFrame(self)
         self.suggest_frame.place_forget()
+        self.suggest_dept_frame = ctk.CTkFrame(self)
+        self.suggest_dept_frame.place_forget()
+        self.suggest_position_frame = ctk.CTkFrame(self)
+        self.suggest_position_frame.place_forget()
+        self.suggest_personnel_frame = ctk.CTkFrame(self)
+        self.suggest_personnel_frame.place_forget()
 
     def _on_name_key(self, event=None) -> None:
         prefix = self.full_name_var.get().strip()
@@ -89,9 +102,78 @@ class WorkersForm(ctk.CTkFrame):
             btn = ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s))
             btn.pack(fill="x", padx=2, pady=1)
 
+    def _on_dept_key(self, event=None) -> None:
+        prefix = self.dept_var.get().strip()
+        for w in self.suggest_dept_frame.winfo_children():
+            w.destroy()
+        if not prefix:
+            self.suggest_dept_frame.place_forget()
+            return
+        with get_connection(CONFIG.db_path) as conn:
+            vals = suggestions.suggest_depts(conn, prefix, CONFIG.autocomplete_limit)
+        if not vals:
+            self.suggest_dept_frame.place_forget()
+            return
+        x = self.dept_entry.winfo_rootx() - self.winfo_rootx()
+        y = self.dept_entry.winfo_rooty() - self.winfo_rooty() + self.dept_entry.winfo_height()
+        self.suggest_dept_frame.place(x=x, y=y)
+        for val in vals:
+            btn = ctk.CTkButton(self.suggest_dept_frame, text=val, command=lambda s=val: self._pick_dept(s))
+            btn.pack(fill="x", padx=2, pady=1)
+
+    def _on_position_key(self, event=None) -> None:
+        prefix = self.position_var.get().strip()
+        for w in self.suggest_position_frame.winfo_children():
+            w.destroy()
+        if not prefix:
+            self.suggest_position_frame.place_forget()
+            return
+        with get_connection(CONFIG.db_path) as conn:
+            vals = suggestions.suggest_positions(conn, prefix, CONFIG.autocomplete_limit)
+        if not vals:
+            self.suggest_position_frame.place_forget()
+            return
+        x = self.position_entry.winfo_rootx() - self.winfo_rootx()
+        y = self.position_entry.winfo_rooty() - self.winfo_rooty() + self.position_entry.winfo_height()
+        self.suggest_position_frame.place(x=x, y=y)
+        for val in vals:
+            btn = ctk.CTkButton(self.suggest_position_frame, text=val, command=lambda s=val: self._pick_position(s))
+            btn.pack(fill="x", padx=2, pady=1)
+
+    def _on_personnel_key(self, event=None) -> None:
+        prefix = self.personnel_no_var.get().strip()
+        for w in self.suggest_personnel_frame.winfo_children():
+            w.destroy()
+        if not prefix:
+            self.suggest_personnel_frame.place_forget()
+            return
+        with get_connection(CONFIG.db_path) as conn:
+            vals = suggestions.suggest_personnel_nos(conn, prefix, CONFIG.autocomplete_limit)
+        if not vals:
+            self.suggest_personnel_frame.place_forget()
+            return
+        x = self.personnel_entry.winfo_rootx() - self.winfo_rootx()
+        y = self.personnel_entry.winfo_rooty() - self.winfo_rooty() + self.personnel_entry.winfo_height()
+        self.suggest_personnel_frame.place(x=x, y=y)
+        for val in vals:
+            btn = ctk.CTkButton(self.suggest_personnel_frame, text=val, command=lambda s=val: self._pick_personnel(s))
+            btn.pack(fill="x", padx=2, pady=1)
+
     def _pick_name(self, name: str) -> None:
         self.full_name_var.set(name)
         self.suggest_frame.place_forget()
+
+    def _pick_dept(self, val: str) -> None:
+        self.dept_var.set(val)
+        self.suggest_dept_frame.place_forget()
+
+    def _pick_position(self, val: str) -> None:
+        self.position_var.set(val)
+        self.suggest_position_frame.place_forget()
+
+    def _pick_personnel(self, val: str) -> None:
+        self.personnel_no_var.set(val)
+        self.suggest_personnel_frame.place_forget()
 
     def _load_workers(self) -> None:
         for item in self.tree.get_children():
@@ -121,6 +203,9 @@ class WorkersForm(ctk.CTkFrame):
         self.personnel_no_var.set("")
         self.tree.selection_remove(self.tree.selection())
         self.suggest_frame.place_forget()
+        self.suggest_dept_frame.place_forget()
+        self.suggest_position_frame.place_forget()
+        self.suggest_personnel_frame.place_forget()
 
     def _save(self) -> None:
         full_name = self.full_name_var.get().strip()
@@ -138,6 +223,10 @@ class WorkersForm(ctk.CTkFrame):
                 if self._selected_id:
                     ref.update_worker(conn, self._selected_id, full_name, dept, position, personnel_no)
                 else:
+                    # Проверка дубликатов по ФИО и табельному
+                    if q.get_worker_by_full_name(conn, full_name) or q.get_worker_by_personnel_no(conn, personnel_no):
+                        messagebox.showwarning("Дубликат", "Работник уже существует. Выберите его в списке для редактирования.")
+                        return
                     ref.add_or_update_worker(conn, full_name, dept, position, personnel_no)
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Нарушение уникальности: {exc}")
