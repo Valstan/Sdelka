@@ -79,6 +79,19 @@ def personnel_numbers_by_prefix(conn: sqlite3.Connection, prefix: str, limit: in
 
 # Job Types
 
+def insert_job_type(conn: sqlite3.Connection, name: str, unit: str, price: float) -> int:
+    cur = conn.execute("INSERT INTO job_types(name, unit, price) VALUES (?, ?, ?)", (name, unit, price))
+    return cur.lastrowid or cur.rowcount
+
+
+def update_job_type(conn: sqlite3.Connection, job_type_id: int, name: str, unit: str, price: float) -> None:
+    conn.execute("UPDATE job_types SET name = ?, unit = ?, price = ? WHERE id = ?", (name, unit, price, job_type_id))
+
+
+def delete_job_type(conn: sqlite3.Connection, job_type_id: int) -> None:
+    conn.execute("DELETE FROM job_types WHERE id = ?", (job_type_id,))
+
+
 def upsert_job_type(conn: sqlite3.Connection, name: str, unit: str, price: float) -> int:
     sql = """
     INSERT INTO job_types(name, unit, price) VALUES (?, ?, ?)
@@ -92,12 +105,45 @@ def get_job_type_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | N
     return conn.execute("SELECT * FROM job_types WHERE name = ?", (name,)).fetchone()
 
 
+def list_job_types(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
+    if prefix:
+        like = f"{prefix}%"
+        sql = "SELECT * FROM job_types WHERE name LIKE ? ORDER BY name"
+        params: Sequence[Any] = (like,)
+    else:
+        sql = "SELECT * FROM job_types ORDER BY name"
+        params = ()
+    if limit:
+        sql += " LIMIT ?"
+        params = (*params, limit)
+    return conn.execute(sql, params).fetchall()
+
+
 def search_job_types_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[sqlite3.Row]:
     like = f"{prefix}%"
     return conn.execute("SELECT * FROM job_types WHERE name LIKE ? ORDER BY name LIMIT ?", (like, limit)).fetchall()
 
 
+def distinct_units_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
+    like = f"{prefix}%"
+    rows = conn.execute("SELECT DISTINCT unit FROM job_types WHERE unit LIKE ? ORDER BY unit LIMIT ?", (like, limit)).fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
 # Products
+
+def insert_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
+    cur = conn.execute("INSERT INTO products(name, product_no) VALUES (?, ?)", (name, product_no))
+    return cur.lastrowid or cur.rowcount
+
+
+def update_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str) -> None:
+    conn.execute("UPDATE products SET name = ?, product_no = ? WHERE id = ?", (name, product_no, product_id))
+
+
+def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
+    conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
+
 
 def upsert_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
     sql = """
@@ -112,6 +158,24 @@ def get_product_by_no(conn: sqlite3.Connection, product_no: str) -> sqlite3.Row 
     return conn.execute("SELECT * FROM products WHERE product_no = ?", (product_no,)).fetchone()
 
 
+def get_product_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM products WHERE name = ?", (name,)).fetchone()
+
+
+def list_products(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
+    if prefix:
+        like = f"{prefix}%"
+        sql = "SELECT * FROM products WHERE name LIKE ? OR product_no LIKE ? ORDER BY name"
+        params: Sequence[Any] = (like, like)
+    else:
+        sql = "SELECT * FROM products ORDER BY name"
+        params = ()
+    if limit:
+        sql += " LIMIT ?"
+        params = (*params, limit)
+    return conn.execute(sql, params).fetchall()
+
+
 def search_products_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[sqlite3.Row]:
     like = f"{prefix}%"
     return conn.execute(
@@ -121,6 +185,19 @@ def search_products_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int)
 
 
 # Contracts
+
+def insert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
+    cur = conn.execute("INSERT INTO contracts(code, start_date, end_date, description) VALUES (?, ?, ?, ?)", (code, start_date, end_date, description))
+    return cur.lastrowid or cur.rowcount
+
+
+def update_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None) -> None:
+    conn.execute("UPDATE contracts SET code = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?", (code, start_date, end_date, description, contract_id))
+
+
+def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
+    conn.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
+
 
 def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
     sql = """
@@ -133,6 +210,20 @@ def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None,
 
 def get_contract_by_code(conn: sqlite3.Connection, code: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM contracts WHERE code = ?", (code,)).fetchone()
+
+
+def list_contracts(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
+    if prefix:
+        like = f"{prefix}%"
+        sql = "SELECT * FROM contracts WHERE code LIKE ? ORDER BY code"
+        params: Sequence[Any] = (like,)
+    else:
+        sql = "SELECT * FROM contracts ORDER BY code"
+        params = ()
+    if limit:
+        sql += " LIMIT ?"
+        params = (*params, limit)
+    return conn.execute(sql, params).fetchall()
 
 
 def search_contracts_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[sqlite3.Row]:

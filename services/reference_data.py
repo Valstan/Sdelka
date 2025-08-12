@@ -26,17 +26,53 @@ def list_workers(conn: sqlite3.Connection, prefix: str | None = None, limit: int
 
 # Job Types
 
-def add_or_update_job_type(conn: sqlite3.Connection, name: str, unit: str, price: float) -> int:
-    return q.upsert_job_type(conn, name, unit, price)
+def create_job_type(conn: sqlite3.Connection, name: str, unit: str, price: float) -> int:
+    return q.insert_job_type(conn, name, unit, price)
+
+
+def save_job_type(conn: sqlite3.Connection, job_type_id: int, name: str, unit: str, price: float) -> None:
+    q.update_job_type(conn, job_type_id, name, unit, price)
+
+
+def delete_job_type(conn: sqlite3.Connection, job_type_id: int) -> None:
+    q.delete_job_type(conn, job_type_id)
+
+
+def list_job_types(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None):
+    return q.list_job_types(conn, prefix, limit)
 
 
 # Products
 
-def add_or_update_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
-    return q.upsert_product(conn, name, product_no)
+def create_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
+    return q.insert_product(conn, name, product_no)
+
+
+def save_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str) -> None:
+    q.update_product(conn, product_id, name, product_no)
+
+
+def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
+    q.delete_product(conn, product_id)
+
+
+def list_products(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None):
+    return q.list_products(conn, prefix, limit)
 
 
 # Contracts
 
-def add_or_update_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
-    return q.upsert_contract(conn, code, start_date, end_date, description)
+def create_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
+    return q.insert_contract(conn, code, start_date, end_date, description)
+
+
+def save_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None) -> None:
+    q.update_contract(conn, contract_id, code, start_date, end_date, description)
+
+
+def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
+    q.delete_contract(conn, contract_id)
+
+
+def list_contracts(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None):
+    return q.list_contracts(conn, prefix, limit)
