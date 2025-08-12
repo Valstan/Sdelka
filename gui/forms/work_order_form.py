@@ -14,6 +14,7 @@ from db.sqlite import get_connection
 from services import suggestions
 from services.work_orders import WorkOrderInput, WorkOrderItemInput, create_work_order
 from services.validation import validate_date
+from db import queries as q
 
 
 @dataclass
@@ -35,10 +36,22 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         self._build_ui()
         self._update_totals()
+        self._load_recent_orders()
 
     def _build_ui(self) -> None:
+        container = ctk.CTkFrame(self)
+        container.pack(expand=True, fill="both")
+
+        # Left side (form)
+        left = ctk.CTkFrame(container)
+        left.pack(side="left", fill="both", expand=True)
+
+        # Right side (orders list)
+        right = ctk.CTkFrame(container, width=420)
+        right.pack(side="left", fill="y")
+
         # Header form
-        header = ctk.CTkFrame(self)
+        header = ctk.CTkFrame(left)
         header.pack(fill="x", padx=10, pady=10)
 
         # Date
@@ -46,6 +59,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=120)
         self.date_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        self.date_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
         self.date_quick_btn = ctk.CTkButton(header, text="Выбрать дату", width=120, command=self._show_date_quick)
         self.date_quick_btn.grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
@@ -54,12 +68,14 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр", width=180)
         self.contract_entry.grid(row=0, column=4, sticky="w", padx=5, pady=5)
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
+        self.contract_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
         # Product
         ctk.CTkLabel(header, text="Изделие").grid(row=0, column=5, sticky="w", padx=5, pady=5)
         self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название", width=220)
         self.product_entry.grid(row=0, column=6, sticky="w", padx=5, pady=5)
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
+        self.product_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
         # Suggestion frames
         self.suggest_contract_frame = ctk.CTkFrame(self)
@@ -68,18 +84,20 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_product_frame.place_forget()
 
         # Items section
-        items_frame = ctk.CTkFrame(self)
+        items_frame = ctk.CTkFrame(left)
         items_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         ctk.CTkLabel(items_frame, text="Вид работ").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.job_entry = ctk.CTkEntry(items_frame, placeholder_text="Начните ввод", width=280)
         self.job_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
+        self.job_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
         ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.qty_var = ctk.StringVar(value="1")
         self.qty_entry = ctk.CTkEntry(items_frame, textvariable=self.qty_var, width=80)
         self.qty_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        self.qty_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
         ctk.CTkButton(items_frame, text="Добавить", command=self._add_item).grid(row=0, column=4, sticky="w", padx=5, pady=5)
 
@@ -87,7 +105,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_job_frame.place_forget()
 
         # Items table
-        table_frame = ctk.CTkFrame(self)
+        table_frame = ctk.CTkFrame(left)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount"), show="headings")
@@ -107,23 +125,24 @@ class WorkOrdersForm(ctk.CTkFrame):
         ctk.CTkButton(btns_col, text="Очистить", command=self._clear_items).pack(pady=4)
 
         # Workers section
-        workers_frame = ctk.CTkFrame(self)
+        workers_frame = ctk.CTkFrame(left)
         workers_frame.pack(fill="x", padx=10, pady=10)
 
         ctk.CTkLabel(workers_frame, text="Работник").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.worker_entry = ctk.CTkEntry(workers_frame, placeholder_text="Начните ввод ФИО", width=300)
         self.worker_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
+        self.worker_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
         ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         self.suggest_worker_frame = ctk.CTkFrame(self)
         self.suggest_worker_frame.place_forget()
 
-        self.workers_list = ctk.CTkScrollableFrame(self, height=120)
+        self.workers_list = ctk.CTkScrollableFrame(left, height=120)
         self.workers_list.pack(fill="x", padx=10)
 
         # Totals and Save
-        totals_frame = ctk.CTkFrame(self)
+        totals_frame = ctk.CTkFrame(left)
         totals_frame.pack(fill="x", padx=10, pady=10)
 
         self.total_var = ctk.StringVar(value="0.00")
@@ -137,24 +156,59 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         ctk.CTkButton(totals_frame, text="Сохранить наряд", command=self._save).grid(row=0, column=4, padx=10, pady=5)
 
-    # ---- Suggestions ----
+        # Right-side: existing orders list
+        ctk.CTkLabel(right, text="Список нарядов").pack(padx=10, pady=(10, 0), anchor="w")
+        filter_frame = ctk.CTkFrame(right)
+        filter_frame.pack(fill="x", padx=10, pady=5)
+        self.filter_from = ctk.StringVar()
+        self.filter_to = ctk.StringVar()
+        ctk.CTkLabel(filter_frame, text="с").pack(side="left", padx=2)
+        ctk.CTkEntry(filter_frame, textvariable=self.filter_from, width=100).pack(side="left")
+        ctk.CTkLabel(filter_frame, text="по").pack(side="left", padx=2)
+        ctk.CTkEntry(filter_frame, textvariable=self.filter_to, width=100).pack(side="left")
+        ctk.CTkButton(filter_frame, text="Фильтр", width=80, command=self._apply_filter).pack(side="left", padx=6)
+
+        self.orders_tree = ttk.Treeview(right, columns=("no", "date", "contract", "product", "total"), show="headings", height=18)
+        self.orders_tree.heading("no", text="№")
+        self.orders_tree.heading("date", text="Дата")
+        self.orders_tree.heading("contract", text="Контракт")
+        self.orders_tree.heading("product", text="Изделие")
+        self.orders_tree.heading("total", text="Сумма")
+        self.orders_tree.column("no", width=60)
+        self.orders_tree.column("date", width=90)
+        self.orders_tree.column("contract", width=120)
+        self.orders_tree.column("product", width=160)
+        self.orders_tree.column("total", width=100)
+        self.orders_tree.pack(fill="y", padx=10, pady=5)
+        self.orders_tree.bind("<<TreeviewSelect>>", self._on_order_select)
+
+    # --- suggest helpers ---
+    def _hide_all_suggests(self) -> None:
+        for frame in (
+            self.suggest_contract_frame,
+            self.suggest_product_frame,
+            self.suggest_job_frame,
+            self.suggest_worker_frame,
+        ):
+            frame.place_forget()
+
     def _place_suggest_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         x = entry.winfo_rootx() - self.winfo_rootx()
         y = entry.winfo_rooty() - self.winfo_rooty() + entry.winfo_height()
         frame.place(x=x, y=y)
+        frame.lift()
 
     def _on_contract_key(self, _evt=None) -> None:
+        self._hide_all_suggests()
         for w in self.suggest_contract_frame.winfo_children():
             w.destroy()
         text = self.contract_entry.get().strip()
         if not text:
-            self.suggest_contract_frame.place_forget()
             self.selected_contract_id = None
             return
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_contracts(conn, text, CONFIG.autocomplete_limit)
         if not rows:
-            self.suggest_contract_frame.place_forget()
             return
         self._place_suggest_under(self.contract_entry, self.suggest_contract_frame)
         for _id, label in rows:
@@ -167,17 +221,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_contract_frame.place_forget()
 
     def _on_product_key(self, _evt=None) -> None:
+        self._hide_all_suggests()
         for w in self.suggest_product_frame.winfo_children():
             w.destroy()
         text = self.product_entry.get().strip()
         if not text:
-            self.suggest_product_frame.place_forget()
             self.selected_product_id = None
             return
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_products(conn, text, CONFIG.autocomplete_limit)
         if not rows:
-            self.suggest_product_frame.place_forget()
             return
         self._place_suggest_under(self.product_entry, self.suggest_product_frame)
         for _id, label in rows:
@@ -190,16 +243,15 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_product_frame.place_forget()
 
     def _on_job_key(self, _evt=None) -> None:
+        self._hide_all_suggests()
         for w in self.suggest_job_frame.winfo_children():
             w.destroy()
         text = self.job_entry.get().strip()
         if not text:
-            self.suggest_job_frame.place_forget()
             return
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_job_types(conn, text, CONFIG.autocomplete_limit)
         if not rows:
-            self.suggest_job_frame.place_forget()
             return
         self._place_suggest_under(self.job_entry, self.suggest_job_frame)
         for _id, label in rows:
@@ -208,20 +260,19 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _pick_job(self, job_type_id: int, label: str) -> None:
         self.job_entry.delete(0, "end")
         self.job_entry.insert(0, label)
-        self.job_entry._selected_job_id = job_type_id  # attach attribute for temporary storage
+        self.job_entry._selected_job_id = job_type_id
         self.suggest_job_frame.place_forget()
 
     def _on_worker_key(self, _evt=None) -> None:
+        self._hide_all_suggests()
         for w in self.suggest_worker_frame.winfo_children():
             w.destroy()
         text = self.worker_entry.get().strip()
         if not text:
-            self.suggest_worker_frame.place_forget()
             return
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_workers(conn, text, CONFIG.autocomplete_limit)
         if not rows:
-            self.suggest_worker_frame.place_forget()
             return
         self._place_suggest_under(self.worker_entry, self.suggest_worker_frame)
         for _id, label in rows:
@@ -248,7 +299,6 @@ class WorkOrdersForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Количество должно быть > 0")
             return
 
-        # Fetch current unit price
         with get_connection(CONFIG.db_path) as conn:
             row = conn.execute("SELECT name, price FROM job_types WHERE id = ?", (job_type_id,)).fetchone()
             if not row:
@@ -262,7 +312,6 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.item_rows.append(item)
         self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{amount:.2f}"))
 
-        # Reset entry
         self.job_entry.delete(0, "end")
         if hasattr(self.job_entry, "_selected_job_id"):
             delattr(self.job_entry, "_selected_job_id")
@@ -288,12 +337,10 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _add_worker(self, worker_id: Optional[int] = None, label: Optional[str] = None) -> None:
         if worker_id is None:
-            # if user typed manually and pressed button, do nothing without selection
             return
         if worker_id in self.selected_workers:
             return
         self.selected_workers[worker_id] = label or ""
-        # Rebuild list
         for w in self.workers_list.winfo_children():
             w.destroy()
         for wid, name in self.selected_workers.items():
@@ -306,7 +353,7 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _remove_worker(self, worker_id: int) -> None:
         if worker_id in self.selected_workers:
             del self.selected_workers[worker_id]
-            self._add_worker()  # rebuild
+            self._add_worker()
 
     def _update_totals(self) -> None:
         total = sum(i.line_amount for i in self.item_rows)
@@ -316,11 +363,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.per_worker_var.set(f"{per_worker:.2f}")
 
     def _show_date_quick(self) -> None:
-        # Simple dropdown with last 7 days
+        self._hide_all_suggests()
         frame = ctk.CTkFrame(self)
         x = self.date_entry.winfo_rootx() - self.winfo_rootx()
         y = self.date_entry.winfo_rooty() - self.winfo_rooty() + self.date_entry.winfo_height()
         frame.place(x=x, y=y)
+        frame.lift()
         for i in range(7):
             d = (dt.date.today() - dt.timedelta(days=i)).strftime(CONFIG.date_format)
             ctk.CTkButton(frame, text=d, command=lambda s=d, f=frame: self._pick_date(s, f)).pack(fill="x")
@@ -328,6 +376,55 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _pick_date(self, date_str: str, frame: ctk.CTkFrame) -> None:
         self.date_var.set(date_str)
         frame.place_forget()
+
+    # ---- Orders list ----
+    def _load_recent_orders(self) -> None:
+        for iid in getattr(self, "_order_rows", []):
+            try:
+                self.orders_tree.delete(iid)
+            except Exception:
+                pass
+        self._order_rows = []
+        with get_connection(CONFIG.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, p.name AS product_name, wo.total_amount
+                FROM work_orders wo
+                LEFT JOIN contracts c ON c.id = wo.contract_id
+                LEFT JOIN products p ON p.id = wo.product_id
+                ORDER BY date DESC, order_no DESC
+                LIMIT 200
+                """
+            ).fetchall()
+        for r in rows:
+            iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
+            self._order_rows.append(iid)
+
+    def _apply_filter(self) -> None:
+        date_from = (self.filter_from.get().strip() or None)
+        date_to = (self.filter_to.get().strip() or None)
+        where = []
+        params: list[str] = []
+        if date_from:
+            where.append("date >= ?")
+            params.append(date_from)
+        if date_to:
+            where.append("date <= ?")
+            params.append(date_to)
+        sql = "SELECT wo.id, wo.order_no, wo.date, c.code, p.name, wo.total_amount FROM work_orders wo LEFT JOIN contracts c ON c.id=wo.contract_id LEFT JOIN products p ON p.id=wo.product_id"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY date DESC, order_no DESC LIMIT 500"
+        for iid in self.orders_tree.get_children():
+            self.orders_tree.delete(iid)
+        with get_connection(CONFIG.db_path) as conn:
+            rows = conn.execute(sql, params).fetchall()
+        for r in rows:
+            self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
+
+    def _on_order_select(self, _evt=None) -> None:
+        # TODO: Загрузка существующего наряда для редактирования (в следующем шаге)
+        pass
 
     # ---- Save ----
     def _save(self) -> None:
@@ -348,7 +445,6 @@ class WorkOrdersForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Добавьте работников в бригаду")
             return
 
-        # Build WorkOrderInput
         items = [WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity) for i in self.item_rows]
         wo = WorkOrderInput(
             date=date_str,
@@ -370,6 +466,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
         self._reset_form()
+        self._load_recent_orders()
 
     def _reset_form(self) -> None:
         self.selected_contract_id = None
