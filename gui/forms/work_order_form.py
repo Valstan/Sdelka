@@ -112,21 +112,19 @@ class WorkOrdersForm(ctk.CTkFrame):
         table_frame = ctk.CTkFrame(left)
         table_frame.pack(fill="x", padx=10, pady=6)
 
-        self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount"), show="headings", height=6)
+        self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount", "del"), show="headings", height=6)
         self.items_tree.heading("job", text="Вид работ")
         self.items_tree.heading("qty", text="Количество")
         self.items_tree.heading("price", text="Цена")
         self.items_tree.heading("amount", text="Сумма")
+        self.items_tree.heading("del", text="")
         self.items_tree.column("job", width=360)
         self.items_tree.column("qty", width=100)
         self.items_tree.column("price", width=120)
         self.items_tree.column("amount", width=140)
+        self.items_tree.column("del", width=80, anchor="center")
         self.items_tree.pack(side="left", fill="x", expand=True)
-
-        btns_col = ctk.CTkFrame(table_frame)
-        btns_col.pack(side="left", fill="y", padx=6)
-        ctk.CTkButton(btns_col, text="Удалить строку", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._remove_item).pack(pady=4)
-        ctk.CTkButton(btns_col, text="Очистить", command=self._clear_items).pack(pady=4)
+        self.items_tree.bind("<Button-1>", self._on_items_click)
 
         # Workers section
         workers_frame = ctk.CTkFrame(left)
@@ -348,7 +346,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         amount = float(Decimal(str(unit_price)) * Decimal(str(qty)))
         item = ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=amount)
         self.item_rows.append(item)
-        self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{amount:.2f}"))
+        self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{amount:.2f}", "удалить"))
 
         self.job_entry.delete(0, "end")
         if hasattr(self.job_entry, "_selected_job_id"):
@@ -366,6 +364,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         if 0 <= index < len(self.item_rows):
             self.item_rows.pop(index)
         self._update_totals()
+
+    def _on_items_click(self, event) -> None:
+        region = self.items_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row_id = self.items_tree.identify_row(event.y)
+        col_id = self.items_tree.identify_column(event.x)  # e.g., '#5'
+        if not row_id or not col_id:
+            return
+        # Колонка "del" — последняя (#5)
+        if col_id == f"#{len(self.items_tree['columns'])}":
+            index = self.items_tree.index(row_id)
+            self.items_tree.delete(row_id)
+            if 0 <= index < len(self.item_rows):
+                self.item_rows.pop(index)
+            self._update_totals()
 
     def _clear_items(self) -> None:
         for iid in self.items_tree.get_children():
@@ -535,7 +549,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._clear_items()
         for (job_type_id, name, qty, unit_price, line_amount) in data.items:
             self.item_rows.append(ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=line_amount))
-            self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{line_amount:.2f}"))
+            self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{line_amount:.2f}", "удалить"))
         # workers
         self.selected_workers.clear()
         with get_connection(CONFIG.db_path) as conn:
