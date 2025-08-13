@@ -42,19 +42,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._load_recent_orders()
 
     def _build_ui(self) -> None:
-        container = ctk.CTkFrame(self)
-        container.pack(expand=True, fill="both")
-        # Сетка для пропорций 65% (левая часть) / 35% (правая часть)
-        try:
-            container.grid_columnconfigure(0, weight=65)
-            container.grid_columnconfigure(1, weight=35)
-            container.grid_rowconfigure(0, weight=1)
-        except Exception:
-            pass
+        # Перетаскиваемый сплиттер между левой и правой частями
+        paned = ttk.Panedwindow(self, orient="horizontal")
+        paned.pack(expand=True, fill="both")
 
         # Left side (form)
-        left = ctk.CTkFrame(container)
-        left.grid(row=0, column=0, sticky="nsew")
+        left = ctk.CTkFrame(paned)
+        paned.add(left, weight=3)
         # Резиновая сетка: списки тянут высоту
         try:
             left.grid_rowconfigure(0, weight=0)  # header
@@ -68,8 +62,20 @@ class WorkOrdersForm(ctk.CTkFrame):
             pass
 
         # Right side (orders list)
-        right = ctk.CTkFrame(container)
-        right.grid(row=0, column=1, sticky="nsew")
+        right = ctk.CTkFrame(paned)
+        paned.add(right, weight=2)
+
+        # Установить начальную позицию разделителя ~65/35 после инициализации размеров
+        def _set_initial_sash() -> None:
+            try:
+                total = paned.winfo_width() or self.winfo_width()
+                if not total or total <= 1:
+                    self.after(120, _set_initial_sash)
+                    return
+                paned.sashpos(0, int(total * 0.65))
+            except Exception:
+                pass
+        self.after(150, _set_initial_sash)
 
         # Header form
         header = ctk.CTkFrame(left)
