@@ -55,6 +55,17 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Left side (form)
         left = ctk.CTkFrame(container)
         left.grid(row=0, column=0, sticky="nsew")
+        # Резиновая сетка: списки тянут высоту
+        try:
+            left.grid_rowconfigure(0, weight=0)  # header
+            left.grid_rowconfigure(1, weight=0)  # items controls
+            left.grid_rowconfigure(2, weight=1)  # items list (expand)
+            left.grid_rowconfigure(3, weight=0)  # workers controls
+            left.grid_rowconfigure(4, weight=1)  # workers list (expand)
+            left.grid_rowconfigure(5, weight=0)  # totals
+            left.grid_columnconfigure(0, weight=1)
+        except Exception:
+            pass
 
         # Right side (orders list)
         right = ctk.CTkFrame(container)
@@ -62,7 +73,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Header form
         header = ctk.CTkFrame(left)
-        header.pack(fill="x", padx=10, pady=10)
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         # 3 колонки
         for i in range(3):
             header.grid_columnconfigure(i, weight=1)
@@ -96,7 +107,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Items section
         items_frame = ctk.CTkFrame(left)
-        items_frame.pack(fill="x", padx=10, pady=(0, 10))
+        items_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         for i in range(5):
             items_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
 
@@ -121,22 +132,24 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Items list (adaptive rows with delete buttons)
         items_list_frame = ctk.CTkFrame(left)
-        items_list_frame.pack(fill="x", padx=10, pady=6)
+        items_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=6)
         # Header row
         hdr = ctk.CTkFrame(items_list_frame)
-        hdr.pack(fill="x")
+        hdr.grid(row=0, column=0, sticky="ew")
         for i, txt in enumerate(["Вид работ", "Кол-во", "Цена", "Сумма", " "]):
             c = ctk.CTkLabel(hdr, text=txt)
             c.grid(row=0, column=i, sticky="w", padx=4)
         for i, w in enumerate([6, 2, 2, 2, 1]):
             hdr.grid_columnconfigure(i, weight=w)
         # Scrollable rows
-        self.items_list = ctk.CTkScrollableFrame(items_list_frame, height=100)
-        self.items_list.pack(fill="x")
+        items_list_frame.grid_rowconfigure(1, weight=1)
+        items_list_frame.grid_columnconfigure(0, weight=1)
+        self.items_list = ctk.CTkScrollableFrame(items_list_frame)
+        self.items_list.grid(row=1, column=0, sticky="nsew")
 
         # Workers section
         workers_frame = ctk.CTkFrame(left)
-        workers_frame.pack(fill="x", padx=10, pady=6)
+        workers_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=6)
 
         ctk.CTkLabel(workers_frame, text="Работник").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.worker_entry = ctk.CTkEntry(workers_frame, placeholder_text="Начните ввод ФИО", width=300)
@@ -152,12 +165,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
         self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
-        self.workers_list = ctk.CTkScrollableFrame(left, height=90)
-        self.workers_list.pack(fill="x", padx=10, pady=(0, 8))
+        self.workers_list = ctk.CTkScrollableFrame(left)
+        self.workers_list.grid(row=4, column=0, sticky="nsew", padx=10, pady=(0, 8))
 
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
-        totals_frame.pack(fill="x", padx=10, pady=6)
+        totals_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=6)
 
         self.total_var = ctk.StringVar(value="0.00")
         self.per_worker_var = ctk.StringVar(value="0.00")
