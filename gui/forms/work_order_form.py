@@ -438,6 +438,11 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _fill_form_from_loaded(self, data) -> None:
         self.editing_order_id = data.id
         self._loaded_snapshot = data
+        # визуально показать режим редактирования
+        try:
+            self.save_btn.configure(text="Сохранить изменения", fg_color="#2563eb")
+        except Exception:
+            pass
         self.date_var.set(data.date)
         # contract text
         with get_connection(CONFIG.db_path) as conn:
@@ -547,11 +552,26 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_product_id = None
         self.selected_workers.clear()
         self.item_rows.clear()
+        for w in self.workers_list.winfo_children():
+            w.destroy()
+        for w in self.suggest_contract_frame.winfo_children():
+            w.destroy()
+        for w in self.suggest_product_frame.winfo_children():
+            w.destroy()
+        for w in self.suggest_job_frame.winfo_children():
+            w.destroy()
+        self.suggest_contract_frame.place_forget()
+        self.suggest_product_frame.place_forget()
+        self.suggest_job_frame.place_forget()
         self.date_var.set(dt.date.today().strftime(CONFIG.date_format))
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
-        for iid in self.items_tree.get_children():
-            self.items_tree.delete(iid)
-        for w in self.workers_list.winfo_children():
-            w.destroy()
+        self.qty_var.set("1")
+        for i in self.items_tree.get_children():
+            self.items_tree.delete(i)
         self._update_totals()
+        # вернуть кнопку в обычный режим
+        try:
+            self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])  # стандартный цвет темы
+        except Exception:
+            self.save_btn.configure(text="Сохранить")
