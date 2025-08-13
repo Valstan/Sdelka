@@ -31,6 +31,8 @@ class JobTypesForm(ctk.CTkFrame):
         ctk.CTkLabel(form, text="Наименование").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.name_entry = ctk.CTkEntry(form, textvariable=self.name_var, width=320)
         self.name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        self.name_entry.bind("<KeyRelease>", self._on_name_key)
+        self.name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
 
         ctk.CTkLabel(form, text="Ед. изм.").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.unit_entry = ctk.CTkEntry(form, textvariable=self.unit_var, width=120)
@@ -61,22 +63,70 @@ class JobTypesForm(ctk.CTkFrame):
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
+        # Suggest frames
+        self.suggest_name_frame = ctk.CTkFrame(self)
+        self.suggest_name_frame.place_forget()
         self.suggest_unit_frame = ctk.CTkFrame(self)
         self.suggest_unit_frame.place_forget()
 
+    def _hide_all_suggestions(self) -> None:
+        self.suggest_name_frame.place_forget()
+        self.suggest_unit_frame.place_forget()
+
+    def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
+        x = entry.winfo_rootx() - self.winfo_rootx()
+        y = entry.winfo_rooty() - self.winfo_rooty() + entry.winfo_height()
+        frame.place(x=x, y=y)
+        frame.lift()
+
+    def _on_name_key(self, event=None) -> None:
+        self._hide_all_suggestions()
+        prefix = self.name_var.get().strip()
+        for w in self.suggest_name_frame.winfo_children():
+            w.destroy()
+        # запросы
+        if prefix:
+            with get_connection(CONFIG.db_path) as conn:
+                rows = q.search_job_types_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
+        else:
+            with get_connection(CONFIG.db_path) as conn:
+                rows = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
+        names = [r["name"] for r in rows]
+        self._place_under(self.name_entry, self.suggest_name_frame)
+        shown = 0
+        for val in names:
+            ctk.CTkButton(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        for label in get_recent("job_types.name", prefix or None, CONFIG.autocomplete_limit):
+            if shown >= CONFIG.autocomplete_limit:
+                break
+            if label not in names:
+                ctk.CTkButton(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+
+    def _pick_name(self, val: str) -> None:
+        self.name_var.set(val)
+        record_use("job_types.name", val)
+        self.suggest_name_frame.place_forget()
+
     def _on_unit_key(self, event=None) -> None:
+        self._hide_all_suggestions()
         prefix = self.unit_var.get().strip()
-        self._clear_frame(self.suggest_unit_frame)
+        for w in self.suggest_unit_frame.winfo_children():
+            w.destroy()
         with get_connection(CONFIG.db_path) as conn:
             vals = q.distinct_units_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
-        x = self.unit_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.unit_entry.winfo_rooty() - self.winfo_rooty() + self.unit_entry.winfo_height()
-        self.suggest_unit_frame.place(x=x, y=y)
+        self._place_under(self.unit_entry, self.suggest_unit_frame)
+        shown = 0
         for val in vals:
             ctk.CTkButton(self.suggest_unit_frame, text=val, command=lambda s=val: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
-        for label in get_recent("job_types.unit", prefix, CONFIG.autocomplete_limit):
+            shown += 1
+        for label in get_recent("job_types.unit", prefix or None, CONFIG.autocomplete_limit):
+            if shown >= CONFIG.autocomplete_limit:
+                break
             if label not in vals:
                 ctk.CTkButton(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_unit(self, val: str) -> None:
         self.unit_var.set(val)
@@ -109,7 +159,7 @@ class JobTypesForm(ctk.CTkFrame):
         self.unit_var.set("")
         self.price_var.set("")
         self.tree.selection_remove(self.tree.selection())
-        self.suggest_unit_frame.place_forget()
+        self._hide_all_suggestions()
 
     def _cancel(self) -> None:
         self._clear()
