@@ -13,6 +13,7 @@ from config.settings import CONFIG
 from services.merge_db import merge_from_file
 from utils.text import sanitize_filename
 from utils.user_prefs import load_prefs, save_prefs, UserPrefs
+from utils.ui_theming import apply_user_fonts
 
 
 class SettingsView(ctk.CTkFrame):
@@ -57,7 +58,13 @@ class SettingsView(ctk.CTkFrame):
         try:
             prefs = UserPrefs(list_font_size=int(self._list_font_var.get()), ui_font_size=int(self._ui_font_var.get()))
             save_prefs(prefs)
-            self.status.configure(text="Настройки интерфейса сохранены. Перезапустите программу для полного применения.")
+            # Применить на лету
+            try:
+                root = self.winfo_toplevel()
+                apply_user_fonts(root, prefs)
+                self.status.configure(text="Настройки интерфейса применены и сохранены.")
+            except Exception:
+                self.status.configure(text="Настройки сохранены. Перезапуск может потребоваться для полного применения.")
         except Exception as exc:
             self.status.configure(text=f"Ошибка сохранения настроек: {exc}")
 
