@@ -34,10 +34,13 @@ class SettingsView(ctk.CTkFrame):
         if not src.exists():
             messagebox.showerror("Экспорт", "Файл базы данных не найден")
             return
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        initial = f"{src.stem}_backup_{stamp}.db"
         dest = filedialog.asksaveasfilename(
             title="Сохранить копию базы",
             defaultextension=".db",
-            initialfile=src.name,
+            initialfile=initial,
             filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
         )
         if not dest:

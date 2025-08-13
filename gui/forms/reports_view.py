@@ -361,8 +361,34 @@ class ReportsView(ctk.CTkFrame):
             values = [row[c] for c in cols]
             self.tree.insert("", "end", values=values)
 
+    def _build_filename_suffix(self) -> str:
+        from datetime import datetime
+        parts: list[str] = []
+        dfrom = (self.date_from.get() or "").strip()
+        dto = (self.date_to.get() or "").strip()
+        if dfrom or dto:
+            parts.append(f"{dfrom or '...'}-{dto or '...'}")
+        if self._selected_worker_id and not self.worker_entry.get().strip():
+            parts.append("по_работнику")
+        if self.dept_var.get().strip():
+            parts.append(f"цех_{self.dept_var.get().strip()}")
+        if self._selected_job_type_id and not self.job_entry.get().strip():
+            parts.append("по_виду_работ")
+        if self._selected_product_id and not self.product_entry.get().strip():
+            parts.append("по_изделию")
+        if self._selected_contract_id and not self.contract_entry.get().strip():
+            parts.append("по_контракту")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        parts.append(ts)
+        suffix = "_".join(filter(None, parts))
+        return suffix
+
     def _ask_save_path(self, title: str, defaultextension: str, filetypes: list[tuple[str, str]]):
-        return filedialog.asksaveasfilename(title=title, defaultextension=defaultextension, filetypes=filetypes)
+        from utils.text import sanitize_filename
+        base = "отчет_по_нарядам"
+        suffix = self._build_filename_suffix()
+        initial = sanitize_filename(f"{base}_{suffix}") + defaultextension
+        return filedialog.asksaveasfilename(title=title, defaultextension=defaultextension, initialfile=initial, filetypes=filetypes)
 
     def _export_html(self) -> None:
         if self._df is None:

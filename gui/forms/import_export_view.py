@@ -103,7 +103,17 @@ class ImportExportView(ctk.CTkFrame):
 
     # Exports
     def _export_table(self, table: str) -> None:
-        path = self._ask_save(f"Сохранить {table}", ".xlsx", "Excel")
+        from datetime import datetime
+        from utils.text import sanitize_filename
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        table_rus = {
+            "workers": "работники",
+            "job_types": "виды_работ",
+            "products": "изделия",
+            "contracts": "контракты",
+        }.get(table, table)
+        initial = sanitize_filename(f"экспорт_{table_rus}_{stamp}") + ".xlsx"
+        path = filedialog.asksaveasfilename(title=f"Сохранить {table_rus}", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx")])
         if not path:
             return
         try:
@@ -126,7 +136,17 @@ class ImportExportView(ctk.CTkFrame):
 
     # Templates
     def _save_template(self, kind: str) -> None:
-        path = self._ask_save(f"Шаблон {kind}", ".xlsx", "Excel")
+        from datetime import datetime
+        from utils.text import sanitize_filename
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        map_rus = {
+            "workers": "работники",
+            "job_types": "виды_работ",
+            "products": "изделия",
+            "contracts": "контракты",
+        }
+        initial = sanitize_filename(f"шаблон_{map_rus.get(kind, kind)}_{stamp}") + ".xlsx"
+        path = filedialog.asksaveasfilename(title=f"Шаблон {map_rus.get(kind, kind)}", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx")])
         if not path:
             return
         try:
