@@ -110,9 +110,9 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Items table
         table_frame = ctk.CTkFrame(left)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        table_frame.pack(fill="x", padx=10, pady=6)
 
-        self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount"), show="headings")
+        self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount"), show="headings", height=6)
         self.items_tree.heading("job", text="Вид работ")
         self.items_tree.heading("qty", text="Количество")
         self.items_tree.heading("price", text="Цена")
@@ -121,16 +121,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.items_tree.column("qty", width=100)
         self.items_tree.column("price", width=120)
         self.items_tree.column("amount", width=140)
-        self.items_tree.pack(side="left", fill="both", expand=True)
+        self.items_tree.pack(side="left", fill="x", expand=True)
 
         btns_col = ctk.CTkFrame(table_frame)
-        btns_col.pack(side="left", fill="y", padx=8)
+        btns_col.pack(side="left", fill="y", padx=6)
         ctk.CTkButton(btns_col, text="Удалить строку", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._remove_item).pack(pady=4)
         ctk.CTkButton(btns_col, text="Очистить", command=self._clear_items).pack(pady=4)
 
         # Workers section
         workers_frame = ctk.CTkFrame(left)
-        workers_frame.pack(fill="x", padx=10, pady=10)
+        workers_frame.pack(fill="x", padx=10, pady=6)
 
         ctk.CTkLabel(workers_frame, text="Работник").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.worker_entry = ctk.CTkEntry(workers_frame, placeholder_text="Начните ввод ФИО", width=300)
@@ -146,12 +146,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
         self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
-        self.workers_list = ctk.CTkScrollableFrame(left, height=120)
-        self.workers_list.pack(fill="x", padx=10)
+        self.workers_list = ctk.CTkScrollableFrame(left, height=90)
+        self.workers_list.pack(fill="x", padx=10, pady=(0, 8))
 
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
-        totals_frame.pack(fill="x", padx=10, pady=10)
+        totals_frame.pack(fill="x", padx=10, pady=6)
 
         self.total_var = ctk.StringVar(value="0.00")
         self.per_worker_var = ctk.StringVar(value="0.00")
