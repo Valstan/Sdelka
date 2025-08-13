@@ -159,8 +159,6 @@ class WorkOrdersForm(ctk.CTkFrame):
         actions.grid(row=0, column=4, padx=10, pady=5)
         self.save_btn = ctk.CTkButton(actions, text="Сохранить", command=self._save)
         self.save_btn.pack(side="left", padx=4)
-        self.update_btn = ctk.CTkButton(actions, text="Обновить", command=self._update, fg_color="#2563eb")
-        self.update_btn.pack(side="left", padx=4)
         self.delete_btn = ctk.CTkButton(actions, text="Удалить", command=self._delete, fg_color="#b91c1c", hover_color="#7f1d1d")
         self.delete_btn.pack(side="left", padx=4)
         self.cancel_btn = ctk.CTkButton(actions, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
@@ -505,33 +503,21 @@ class WorkOrdersForm(ctk.CTkFrame):
         if not wo:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
-                _id = create_work_order(conn, wo)
+            if self.editing_order_id:
+                from services.work_orders import update_work_order  # lazy import
+                with get_connection(CONFIG.db_path) as conn:
+                    update_work_order(conn, self.editing_order_id, wo)
+                messagebox.showinfo("Сохранено", "Наряд обновлен")
+            else:
+                with get_connection(CONFIG.db_path) as conn:
+                    _id = create_work_order(conn, wo)
+                messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Ошибка сохранения: {exc}")
             return
         except Exception as exc:
             messagebox.showerror("Ошибка", f"Не удалось сохранить наряд: {exc}")
             return
-        messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
-        self._reset_form()
-        self._load_recent_orders()
-
-    def _update(self) -> None:
-        if not self.editing_order_id:
-            messagebox.showwarning("Проверка", "Выберите наряд в списке справа")
-            return
-        wo = self._build_input()
-        if not wo:
-            return
-        try:
-            from services.work_orders import update_work_order  # lazy import
-            with get_connection(CONFIG.db_path) as conn:
-                update_work_order(conn, self.editing_order_id, wo)
-        except Exception as exc:
-            messagebox.showerror("Ошибка", f"Не удалось обновить наряд: {exc}")
-            return
-        messagebox.showinfo("Сохранено", "Наряд обновлен")
         self._reset_form()
         self._load_recent_orders()
 
