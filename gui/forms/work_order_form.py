@@ -115,23 +115,20 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_job_frame = ctk.CTkFrame(self)
         self.suggest_job_frame.place_forget()
 
-        # Items table
-        table_frame = ctk.CTkFrame(left)
-        table_frame.pack(fill="x", padx=10, pady=6)
-
-        self.items_tree = ttk.Treeview(table_frame, columns=("job", "qty", "price", "amount", "del"), show="headings", height=6)
-        self.items_tree.heading("job", text="Вид работ")
-        self.items_tree.heading("qty", text="Количество")
-        self.items_tree.heading("price", text="Цена")
-        self.items_tree.heading("amount", text="Сумма")
-        self.items_tree.heading("del", text="")
-        self.items_tree.column("job", width=360)
-        self.items_tree.column("qty", width=100)
-        self.items_tree.column("price", width=120)
-        self.items_tree.column("amount", width=140)
-        self.items_tree.column("del", width=80, anchor="center")
-        self.items_tree.pack(side="left", fill="x", expand=True)
-        self.items_tree.bind("<Button-1>", self._on_items_click)
+        # Items list (adaptive rows with delete buttons)
+        items_list_frame = ctk.CTkFrame(left)
+        items_list_frame.pack(fill="x", padx=10, pady=6)
+        # Header row
+        hdr = ctk.CTkFrame(items_list_frame)
+        hdr.pack(fill="x")
+        for i, txt in enumerate(["Вид работ", "Кол-во", "Цена", "Сумма", " "]):
+            c = ctk.CTkLabel(hdr, text=txt)
+            c.grid(row=0, column=i, sticky="w", padx=4)
+        for i, w in enumerate([6, 2, 2, 2, 1]):
+            hdr.grid_columnconfigure(i, weight=w)
+        # Scrollable rows
+        self.items_list = ctk.CTkScrollableFrame(items_list_frame, height=120)
+        self.items_list.pack(fill="x")
 
         # Workers section
         workers_frame = ctk.CTkFrame(left)
@@ -353,7 +350,21 @@ class WorkOrdersForm(ctk.CTkFrame):
         amount = float(Decimal(str(unit_price)) * Decimal(str(qty)))
         item = ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=amount)
         self.item_rows.append(item)
-        self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{amount:.2f}", "удалить"))
+        # UI row
+        row = ctk.CTkFrame(self.items_list)
+        row.pack(fill="x", pady=2)
+        # grid columns
+        for i, w in enumerate([6, 2, 2, 2, 1]):
+            row.grid_columnconfigure(i, weight=w)
+        ctk.CTkLabel(row, text=name, anchor="w").grid(row=0, column=0, sticky="ew", padx=4)
+        ctk.CTkLabel(row, text=str(qty)).grid(row=0, column=1, sticky="w", padx=4)
+        ctk.CTkLabel(row, text=f"{unit_price:.2f}").grid(row=0, column=2, sticky="w", padx=4)
+        ctk.CTkLabel(row, text=f"{amount:.2f}").grid(row=0, column=3, sticky="w", padx=4)
+        del_btn = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d")
+        del_btn.grid(row=0, column=4, sticky="e", padx=4)
+        idx = len(self.item_rows) - 1
+        del_btn.configure(command=lambda i=idx, rf=row: self._remove_item_row(i, rf))
+        row._del_btn = del_btn
 
         self.job_entry.delete(0, "end")
         if hasattr(self.job_entry, "_selected_job_id"):
@@ -362,35 +373,25 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         self._update_totals()
 
-    def _remove_item(self) -> None:
-        sel = self.items_tree.selection()
-        if not sel:
-            return
-        index = self.items_tree.index(sel[0])
-        self.items_tree.delete(sel[0])
-        if 0 <= index < len(self.item_rows):
-            self.item_rows.pop(index)
+    def _remove_item_row(self, idx: int, row_frame: ctk.CTkFrame) -> None:
+        if 0 <= idx < len(self.item_rows):
+            self.item_rows.pop(idx)
+        try:
+            row_frame.destroy()
+        except Exception:
+            pass
+        # Перенумеровать callbacks
+        for new_idx, child in enumerate(self.items_list.winfo_children()):
+            if hasattr(child, "_del_btn"):
+                child._del_btn.configure(command=lambda i=new_idx, rf=child: self._remove_item_row(i, rf))
         self._update_totals()
 
-    def _on_items_click(self, event) -> None:
-        region = self.items_tree.identify("region", event.x, event.y)
-        if region != "cell":
-            return
-        row_id = self.items_tree.identify_row(event.y)
-        col_id = self.items_tree.identify_column(event.x)  # e.g., '#5'
-        if not row_id or not col_id:
-            return
-        # Колонка "del" — последняя (#5)
-        if col_id == f"#{len(self.items_tree['columns'])}":
-            index = self.items_tree.index(row_id)
-            self.items_tree.delete(row_id)
-            if 0 <= index < len(self.item_rows):
-                self.item_rows.pop(index)
-            self._update_totals()
-
     def _clear_items(self) -> None:
-        for iid in self.items_tree.get_children():
-            self.items_tree.delete(iid)
+        for child in self.items_list.winfo_children():
+            try:
+                child.destroy()
+            except Exception:
+                pass
         self.item_rows.clear()
         self._update_totals()
 
@@ -556,7 +557,20 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._clear_items()
         for (job_type_id, name, qty, unit_price, line_amount) in data.items:
             self.item_rows.append(ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=line_amount))
-            self.items_tree.insert("", "end", values=(name, qty, f"{unit_price:.2f}", f"{line_amount:.2f}", "удалить"))
+            # Render UI row
+            row = ctk.CTkFrame(self.items_list)
+            row.pack(fill="x", pady=2)
+            for i, w in enumerate([6, 2, 2, 2, 1]):
+                row.grid_columnconfigure(i, weight=w)
+            ctk.CTkLabel(row, text=name, anchor="w").grid(row=0, column=0, sticky="ew", padx=4)
+            ctk.CTkLabel(row, text=str(qty)).grid(row=0, column=1, sticky="w", padx=4)
+            ctk.CTkLabel(row, text=f"{unit_price:.2f}").grid(row=0, column=2, sticky="w", padx=4)
+            ctk.CTkLabel(row, text=f"{line_amount:.2f}").grid(row=0, column=3, sticky="w", padx=4)
+            del_btn = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d")
+            del_btn.grid(row=0, column=4, sticky="e", padx=4)
+            idx = len(self.item_rows) - 1
+            del_btn.configure(command=lambda i=idx, rf=row: self._remove_item_row(i, rf))
+            row._del_btn = del_btn
         # workers
         self.selected_workers.clear()
         with get_connection(CONFIG.db_path) as conn:
@@ -663,8 +677,11 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
         self.qty_var.set("1")
-        for i in self.items_tree.get_children():
-            self.items_tree.delete(i)
+        for child in self.items_list.winfo_children():
+            try:
+                child.destroy()
+            except Exception:
+                pass
         self._update_totals()
         # вернуть кнопку в обычный режим
         try:
