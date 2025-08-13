@@ -37,8 +37,10 @@ class AppWindow(ctk.CTk):
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
-        # Наряды
-        WorkOrdersForm(self.tab_orders).pack(expand=True, fill="both")
+        # Наряды (прокручиваемая область)
+        orders_sf = ctk.CTkScrollableFrame(self.tab_orders)
+        orders_sf.pack(expand=True, fill="both")
+        WorkOrdersForm(orders_sf).pack(expand=True, fill="both")
 
         # Подвкладки справочников
         refs_tabs = ctk.CTkTabview(self.tab_refs)
@@ -48,15 +50,33 @@ class AppWindow(ctk.CTk):
         tab_products = refs_tabs.add("Изделия")
         tab_contracts = refs_tabs.add("Контракты")
 
-        WorkersForm(tab_workers).pack(expand=True, fill="both")
-        JobTypesForm(tab_jobs).pack(expand=True, fill="both")
-        ProductsForm(tab_products).pack(expand=True, fill="both")
-        ContractsForm(tab_contracts).pack(expand=True, fill="both")
+        workers_sf = ctk.CTkScrollableFrame(tab_workers)
+        workers_sf.pack(expand=True, fill="both")
+        WorkersForm(workers_sf).pack(expand=True, fill="both")
+
+        jobs_sf = ctk.CTkScrollableFrame(tab_jobs)
+        jobs_sf.pack(expand=True, fill="both")
+        JobTypesForm(jobs_sf).pack(expand=True, fill="both")
+
+        products_sf = ctk.CTkScrollableFrame(tab_products)
+        products_sf.pack(expand=True, fill="both")
+        ProductsForm(products_sf).pack(expand=True, fill="both")
+
+        contracts_sf = ctk.CTkScrollableFrame(tab_contracts)
+        contracts_sf.pack(expand=True, fill="both")
+        ContractsForm(contracts_sf).pack(expand=True, fill="both")
 
         # Отчеты
-        ReportsView(self.tab_reports).pack(expand=True, fill="both")
+        reports_sf = ctk.CTkScrollableFrame(self.tab_reports)
+        reports_sf.pack(expand=True, fill="both")
+        ReportsView(reports_sf).pack(expand=True, fill="both")
 
         # Импорт/Экспорт
-        ImportExportView(self.tab_import).pack(expand=True, fill="both")
+        import_sf = ctk.CTkScrollableFrame(self.tab_import)
+        import_sf.pack(expand=True, fill="both")
+        ImportExportView(import_sf).pack(expand=True, fill="both")
 
-        SettingsView(self.tab_settings).pack(expand=True, fill="both")
+        # Настройки
+        settings_sf = ctk.CTkScrollableFrame(self.tab_settings)
+        settings_sf.pack(expand=True, fill="both")
+        SettingsView(settings_sf).pack(expand=True, fill="both")
