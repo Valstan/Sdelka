@@ -110,8 +110,15 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(toolbar, text="Экспорт PDF", command=lambda: self._open_preview("pdf")).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт Excel", command=lambda: self._open_preview("excel")).pack(side="left", padx=4)
 
+        preview.grid_rowconfigure(1, weight=1)
+        preview.grid_columnconfigure(0, weight=1)
         self.tree = ttk.Treeview(preview, show="headings")
-        self.tree.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(preview, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(preview, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.tree.grid(row=1, column=0, sticky="nsew")
+        vsb.grid(row=1, column=1, sticky="ns")
+        hsb.grid(row=2, column=0, sticky="ew")
 
     def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         x = entry.winfo_rootx() - self.winfo_rootx()

@@ -70,6 +70,9 @@ class WorkersForm(ctk.CTkFrame):
         # Таблица
         table_frame = ctk.CTkFrame(self)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # Grid резиновость
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
 
         self.tree = ttk.Treeview(table_frame, columns=("full_name", "dept", "position", "personnel_no"), show="headings")
         self.tree.heading("full_name", text="ФИО")
@@ -80,7 +83,12 @@ class WorkersForm(ctk.CTkFrame):
         self.tree.column("dept", width=100)
         self.tree.column("position", width=200)
         self.tree.column("personnel_no", width=120)
-        self.tree.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
 
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 

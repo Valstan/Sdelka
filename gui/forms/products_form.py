@@ -50,13 +50,20 @@ class ProductsForm(ctk.CTkFrame):
 
         table_frame = ctk.CTkFrame(self)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
 
         self.tree = ttk.Treeview(table_frame, columns=("name", "product_no"), show="headings")
         self.tree.heading("name", text="Наименование")
         self.tree.heading("product_no", text="Номер изделия")
         self.tree.column("name", width=420)
         self.tree.column("product_no", width=200)
-        self.tree.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
         self.suggest_name_frame = ctk.CTkFrame(self)
