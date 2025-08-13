@@ -109,7 +109,15 @@ class ReportsView(ctk.CTkFrame):
         for w in frame.winfo_children():
             w.destroy()
 
+    def _hide_all_suggestions(self) -> None:
+        self.sg_worker.place_forget()
+        self.sg_dept.place_forget()
+        self.sg_job.place_forget()
+        self.sg_product.place_forget()
+        self.sg_contract.place_forget()
+
     def _on_worker_key(self, _evt=None) -> None:
+        self._hide_all_suggestions()
         self._selected_worker_id = None
         self._clear_frame(self.sg_worker)
         text = self.worker_entry.get().strip()
@@ -132,6 +140,7 @@ class ReportsView(ctk.CTkFrame):
         self.sg_worker.place_forget()
 
     def _on_dept_key(self, _evt=None) -> None:
+        self._hide_all_suggestions()
         self._clear_frame(self.sg_dept)
         text = self.dept_entry.get().strip()
         with get_connection(CONFIG.db_path) as conn:
@@ -151,6 +160,7 @@ class ReportsView(ctk.CTkFrame):
         self.sg_dept.place_forget()
 
     def _on_job_key(self, _evt=None) -> None:
+        self._hide_all_suggestions()
         self._clear_frame(self.sg_job)
         text = self.job_entry.get().strip()
         with get_connection(CONFIG.db_path) as conn:
@@ -172,6 +182,7 @@ class ReportsView(ctk.CTkFrame):
         self.sg_job.place_forget()
 
     def _on_product_key(self, _evt=None) -> None:
+        self._hide_all_suggestions()
         self._clear_frame(self.sg_product)
         text = self.product_entry.get().strip()
         with get_connection(CONFIG.db_path) as conn:
@@ -193,6 +204,7 @@ class ReportsView(ctk.CTkFrame):
         self.sg_product.place_forget()
 
     def _on_contract_key(self, _evt=None) -> None:
+        self._hide_all_suggestions()
         self._clear_frame(self.sg_contract)
         text = self.contract_entry.get().strip()
         with get_connection(CONFIG.db_path) as conn:
