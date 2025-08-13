@@ -185,7 +185,11 @@ def save_pdf(
             break
 
     if best_page is None:
-        best_page = A4
+        # Учитываем желаемую ориентацию при фолбэке
+        if orientation == "landscape":
+            best_page = landscape(A4)
+        else:
+            best_page = A4
     if best_font is None:
         best_font = font_base if font_size is None else max(font_min, min(font_size, font_max))
     if best_widths is None:
