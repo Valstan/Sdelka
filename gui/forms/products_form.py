@@ -31,11 +31,13 @@ class ProductsForm(ctk.CTkFrame):
         self.name_entry = ctk.CTkEntry(form, textvariable=self.name_var, width=360)
         self.name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.name_entry.bind("<KeyRelease>", self._on_name_key)
+        self.name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
 
         ctk.CTkLabel(form, text="Номер изделия").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.no_entry = ctk.CTkEntry(form, textvariable=self.no_var, width=200)
         self.no_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.no_entry.bind("<KeyRelease>", self._on_no_key)
+        self.no_entry.bind("<FocusIn>", lambda e: self._on_no_key())
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=10)

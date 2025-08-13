@@ -71,14 +71,14 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр", width=180)
         self.contract_entry.grid(row=0, column=4, sticky="w", padx=5, pady=5)
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
-        self.contract_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
+        self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
 
         # Product
         ctk.CTkLabel(header, text="Изделие").grid(row=0, column=5, sticky="w", padx=5, pady=5)
         self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название", width=220)
         self.product_entry.grid(row=0, column=6, sticky="w", padx=5, pady=5)
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
-        self.product_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
+        self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
 
         # Suggestion frames
         self.suggest_contract_frame = ctk.CTkFrame(self)
@@ -94,7 +94,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.job_entry = ctk.CTkEntry(items_frame, placeholder_text="Начните ввод", width=280)
         self.job_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
-        self.job_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
+        self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
 
         ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.qty_var = ctk.StringVar(value="1")
@@ -135,7 +135,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_entry = ctk.CTkEntry(workers_frame, placeholder_text="Начните ввод ФИО", width=300)
         self.worker_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
-        self.worker_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
+        self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
         ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         self.suggest_worker_frame = ctk.CTkFrame(self)

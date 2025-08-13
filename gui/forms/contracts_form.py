@@ -32,6 +32,7 @@ class ContractsForm(ctk.CTkFrame):
         self.code_entry = ctk.CTkEntry(form, textvariable=self.code_var, width=240)
         self.code_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.code_entry.bind("<KeyRelease>", self._on_code_key)
+        self.code_entry.bind("<FocusIn>", lambda e: self._on_code_key())
 
         ctk.CTkLabel(form, text="Дата начала (ДД.ММ.ГГГГ)").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         start_entry = ctk.CTkEntry(form, textvariable=self.start_var, width=120)

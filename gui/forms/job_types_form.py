@@ -36,6 +36,7 @@ class JobTypesForm(ctk.CTkFrame):
         self.unit_entry = ctk.CTkEntry(form, textvariable=self.unit_var, width=120)
         self.unit_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.unit_entry.bind("<KeyRelease>", self._on_unit_key)
+        self.unit_entry.bind("<FocusIn>", lambda e: self._on_unit_key())
 
         ctk.CTkLabel(form, text="Цена").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         ctk.CTkEntry(form, textvariable=self.price_var, width=120).grid(row=1, column=1, sticky="w", padx=5, pady=5)
