@@ -445,10 +445,10 @@ class ReportsView(ctk.CTkFrame):
 
         ctk.CTkLabel(panel_top, text="Шрифт").pack(side="left", padx=4)
         font_family = ctk.StringVar(value="Авто")
-        font_opts = ["Авто", "DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans", "Helvetica"]
+        font_opts = ["Авто", "DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans"]
         font_menu = ctk.CTkOptionMenu(panel_top, values=font_opts, variable=font_family)
         font_menu.pack(side="left")
-        ctk.CTkLabel(panel_top, text="Размер").pack(side="left", padx=6)
+        ctk.CTkLabel(panel_top, text="Размер шрифта").pack(side="left", padx=6)
         font_size = ctk.StringVar(value="14")
         size_values = [str(i) for i in range(10, 19)]
         size_menu = ctk.CTkOptionMenu(panel_top, values=size_values, variable=font_size)
@@ -459,6 +459,7 @@ class ReportsView(ctk.CTkFrame):
         orient_menu.pack(side="left")
 
         # Поля и кнопки на второй строке
+        ctk.CTkLabel(panel_bottom, text="Поля:").pack(side="left", padx=(4, 8))
         ctk.CTkLabel(panel_bottom, text="Левое").pack(side="left", padx=(4, 2))
         left_margin = ctk.StringVar(value="15")
         margin_vals = [str(i) for i in range(2, 21, 2)]
@@ -572,8 +573,6 @@ class ReportsView(ctk.CTkFrame):
         def map_font_family(val: str) -> str | None:
             if val == "Авто":
                 return None
-            if val == "Helvetica":
-                return "Helvetica"
             # Для остальных полагаемся на авто-поиск TTF
             return None
 

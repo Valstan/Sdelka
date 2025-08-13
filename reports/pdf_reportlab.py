@@ -18,6 +18,7 @@ _ABBR = {
     "Номер": "№",
     "Номер изделия": "№ изд.",
     "Номер_изделия": "№ изд.",
+    "Вид_работ": "Вид работ",
 }
 
 
@@ -54,12 +55,41 @@ def _find_font_file() -> tuple[str | None, str | None]:
 
 
 def _ensure_font_registered(prefer_family: str | None = None) -> tuple[str, str]:
-    if prefer_family and prefer_family in pdfmetrics.getRegisteredFontNames():
-        # Поддержка стандартной Helvetica
-        bold_name = prefer_family + ("-Bold" if prefer_family != "Helvetica" else "-Bold")
-        if bold_name not in pdfmetrics.getRegisteredFontNames():
-            bold_name = prefer_family
-        return prefer_family, bold_name
+    # Если просят конкретное семейство, поддерживаем только шрифты с кириллицей из кандидатов
+    if prefer_family and prefer_family in ("DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans"):
+        # Попытаемся найти ttf по имени семейства среди кандидатов
+        family_map = {
+            "DejaVu Sans": ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
+            "Noto Sans": ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf"),
+            "Arial": ("Arial.ttf", "Arial Bold.ttf"),
+            "Liberation Sans": ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
+        }
+        reg_name, bold_name = "AppFont", "AppFont-Bold"
+        reg_path, bold_path = None, None
+        reg_file, bold_file = family_map[prefer_family]
+        for d in [
+            Path.cwd() / "assets" / "fonts",
+            Path.home() / ".fonts",
+            Path("/usr/share/fonts/truetype"),
+            Path("/usr/share/fonts"),
+            Path("/usr/local/share/fonts"),
+            Path("C:/Windows/Fonts"),
+            Path("/System/Library/Fonts"),
+            Path("/Library/Fonts"),
+            Path.home() / "Library" / "Fonts",
+        ]:
+            if reg_path is None and (d / reg_file).exists():
+                reg_path = str(d / reg_file)
+            if bold_path is None and (d / bold_file).exists():
+                bold_path = str(d / bold_file)
+        if reg_path:
+            if reg_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(reg_name, reg_path))
+            if bold_path and bold_name not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+            else:
+                bold_name = reg_name
+            return reg_name, bold_name
     reg_path, bold_path = _find_font_file()
     reg_name = "AppFont"
     bold_name = "AppFont-Bold"
