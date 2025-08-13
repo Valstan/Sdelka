@@ -48,22 +48,38 @@ class DatePicker(ctk.CTkToplevel):
 
         # Закрытие при потере фокуса и по ESC
         if close_on_focus_out:
-            self.bind("<FocusOut>", lambda e: self.destroy())
-        self.bind("<Escape>", lambda e: self.destroy())
+            self.bind("<FocusOut>", lambda e: self._close())
+        self.bind("<Escape>", lambda e: self._close())
 
-        # Дать фокус всплывающему окну, чтобы <FocusOut> сработал при клике вне его
-        try:
-            self.focus_force()
-        except Exception:
-            pass
+        # Глобальный хук на клики: закрыть, если клик вне календаря
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
 
         # Клик по дате
         self.calendar.bind("<<CalendarSelected>>", self._on_select)
+
+    def _on_global_click(self, event) -> None:
+        try:
+            top = event.widget.winfo_toplevel()
+            if top is self:
+                return  # клик внутри календаря — игнорируем
+        except Exception:
+            pass
+        self._close()
+
+    def _close(self) -> None:
+        try:
+            # Снять глобальные бинды, чтобы не влиять на остальной UI
+            self.unbind_all("<Button-1>")
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
 
     def _on_select(self, _evt=None):
         date_str = self.calendar.get_date()  # already dd.mm.yyyy
         try:
             self.on_pick(date_str)
         finally:
-            # Закрываем окно в любом случае, чтобы не блокировать UI
-            self.destroy()
+            self._close()
