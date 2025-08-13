@@ -13,6 +13,13 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+_ABBR = {
+    "Количество": "Кол-во",
+    "Номер": "№",
+    "Номер изделия": "№ изд.",
+    "Номер_изделия": "№ изд.",
+}
+
 
 def _find_font_file() -> tuple[str | None, str | None]:
     candidates = [
@@ -145,6 +152,9 @@ def save_pdf(
     best_page = None
     best_font = None
     best_widths: List[float] | None = None
+    # Кандидат с минимальным переполнением (если ни один не помещается идеально)
+    fallback_overflow = None
+    fallback_candidate: Tuple | None = None
 
     cols = list(df.columns)
 
@@ -181,15 +191,29 @@ def save_pdf(
                 if sum(adj_widths) <= avail_w:
                     best_page, best_font, best_widths = page_size, fs, adj_widths
                     break
+                else:
+                    overflow = sum(adj_widths) - avail_w
+                    if fallback_overflow is None or overflow < fallback_overflow:
+                        fallback_overflow = overflow
+                        fallback_candidate = (page_size, fs, adj_widths)
+            else:
+                # не можем ужать переносимые или их нет — сохраняем как кандидат с переполнением
+                overflow = total - avail_w
+                if fallback_overflow is None or overflow < fallback_overflow:
+                    fallback_overflow = overflow
+                    fallback_candidate = (page_size, fs, widths)
         if best_font is not None:
             break
 
     if best_page is None:
         # Учитываем желаемую ориентацию при фолбэке
-        if orientation == "landscape":
-            best_page = landscape(A4)
+        if fallback_candidate is not None:
+            best_page, best_font, best_widths = fallback_candidate
         else:
-            best_page = A4
+            if orientation == "landscape":
+                best_page = landscape(A4)
+            else:
+                best_page = A4
     if best_font is None:
         best_font = font_base if font_size is None else max(font_min, min(font_size, font_max))
     if best_widths is None:
@@ -258,7 +282,7 @@ def save_pdf(
     story.append(Spacer(1, 6 * mm))
 
     # Данные: разрешаем перенос только в длинных текстовых колонках; в остальных заменяем пробелы на неразрывные
-    header_row = [Paragraph(str(c), header_style) for c in cols]
+    header_row = [Paragraph(str(_ABBR.get(c, c)), header_style) for c in cols]
     data_rows: List[List] = [header_row]
     for _, row in df.iterrows():
         r: List = []

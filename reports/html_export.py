@@ -1,26 +1,30 @@
 from __future__ import annotations
 
-from pathlib import Path
 import pandas as pd
 
-STYLE = """
-<style>
-  body { font-family: Arial, sans-serif; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #ddd; padding: 8px; }
-  th { background-color: #f2f2f2; text-align: left; }
-  tr:nth-child(even){background-color: #f9f9f9;}
-</style>
-"""
+
+_ABBR = {
+    "Количество": "Кол-во",
+    "Номер": "№",
+    "Номер изделия": "№ изд.",
+    "Номер_изделия": "№ изд.",
+}
 
 
-def dataframe_to_html(df: pd.DataFrame, title: str = "Отчет") -> str:
-    html_table = df.to_html(index=False, border=0)
-    return f"<html><head><meta charset='utf-8'>{STYLE}<title>{title}</title></head><body><h2>{title}</h2>{html_table}</body></html>"
+def _apply_abbreviations(df: pd.DataFrame) -> pd.DataFrame:
+    cols = {c: _ABBR.get(str(c), c) for c in df.columns}
+    return df.rename(columns=cols)
 
 
-def save_html(df: pd.DataFrame, file_path: str | Path, title: str = "Отчет") -> Path:
-    html = dataframe_to_html(df, title)
-    file_path = Path(file_path)
-    file_path.write_text(html, encoding="utf-8")
-    return file_path
+def dataframe_to_html(df: pd.DataFrame, title: str | None = None) -> str:
+    df2 = _apply_abbreviations(df)
+    html = df2.to_html(index=False)
+    if title:
+        return f"<h2>{title}</h2>\n" + html
+    return html
+
+
+def save_html(df: pd.DataFrame, file_path: str, title: str | None = None) -> None:
+    html = dataframe_to_html(df, title=title)
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(html)
