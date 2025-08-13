@@ -16,6 +16,7 @@ from services.work_orders import WorkOrderInput, WorkOrderItemInput, create_work
 from services.validation import validate_date
 from db import queries as q
 from gui.widgets.date_picker import DatePicker
+from utils.usage_history import record_use, get_recent
 
 
 @dataclass
@@ -224,11 +225,15 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._place_suggest_under(self.contract_entry, self.suggest_contract_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+        for label in get_recent("work_orders.contract", text, CONFIG.autocomplete_limit):
+            if label not in [lbl for _, lbl in rows]:
+                ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda l=label: self._pick_contract(self.selected_contract_id or 0, l)).pack(fill="x", padx=2, pady=1)
 
     def _pick_contract(self, contract_id: int, label: str) -> None:
         self.selected_contract_id = contract_id
         self.contract_entry.delete(0, "end")
         self.contract_entry.insert(0, label)
+        record_use("work_orders.contract", label)
         self.suggest_contract_frame.place_forget()
 
     def _on_product_key(self, _evt=None) -> None:
@@ -246,11 +251,15 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._place_suggest_under(self.product_entry, self.suggest_product_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+        for label in get_recent("work_orders.product", text, CONFIG.autocomplete_limit):
+            if label not in [lbl for _, lbl in rows]:
+                ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
 
     def _pick_product(self, product_id: int, label: str) -> None:
         self.selected_product_id = product_id
         self.product_entry.delete(0, "end")
         self.product_entry.insert(0, label)
+        record_use("work_orders.product", label)
         self.suggest_product_frame.place_forget()
 
     def _on_job_key(self, _evt=None) -> None:
@@ -267,11 +276,15 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._place_suggest_under(self.job_entry, self.suggest_job_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+        for label in get_recent("work_orders.job_type", text, CONFIG.autocomplete_limit):
+            if label not in [lbl for _, lbl in rows]:
+                ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda l=label: self._pick_job(getattr(self.job_entry, "_selected_job_id", 0) or 0, l)).pack(fill="x", padx=2, pady=1)
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
         self.job_entry.delete(0, "end")
         self.job_entry.insert(0, label)
         self.job_entry._selected_job_id = job_type_id
+        record_use("work_orders.job_type", label)
         self.suggest_job_frame.place_forget()
 
     def _on_worker_key(self, _evt=None) -> None:
@@ -288,10 +301,14 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._place_suggest_under(self.worker_entry, self.suggest_worker_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+        for label in get_recent("work_orders.worker", text, CONFIG.autocomplete_limit):
+            if label not in [lbl for _, lbl in rows]:
+                ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
 
     def _pick_worker(self, worker_id: int, label: str) -> None:
         self.worker_entry.delete(0, "end")
         self.worker_entry.insert(0, label)
+        record_use("work_orders.worker", label)
         self._add_worker(worker_id, label)
         self.suggest_worker_frame.place_forget()
 

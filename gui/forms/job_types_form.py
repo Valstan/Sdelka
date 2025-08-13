@@ -9,6 +9,7 @@ from db.sqlite import get_connection
 from services import reference_data as ref
 from db import queries as q
 from services import suggestions
+from utils.usage_history import record_use, get_recent
 
 
 class JobTypesForm(ctk.CTkFrame):
@@ -79,9 +80,13 @@ class JobTypesForm(ctk.CTkFrame):
         self.suggest_unit_frame.place(x=x, y=y)
         for val in vals:
             ctk.CTkButton(self.suggest_unit_frame, text=val, command=lambda s=val: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+        for label in get_recent("job_types.unit", prefix, CONFIG.autocomplete_limit):
+            if label not in vals:
+                ctk.CTkButton(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
 
     def _pick_unit(self, val: str) -> None:
         self.unit_var.set(val)
+        record_use("job_types.unit", val)
         self.suggest_unit_frame.place_forget()
 
     def _load(self) -> None:

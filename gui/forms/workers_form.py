@@ -9,6 +9,7 @@ from db.sqlite import get_connection
 from services import reference_data as ref
 from services import suggestions
 from db import queries as q
+from utils.usage_history import record_use, get_recent
 
 
 class WorkersForm(ctk.CTkFrame):
@@ -113,6 +114,11 @@ class WorkersForm(ctk.CTkFrame):
         for _id, label in items:
             btn = ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s))
             btn.pack(fill="x", padx=2, pady=1)
+        # недостающие – дополним историей
+        recent = [v for v in get_recent("workers.full_name", prefix, CONFIG.autocomplete_limit) if v not in [lbl for _, lbl in items]]
+        for label in recent[: max(0, CONFIG.autocomplete_limit - len(items))]:
+            btn = ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s))
+            btn.pack(fill="x", padx=2, pady=1)
 
     def _on_dept_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -132,6 +138,9 @@ class WorkersForm(ctk.CTkFrame):
         for val in vals:
             btn = ctk.CTkButton(self.suggest_dept_frame, text=val, command=lambda s=val: self._pick_dept(s))
             btn.pack(fill="x", padx=2, pady=1)
+        for label in get_recent("workers.dept", prefix, CONFIG.autocomplete_limit):
+            if label not in vals:
+                ctk.CTkButton(self.suggest_dept_frame, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
 
     def _on_position_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -151,6 +160,9 @@ class WorkersForm(ctk.CTkFrame):
         for val in vals:
             btn = ctk.CTkButton(self.suggest_position_frame, text=val, command=lambda s=val: self._pick_position(s))
             btn.pack(fill="x", padx=2, pady=1)
+        for label in get_recent("workers.position", prefix, CONFIG.autocomplete_limit):
+            if label not in vals:
+                ctk.CTkButton(self.suggest_position_frame, text=label, command=lambda s=label: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
 
     def _on_personnel_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -170,21 +182,28 @@ class WorkersForm(ctk.CTkFrame):
         for val in vals:
             btn = ctk.CTkButton(self.suggest_personnel_frame, text=val, command=lambda s=val: self._pick_personnel(s))
             btn.pack(fill="x", padx=2, pady=1)
+        for label in get_recent("workers.personnel_no", prefix, CONFIG.autocomplete_limit):
+            if label not in vals:
+                ctk.CTkButton(self.suggest_personnel_frame, text=label, command=lambda s=label: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
 
     def _pick_name(self, name: str) -> None:
         self.full_name_var.set(name)
+        record_use("workers.full_name", name)
         self.suggest_frame.place_forget()
 
     def _pick_dept(self, val: str) -> None:
         self.dept_var.set(val)
+        record_use("workers.dept", val)
         self.suggest_dept_frame.place_forget()
 
     def _pick_position(self, val: str) -> None:
         self.position_var.set(val)
+        record_use("workers.position", val)
         self.suggest_position_frame.place_forget()
 
     def _pick_personnel(self, val: str) -> None:
         self.personnel_no_var.set(val)
+        record_use("workers.personnel_no", val)
         self.suggest_personnel_frame.place_forget()
 
     def _load_workers(self) -> None:
