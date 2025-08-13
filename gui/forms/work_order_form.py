@@ -214,18 +214,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_contract_frame.winfo_children():
             w.destroy()
-        text = self.contract_entry.get().strip()
-        if not text:
-            self.selected_contract_id = None
-            return
         with get_connection(CONFIG.db_path) as conn:
-            rows = suggestions.suggest_contracts(conn, text, CONFIG.autocomplete_limit)
-        if not rows:
-            return
+            rows = suggestions.suggest_contracts(conn, self.contract_entry.get().strip(), CONFIG.autocomplete_limit)
         self._place_suggest_under(self.contract_entry, self.suggest_contract_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
-        for label in get_recent("work_orders.contract", text, CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.contract", self.contract_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
                 ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda l=label: self._pick_contract(self.selected_contract_id or 0, l)).pack(fill="x", padx=2, pady=1)
 
@@ -240,18 +234,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_product_frame.winfo_children():
             w.destroy()
-        text = self.product_entry.get().strip()
-        if not text:
-            self.selected_product_id = None
-            return
         with get_connection(CONFIG.db_path) as conn:
-            rows = suggestions.suggest_products(conn, text, CONFIG.autocomplete_limit)
-        if not rows:
-            return
+            rows = suggestions.suggest_products(conn, self.product_entry.get().strip(), CONFIG.autocomplete_limit)
         self._place_suggest_under(self.product_entry, self.suggest_product_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
-        for label in get_recent("work_orders.product", text, CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.product", self.product_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
                 ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
 
@@ -266,17 +254,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_job_frame.winfo_children():
             w.destroy()
-        text = self.job_entry.get().strip()
-        if not text:
-            return
         with get_connection(CONFIG.db_path) as conn:
-            rows = suggestions.suggest_job_types(conn, text, CONFIG.autocomplete_limit)
-        if not rows:
-            return
+            rows = suggestions.suggest_job_types(conn, self.job_entry.get().strip(), CONFIG.autocomplete_limit)
         self._place_suggest_under(self.job_entry, self.suggest_job_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
-        for label in get_recent("work_orders.job_type", text, CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.job_type", self.job_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
                 ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda l=label: self._pick_job(getattr(self.job_entry, "_selected_job_id", 0) or 0, l)).pack(fill="x", padx=2, pady=1)
 
@@ -291,17 +274,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_worker_frame.winfo_children():
             w.destroy()
-        text = self.worker_entry.get().strip()
-        if not text:
-            return
         with get_connection(CONFIG.db_path) as conn:
-            rows = suggestions.suggest_workers(conn, text, CONFIG.autocomplete_limit)
-        if not rows:
-            return
+            rows = suggestions.suggest_workers(conn, self.worker_entry.get().strip(), CONFIG.autocomplete_limit)
         self._place_suggest_under(self.worker_entry, self.suggest_worker_frame)
         for _id, label in rows:
             ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
-        for label in get_recent("work_orders.worker", text, CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.worker", self.worker_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
                 ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
 

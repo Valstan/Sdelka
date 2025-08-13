@@ -76,15 +76,9 @@ class ContractsForm(ctk.CTkFrame):
         prefix = self.code_var.get().strip()
         for w in self.suggest_code_frame.winfo_children():
             w.destroy()
-        if not prefix:
-            self.suggest_code_frame.place_forget()
-            return
         with get_connection(CONFIG.db_path) as conn:
             rows = q.list_contracts(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["code"] for r in rows]
-        if not vals:
-            self.suggest_code_frame.place_forget()
-            return
         x = self.code_entry.winfo_rootx() - self.winfo_rootx()
         y = self.code_entry.winfo_rooty() - self.winfo_rooty() + self.code_entry.winfo_height()
         self.suggest_code_frame.place(x=x, y=y)

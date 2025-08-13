@@ -66,16 +66,9 @@ class JobTypesForm(ctk.CTkFrame):
 
     def _on_unit_key(self, event=None) -> None:
         prefix = self.unit_var.get().strip()
-        for w in self.suggest_unit_frame.winfo_children():
-            w.destroy()
-        if not prefix:
-            self.suggest_unit_frame.place_forget()
-            return
+        self._clear_frame(self.suggest_unit_frame)
         with get_connection(CONFIG.db_path) as conn:
             vals = q.distinct_units_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
-        if not vals:
-            self.suggest_unit_frame.place_forget()
-            return
         x = self.unit_entry.winfo_rootx() - self.winfo_rootx()
         y = self.unit_entry.winfo_rooty() - self.winfo_rooty() + self.unit_entry.winfo_height()
         self.suggest_unit_frame.place(x=x, y=y)

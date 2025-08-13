@@ -66,15 +66,9 @@ class ProductsForm(ctk.CTkFrame):
         prefix = self.name_var.get().strip()
         for w in self.suggest_name_frame.winfo_children():
             w.destroy()
-        if not prefix:
-            self.suggest_name_frame.place_forget()
-            return
         with get_connection(CONFIG.db_path) as conn:
-            rows = q.list_products(conn, prefix, CONFIG.autocomplete_limit)
+            rows = q.list_products(conn, prefix or None, CONFIG.autocomplete_limit)
         vals = [r["name"] for r in rows]
-        if not vals:
-            self.suggest_name_frame.place_forget()
-            return
         x = self.name_entry.winfo_rootx() - self.winfo_rootx()
         y = self.name_entry.winfo_rooty() - self.winfo_rooty() + self.name_entry.winfo_height()
         self.suggest_name_frame.place(x=x, y=y)
@@ -88,15 +82,9 @@ class ProductsForm(ctk.CTkFrame):
         prefix = self.no_var.get().strip()
         for w in self.suggest_no_frame.winfo_children():
             w.destroy()
-        if not prefix:
-            self.suggest_no_frame.place_forget()
-            return
         with get_connection(CONFIG.db_path) as conn:
             rows = q.search_products_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["product_no"] for r in rows]
-        if not vals:
-            self.suggest_no_frame.place_forget()
-            return
         x = self.no_entry.winfo_rootx() - self.winfo_rootx()
         y = self.no_entry.winfo_rooty() - self.winfo_rooty() + self.no_entry.winfo_height()
         self.suggest_no_frame.place(x=x, y=y)
