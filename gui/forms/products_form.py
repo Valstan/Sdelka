@@ -133,12 +133,7 @@ class ProductsForm(ctk.CTkFrame):
         self.suggest_no_frame.place_forget()
 
     def _cancel(self) -> None:
-        if self._selected_id and self._snapshot:
-            name, no = self._snapshot
-            self.name_var.set(name)
-            self.no_var.set(no)
-        else:
-            self._clear()
+        self._clear()
 
     def _save(self) -> None:
         name = self.name_var.get().strip()

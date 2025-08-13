@@ -225,13 +225,7 @@ class WorkersForm(ctk.CTkFrame):
         self._hide_all_suggestions()
 
     def _cancel_edit(self) -> None:
-        if self._selected_id and self._edit_snapshot:
-            self.full_name_var.set(self._edit_snapshot.get("full_name", ""))
-            self.dept_var.set(self._edit_snapshot.get("dept", ""))
-            self.position_var.set(self._edit_snapshot.get("position", ""))
-            self.personnel_no_var.set(self._edit_snapshot.get("personnel_no", ""))
-        else:
-            self._clear()
+        self._clear()
 
     def _save(self) -> None:
         full_name = self.full_name_var.get().strip()

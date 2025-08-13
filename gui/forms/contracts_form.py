@@ -124,14 +124,7 @@ class ContractsForm(ctk.CTkFrame):
         self.suggest_code_frame.place_forget()
 
     def _cancel(self) -> None:
-        if self._selected_id and self._snapshot:
-            code, start, end, desc = self._snapshot
-            self.code_var.set(code)
-            self.start_var.set(start or "")
-            self.end_var.set(end or "")
-            self.desc_var.set(desc or "")
-        else:
-            self._clear()
+        self._clear()
 
     def _save(self) -> None:
         code = self.code_var.get().strip()

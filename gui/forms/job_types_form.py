@@ -113,13 +113,7 @@ class JobTypesForm(ctk.CTkFrame):
         self.suggest_unit_frame.place_forget()
 
     def _cancel(self) -> None:
-        if self._selected_id and self._snapshot:
-            name, unit, price = self._snapshot
-            self.name_var.set(name)
-            self.unit_var.set(unit)
-            self.price_var.set(price)
-        else:
-            self._clear()
+        self._clear()
 
     def _save(self) -> None:
         name = self.name_var.get().strip()

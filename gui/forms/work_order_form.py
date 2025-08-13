@@ -552,11 +552,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._load_recent_orders()
 
     def _cancel_edit(self) -> None:
-        # Если редактируем загруженный наряд — восстановить снапшот
-        if getattr(self, "_loaded_snapshot", None):
-            self._fill_form_from_loaded(self._loaded_snapshot)
-        else:
-            self._reset_form()
+        self._reset_form()
 
     def _reset_form(self) -> None:
         self.editing_order_id = None
