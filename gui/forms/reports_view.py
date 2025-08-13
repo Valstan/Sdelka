@@ -32,9 +32,13 @@ class ReportsView(ctk.CTkFrame):
         self.date_from = ctk.StringVar()
         self.date_to = ctk.StringVar()
         ctk.CTkLabel(filters, text="Период с").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ctk.CTkEntry(filters, textvariable=self.date_from, width=120).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self.date_from_entry = ctk.CTkEntry(filters, textvariable=self.date_from, width=120)
+        self.date_from_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self.date_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_from, self.date_from_entry))
         ctk.CTkLabel(filters, text="по").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        ctk.CTkEntry(filters, textvariable=self.date_to, width=120).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+        self.date_to_entry = ctk.CTkEntry(filters, textvariable=self.date_to, width=120)
+        self.date_to_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
+        self.date_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_to, self.date_to_entry))
 
         # Worker
         ctk.CTkLabel(filters, text="Работник").grid(row=1, column=0, padx=5, pady=5, sticky="w")
@@ -366,3 +370,8 @@ class ReportsView(ctk.CTkFrame):
             return
         self._df.to_excel(path, index=False)
         messagebox.showinfo("Экспорт", "Excel сохранен")
+
+    def _open_date_picker(self, var, anchor=None) -> None:
+        from gui.widgets.date_picker import DatePicker
+        self._hide_all_suggestions()
+        DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)

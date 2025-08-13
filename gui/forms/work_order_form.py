@@ -173,9 +173,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.filter_from = ctk.StringVar()
         self.filter_to = ctk.StringVar()
         ctk.CTkLabel(filter_frame, text="с").pack(side="left", padx=2)
-        ctk.CTkEntry(filter_frame, textvariable=self.filter_from, width=100).pack(side="left")
+        self.filter_from_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_from, width=100)
+        self.filter_from_entry.pack(side="left")
+        self.filter_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_from, self.filter_from_entry))
         ctk.CTkLabel(filter_frame, text="по").pack(side="left", padx=2)
-        ctk.CTkEntry(filter_frame, textvariable=self.filter_to, width=100).pack(side="left")
+        self.filter_to_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_to, width=100)
+        self.filter_to_entry.pack(side="left")
+        self.filter_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_to, self.filter_to_entry))
         ctk.CTkButton(filter_frame, text="Фильтр", width=80, command=self._apply_filter).pack(side="left", padx=6)
 
         self.orders_tree = ttk.Treeview(right, columns=("no", "date", "contract", "product", "total"), show="headings", height=18)
@@ -369,6 +373,10 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
         DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d), anchor=self.date_entry)
+
+    def _open_date_picker_for(self, var, anchor=None) -> None:
+        self._hide_all_suggests()
+        DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)
 
     # ---- Orders list ----
     def _load_recent_orders(self) -> None:
