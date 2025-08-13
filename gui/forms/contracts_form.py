@@ -73,8 +73,8 @@ class ContractsForm(ctk.CTkFrame):
         self.suggest_code_frame = ctk.CTkFrame(self)
         self.suggest_code_frame.place_forget()
 
-        # Глобальный клик — скрыть подсказки, если клик вне списков
-        self.bind_all("<Button-1>", self._on_global_click, add="+")
+        # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
+        self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
     def _on_code_key(self, _evt=None) -> None:
         prefix = self.code_var.get().strip()

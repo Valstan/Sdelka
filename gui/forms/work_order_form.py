@@ -143,6 +143,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_worker_frame = ctk.CTkFrame(self)
         self.suggest_worker_frame.place_forget()
 
+        # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
+        self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
+
         self.workers_list = ctk.CTkScrollableFrame(left, height=120)
         self.workers_list.pack(fill="x", padx=10)
 

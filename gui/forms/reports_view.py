@@ -97,8 +97,8 @@ class ReportsView(ctk.CTkFrame):
         self.sg_contract = ctk.CTkFrame(self)
         self.sg_contract.place_forget()
 
-        # Глобальный клик — скрыть подсказки, если клик вне списков
-        self.bind_all("<Button-1>", self._on_global_click, add="+")
+        # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
+        self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
         # Preview and export
         preview = ctk.CTkFrame(self)

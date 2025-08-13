@@ -64,8 +64,8 @@ class ProductsForm(ctk.CTkFrame):
         self.suggest_no_frame = ctk.CTkFrame(self)
         self.suggest_no_frame.place_forget()
 
-        # Глобальный клик — скрыть подсказки, если клик вне списков
-        self.bind_all("<Button-1>", self._on_global_click, add="+")
+        # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
+        self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
     def _on_name_key(self, _evt=None) -> None:
         prefix = self.name_var.get().strip()
