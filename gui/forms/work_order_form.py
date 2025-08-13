@@ -15,6 +15,7 @@ from services import suggestions
 from services.work_orders import WorkOrderInput, WorkOrderItemInput, create_work_order
 from services.validation import validate_date
 from db import queries as q
+from gui.widgets.date_picker import DatePicker
 
 
 @dataclass
@@ -61,7 +62,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=120)
         self.date_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.date_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
-        self.date_quick_btn = ctk.CTkButton(header, text="Выбрать дату", width=120, command=self._show_date_quick)
+        self.date_quick_btn = ctk.CTkButton(header, text="Календарь", width=120, command=self._open_date_picker)
         self.date_quick_btn.grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         # Contract
@@ -370,20 +371,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.total_var.set(f"{total:.2f}")
         self.per_worker_var.set(f"{per_worker:.2f}")
 
-    def _show_date_quick(self) -> None:
+    def _open_date_picker(self) -> None:
         self._hide_all_suggests()
-        frame = ctk.CTkFrame(self)
-        x = self.date_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.date_entry.winfo_rooty() - self.winfo_rooty() + self.date_entry.winfo_height()
-        frame.place(x=x, y=y)
-        frame.lift()
-        for i in range(7):
-            d = (dt.date.today() - dt.timedelta(days=i)).strftime(CONFIG.date_format)
-            ctk.CTkButton(frame, text=d, command=lambda s=d, f=frame: self._pick_date(s, f)).pack(fill="x")
-
-    def _pick_date(self, date_str: str, frame: ctk.CTkFrame) -> None:
-        self.date_var.set(date_str)
-        frame.place_forget()
+        DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d))
 
     # ---- Orders list ----
     def _load_recent_orders(self) -> None:

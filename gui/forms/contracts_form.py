@@ -32,10 +32,14 @@ class ContractsForm(ctk.CTkFrame):
         self.code_entry.bind("<KeyRelease>", self._on_code_key)
 
         ctk.CTkLabel(form, text="Дата начала (ДД.ММ.ГГГГ)").grid(row=0, column=2, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.start_var, width=160).grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        start_entry = ctk.CTkEntry(form, textvariable=self.start_var, width=120)
+        start_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        ctk.CTkButton(form, text="Календарь", width=90, command=lambda: self._open_date_picker(self.start_var)).grid(row=0, column=4, sticky="w", padx=5, pady=5)
 
         ctk.CTkLabel(form, text="Дата окончания").grid(row=1, column=2, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.end_var, width=160).grid(row=1, column=3, sticky="w", padx=5, pady=5)
+        end_entry = ctk.CTkEntry(form, textvariable=self.end_var, width=120)
+        end_entry.grid(row=1, column=3, sticky="w", padx=5, pady=5)
+        ctk.CTkButton(form, text="Календарь", width=90, command=lambda: self._open_date_picker(self.end_var)).grid(row=1, column=4, sticky="w", padx=5, pady=5)
 
         ctk.CTkLabel(form, text="Описание").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         ctk.CTkEntry(form, textvariable=self.desc_var, width=240).grid(row=1, column=1, sticky="w", padx=5, pady=5)
@@ -151,3 +155,7 @@ class ContractsForm(ctk.CTkFrame):
             return
         self._load()
         self._clear()
+
+    def _open_date_picker(self, var) -> None:
+        from gui.widgets.date_picker import DatePicker
+        DatePicker(self, var.get().strip(), lambda d: var.set(d))
