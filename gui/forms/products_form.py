@@ -32,12 +32,14 @@ class ProductsForm(ctk.CTkFrame):
         self.name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.name_entry.bind("<KeyRelease>", self._on_name_key)
         self.name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
+        self.name_entry.bind("<Button-1>", lambda e: self.after(1, self._on_name_key))
 
         ctk.CTkLabel(form, text="Номер изделия").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.no_entry = ctk.CTkEntry(form, textvariable=self.no_var, width=200)
         self.no_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.no_entry.bind("<KeyRelease>", self._on_no_key)
         self.no_entry.bind("<FocusIn>", lambda e: self._on_no_key())
+        self.no_entry.bind("<Button-1>", lambda e: self.after(1, self._on_no_key))
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=10)
@@ -61,6 +63,9 @@ class ProductsForm(ctk.CTkFrame):
         self.suggest_name_frame.place_forget()
         self.suggest_no_frame = ctk.CTkFrame(self)
         self.suggest_no_frame.place_forget()
+
+        # Глобальный клик — скрыть подсказки, если клик вне списков
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
 
     def _on_name_key(self, _evt=None) -> None:
         prefix = self.name_var.get().strip()
@@ -102,6 +107,21 @@ class ProductsForm(ctk.CTkFrame):
     def _pick_no(self, val: str) -> None:
         self.no_var.set(val)
         record_use("products.product_no", val)
+        self.suggest_no_frame.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self.suggest_name_frame.place_forget()
+            self.suggest_no_frame.place_forget()
+            return
+        for frame in (self.suggest_name_frame, self.suggest_no_frame):
+            w = widget
+            while w is not None:
+                if w == frame:
+                    return
+                w = getattr(w, "master", None)
+        self.suggest_name_frame.place_forget()
         self.suggest_no_frame.place_forget()
 
     def _load(self) -> None:

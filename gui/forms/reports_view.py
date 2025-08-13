@@ -35,10 +35,12 @@ class ReportsView(ctk.CTkFrame):
         self.date_from_entry = ctk.CTkEntry(filters, textvariable=self.date_from, width=120)
         self.date_from_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
         self.date_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_from, self.date_from_entry))
+        self.date_from_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.date_from, self.date_from_entry)))
         ctk.CTkLabel(filters, text="по").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.date_to_entry = ctk.CTkEntry(filters, textvariable=self.date_to, width=120)
         self.date_to_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         self.date_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_to, self.date_to_entry))
+        self.date_to_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.date_to, self.date_to_entry)))
 
         # Worker
         ctk.CTkLabel(filters, text="Работник").grid(row=1, column=0, padx=5, pady=5, sticky="w")
@@ -46,6 +48,7 @@ class ReportsView(ctk.CTkFrame):
         self.worker_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
         self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
+        self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
 
         # Dept
         ctk.CTkLabel(filters, text="Цех").grid(row=1, column=2, padx=5, pady=5, sticky="w")
@@ -54,6 +57,7 @@ class ReportsView(ctk.CTkFrame):
         self.dept_entry.grid(row=1, column=3, padx=5, pady=5, sticky="w")
         self.dept_entry.bind("<KeyRelease>", self._on_dept_key)
         self.dept_entry.bind("<FocusIn>", lambda e: self._on_dept_key())
+        self.dept_entry.bind("<Button-1>", lambda e: self.after(1, self._on_dept_key))
 
         # Job type
         ctk.CTkLabel(filters, text="Вид работ").grid(row=2, column=0, padx=5, pady=5, sticky="w")
@@ -61,6 +65,7 @@ class ReportsView(ctk.CTkFrame):
         self.job_entry.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
         self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
+        self.job_entry.bind("<Button-1>", lambda e: self.after(1, self._on_job_key))
 
         # Product
         ctk.CTkLabel(filters, text="Изделие").grid(row=2, column=2, padx=5, pady=5, sticky="w")
@@ -68,6 +73,7 @@ class ReportsView(ctk.CTkFrame):
         self.product_entry.grid(row=2, column=3, padx=5, pady=5, sticky="w")
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
+        self.product_entry.bind("<Button-1>", lambda e: self.after(1, self._on_product_key))
 
         # Contract
         ctk.CTkLabel(filters, text="Контракт").grid(row=3, column=0, padx=5, pady=5, sticky="w")
@@ -75,6 +81,7 @@ class ReportsView(ctk.CTkFrame):
         self.contract_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
+        self.contract_entry.bind("<Button-1>", lambda e: self.after(1, self._on_contract_key))
 
         ctk.CTkButton(filters, text="Сформировать", command=self._build_report).grid(row=3, column=3, padx=5, pady=5, sticky="e")
 
@@ -89,6 +96,9 @@ class ReportsView(ctk.CTkFrame):
         self.sg_product.place_forget()
         self.sg_contract = ctk.CTkFrame(self)
         self.sg_contract.place_forget()
+
+        # Глобальный клик — скрыть подсказки, если клик вне списков
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
 
         # Preview and export
         preview = ctk.CTkFrame(self)
@@ -261,6 +271,19 @@ class ReportsView(ctk.CTkFrame):
         self.contract_entry.insert(0, label)
         record_use("reports.contract", label)
         self.sg_contract.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self._hide_all_suggestions()
+            return
+        for frame in (self.sg_worker, self.sg_dept, self.sg_job, self.sg_product, self.sg_contract):
+            w = widget
+            while w is not None:
+                if w == frame:
+                    return
+                w = getattr(w, "master", None)
+        self._hide_all_suggestions()
 
     def _localize_df_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         # Общий словарь для потенциально англ. колонок -> русские названия

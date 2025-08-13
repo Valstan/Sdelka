@@ -33,12 +33,14 @@ class JobTypesForm(ctk.CTkFrame):
         self.name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.name_entry.bind("<KeyRelease>", self._on_name_key)
         self.name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
+        self.name_entry.bind("<Button-1>", lambda e: self.after(1, self._on_name_key))
 
         ctk.CTkLabel(form, text="Ед. изм.").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.unit_entry = ctk.CTkEntry(form, textvariable=self.unit_var, width=120)
         self.unit_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.unit_entry.bind("<KeyRelease>", self._on_unit_key)
         self.unit_entry.bind("<FocusIn>", lambda e: self._on_unit_key())
+        self.unit_entry.bind("<Button-1>", lambda e: self.after(1, self._on_unit_key))
 
         ctk.CTkLabel(form, text="Цена").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         ctk.CTkEntry(form, textvariable=self.price_var, width=120).grid(row=1, column=1, sticky="w", padx=5, pady=5)
@@ -68,6 +70,9 @@ class JobTypesForm(ctk.CTkFrame):
         self.suggest_name_frame.place_forget()
         self.suggest_unit_frame = ctk.CTkFrame(self)
         self.suggest_unit_frame.place_forget()
+
+        # Глобальный клик — скрыть подсказки, если клик вне списков
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
 
     def _hide_all_suggestions(self) -> None:
         self.suggest_name_frame.place_forget()
@@ -162,6 +167,19 @@ class JobTypesForm(ctk.CTkFrame):
         self.unit_var.set(val)
         record_use("job_types.unit", val)
         self.suggest_unit_frame.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self._hide_all_suggestions()
+            return
+        for frame in (self.suggest_name_frame, self.suggest_unit_frame):
+            w = widget
+            while w is not None:
+                if w == frame:
+                    return
+                w = getattr(w, "master", None)
+        self._hide_all_suggestions()
 
     def _load(self) -> None:
         for i in self.tree.get_children():

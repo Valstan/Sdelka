@@ -36,24 +36,28 @@ class WorkersForm(ctk.CTkFrame):
         self.full_name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.full_name_entry.bind("<KeyRelease>", self._on_name_key)
         self.full_name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
+        self.full_name_entry.bind("<Button-1>", lambda e: self.after(1, self._on_name_key))
 
         ctk.CTkLabel(form, text="Цех").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.dept_entry = ctk.CTkEntry(form, textvariable=self.dept_var, width=150)
         self.dept_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.dept_entry.bind("<KeyRelease>", self._on_dept_key)
         self.dept_entry.bind("<FocusIn>", lambda e: self._on_dept_key())
+        self.dept_entry.bind("<Button-1>", lambda e: self.after(1, self._on_dept_key))
 
         ctk.CTkLabel(form, text="Должность").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         self.position_entry = ctk.CTkEntry(form, textvariable=self.position_var, width=300)
         self.position_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
         self.position_entry.bind("<KeyRelease>", self._on_position_key)
         self.position_entry.bind("<FocusIn>", lambda e: self._on_position_key())
+        self.position_entry.bind("<Button-1>", lambda e: self.after(1, self._on_position_key))
 
         ctk.CTkLabel(form, text="Таб. номер").grid(row=1, column=2, sticky="w", padx=5, pady=5)
         self.personnel_entry = ctk.CTkEntry(form, textvariable=self.personnel_no_var, width=150)
         self.personnel_entry.grid(row=1, column=3, sticky="w", padx=5, pady=5)
         self.personnel_entry.bind("<KeyRelease>", self._on_personnel_key)
         self.personnel_entry.bind("<FocusIn>", lambda e: self._on_personnel_key())
+        self.personnel_entry.bind("<Button-1>", lambda e: self.after(1, self._on_personnel_key))
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=10)
@@ -89,6 +93,9 @@ class WorkersForm(ctk.CTkFrame):
         self.suggest_position_frame.place_forget()
         self.suggest_personnel_frame = ctk.CTkFrame(self)
         self.suggest_personnel_frame.place_forget()
+
+        # Глобальный клик — скрыть подсказки, если клик вне списков
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
 
     def _hide_all_suggestions(self) -> None:
         self.suggest_frame.place_forget()
@@ -251,6 +258,21 @@ class WorkersForm(ctk.CTkFrame):
         self.personnel_no_var.set(val)
         record_use("workers.personnel_no", val)
         self.suggest_personnel_frame.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self._hide_all_suggestions()
+            return
+        # Если клик внутри любого фрейма подсказок — не скрывать
+        for frame in (self.suggest_frame, self.suggest_dept_frame, self.suggest_position_frame, self.suggest_personnel_frame):
+            w = widget
+            while w is not None:
+                if w == frame:
+                    return
+                w = getattr(w, "master", None)
+        # Иначе скрыть все
+        self._hide_all_suggestions()
 
     def _load_workers(self) -> None:
         for item in self.tree.get_children():

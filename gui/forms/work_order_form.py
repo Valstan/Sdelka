@@ -70,6 +70,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry.grid(row=0, column=4, sticky="w", padx=5, pady=5)
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
+        self.contract_entry.bind("<Button-1>", lambda e: self.after(1, self._on_contract_key))
 
         # Product
         ctk.CTkLabel(header, text="Изделие").grid(row=0, column=5, sticky="w", padx=5, pady=5)
@@ -77,6 +78,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.product_entry.grid(row=0, column=6, sticky="w", padx=5, pady=5)
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
+        self.product_entry.bind("<Button-1>", lambda e: self.after(1, self._on_product_key))
 
         # Suggestion frames
         self.suggest_contract_frame = ctk.CTkFrame(self)
@@ -93,6 +95,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.job_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
         self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
+        self.job_entry.bind("<Button-1>", lambda e: self.after(1, self._on_job_key))
 
         ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.qty_var = ctk.StringVar(value="1")
@@ -134,6 +137,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
         self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
+        self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
         ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         self.suggest_worker_frame = ctk.CTkFrame(self)
@@ -301,6 +305,19 @@ class WorkOrdersForm(ctk.CTkFrame):
         record_use("work_orders.worker", label)
         self._add_worker(worker_id, label)
         self.suggest_worker_frame.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self._hide_all_suggests()
+            return
+        for frame in (self.suggest_contract_frame, self.suggest_product_frame, self.suggest_job_frame, self.suggest_worker_frame):
+            w = widget
+            while w is not None:
+                if w == frame:
+                    return
+                w = getattr(w, "master", None)
+        self._hide_all_suggests()
 
     # ---- Items and Workers manipulation ----
     def _add_item(self) -> None:

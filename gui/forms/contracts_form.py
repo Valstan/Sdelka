@@ -33,6 +33,7 @@ class ContractsForm(ctk.CTkFrame):
         self.code_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.code_entry.bind("<KeyRelease>", self._on_code_key)
         self.code_entry.bind("<FocusIn>", lambda e: self._on_code_key())
+        self.code_entry.bind("<Button-1>", lambda e: self.after(1, self._on_code_key))
 
         ctk.CTkLabel(form, text="Дата начала (ДД.ММ.ГГГГ)").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.start_entry = ctk.CTkEntry(form, textvariable=self.start_var, width=120)
@@ -72,6 +73,9 @@ class ContractsForm(ctk.CTkFrame):
         self.suggest_code_frame = ctk.CTkFrame(self)
         self.suggest_code_frame.place_forget()
 
+        # Глобальный клик — скрыть подсказки, если клик вне списков
+        self.bind_all("<Button-1>", self._on_global_click, add="+")
+
     def _on_code_key(self, _evt=None) -> None:
         prefix = self.code_var.get().strip()
         for w in self.suggest_code_frame.winfo_children():
@@ -91,6 +95,18 @@ class ContractsForm(ctk.CTkFrame):
     def _pick_code(self, val: str) -> None:
         self.code_var.set(val)
         record_use("contracts.code", val)
+        self.suggest_code_frame.place_forget()
+
+    def _on_global_click(self, event=None) -> None:
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            self.suggest_code_frame.place_forget()
+            return
+        w = widget
+        while w is not None:
+            if w == self.suggest_code_frame:
+                return
+            w = getattr(w, "master", None)
         self.suggest_code_frame.place_forget()
 
     def _load(self) -> None:
