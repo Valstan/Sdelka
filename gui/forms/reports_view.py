@@ -352,8 +352,32 @@ class ReportsView(ctk.CTkFrame):
 
         cols = list(df.columns)
         self.tree["columns"] = cols
+        # сортировка по заголовкам
+        def sort_by(col: str):
+            # toggle dir
+            d = getattr(self, "_report_sort_dir", {})
+            new_dir = "desc" if d.get(col) == "asc" else "asc"
+            # собрать текущие значения в список и отсортировать
+            rows = []
+            for iid in self.tree.get_children(""):
+                vals = self.tree.item(iid, "values")
+                rows.append((iid, vals))
+            idx = cols.index(col)
+            def key_func(item):
+                v = item[1][idx]
+                # попытка числовой сортировки
+                try:
+                    return float(str(v).replace(" ", "").replace(",", "."))
+                except Exception:
+                    return str(v)
+            rows.sort(key=key_func, reverse=(new_dir == "desc"))
+            for pos, (iid, _vals) in enumerate(rows):
+                self.tree.move(iid, "", pos)
+            if not hasattr(self, "_report_sort_dir"):
+                self._report_sort_dir = {}
+            self._report_sort_dir[col] = new_dir
         for c in cols:
-            self.tree.heading(c, text=str(c))
+            self.tree.heading(c, text=str(c), command=lambda cc=c: sort_by(cc))
             self.tree.column(c, width=120)
 
         # Limit rows in preview
@@ -413,55 +437,123 @@ class ReportsView(ctk.CTkFrame):
         win.title(f"Предпросмотр ({fmt.upper()})")
         win.geometry("980x700")
         win.grab_set()
-        # Панель настроек
-        panel = ctk.CTkFrame(win)
-        panel.pack(fill="x", padx=10, pady=8)
-        ctk.CTkLabel(panel, text="Шрифт").pack(side="left", padx=4)
+        # Панели настроек (2 строки для адаптивности)
+        panel_top = ctk.CTkFrame(win)
+        panel_top.pack(fill="x", padx=10, pady=(8, 4))
+        panel_bottom = ctk.CTkFrame(win)
+        panel_bottom.pack(fill="x", padx=10, pady=(0, 8))
+
+        ctk.CTkLabel(panel_top, text="Шрифт").pack(side="left", padx=4)
         font_family = ctk.StringVar(value="Авто")
         font_opts = ["Авто", "DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans", "Helvetica"]
-        ctk.CTkOptionMenu(panel, values=font_opts, variable=font_family).pack(side="left")
-        ctk.CTkLabel(panel, text="Размер").pack(side="left", padx=6)
+        font_menu = ctk.CTkOptionMenu(panel_top, values=font_opts, variable=font_family)
+        font_menu.pack(side="left")
+        ctk.CTkLabel(panel_top, text="Размер").pack(side="left", padx=6)
         font_size = ctk.StringVar(value="14")
         size_values = [str(i) for i in range(10, 19)]
-        ctk.CTkOptionMenu(panel, values=size_values, variable=font_size).pack(side="left")
-        ctk.CTkLabel(panel, text="Ориентация").pack(side="left", padx=6)
+        size_menu = ctk.CTkOptionMenu(panel_top, values=size_values, variable=font_size)
+        size_menu.pack(side="left")
+        ctk.CTkLabel(panel_top, text="Ориентация").pack(side="left", padx=6)
         orient = ctk.StringVar(value="Автоматически")
-        ctk.CTkOptionMenu(panel, values=["Автоматически", "Портрет", "Альбом"], variable=orient).pack(side="left")
-        # Поля
-        ctk.CTkLabel(panel, text="Левое").pack(side="left", padx=(12, 2))
+        orient_menu = ctk.CTkOptionMenu(panel_top, values=["Автоматически", "Портрет", "Альбом"], variable=orient)
+        orient_menu.pack(side="left")
+
+        # Поля и кнопки на второй строке
+        ctk.CTkLabel(panel_bottom, text="Левое").pack(side="left", padx=(4, 2))
         left_margin = ctk.StringVar(value="15")
         margin_vals = [str(i) for i in range(2, 21, 2)]
-        ctk.CTkOptionMenu(panel, values=margin_vals, variable=left_margin, width=60).pack(side="left")
-        ctk.CTkLabel(panel, text="Правое").pack(side="left", padx=(8, 2))
+        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=left_margin, width=60, command=lambda _: update_preview()).pack(side="left")
+        ctk.CTkLabel(panel_bottom, text="Правое").pack(side="left", padx=(8, 2))
         right_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel, values=margin_vals, variable=right_margin, width=60).pack(side="left")
-        ctk.CTkLabel(panel, text="Верхнее").pack(side="left", padx=(8, 2))
+        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=right_margin, width=60, command=lambda _: update_preview()).pack(side="left")
+        ctk.CTkLabel(panel_bottom, text="Верхнее").pack(side="left", padx=(8, 2))
         top_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel, values=margin_vals, variable=top_margin, width=60).pack(side="left")
-        ctk.CTkLabel(panel, text="Нижнее").pack(side="left", padx=(8, 2))
+        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=top_margin, width=60, command=lambda _: update_preview()).pack(side="left")
+        ctk.CTkLabel(panel_bottom, text="Нижнее").pack(side="left", padx=(8, 2))
         bottom_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel, values=margin_vals, variable=bottom_margin, width=60).pack(side="left")
+        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=bottom_margin, width=60, command=lambda _: update_preview()).pack(side="left")
 
-        btns = ctk.CTkFrame(panel)
+        btns = ctk.CTkFrame(panel_bottom)
         btns.pack(side="right")
 
-        # Область предпросмотра (внутри окна): показываем данные в таблице
+        # Область предпросмотра (внутри окна)
         body = ctk.CTkFrame(win)
         body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        # Виртуальный предпросмотр как таблица
-        preview_tree = ttk.Treeview(body, show="headings")
-        preview_tree.pack(fill="both", expand=True)
-        def render_preview_table():
-            # Очистка
-            for c in preview_tree.get_children():
-                preview_tree.delete(c)
-            preview_tree["columns"] = list(self._df.columns)
-            for col in self._df.columns:
-                preview_tree.heading(col, text=str(col))
-                preview_tree.column(col, width=140)
+        # Контейнер под разные типы предпросмотра
+        preview_container = ctk.CTkFrame(body)
+        preview_container.pack(fill="both", expand=True)
+        # Держатели виджетов
+        holder = {"widget": None}
+
+        def clear_container():
+            if holder["widget"] is not None:
+                try:
+                    holder["widget"].destroy()
+                except Exception:
+                    pass
+                holder["widget"] = None
+
+        def show_table_preview():
+            clear_container()
+            tree = ttk.Treeview(preview_container, show="headings")
+            tree.pack(fill="both", expand=True)
+            # колонки
+            cols = list(self._df.columns)
+            tree["columns"] = cols
+            for col in cols:
+                tree.heading(col, text=str(col), command=lambda cc=col: sort_preview_tree(tree, cols, cc))
+                tree.column(col, width=140)
             for _, row in self._df.head(200).iterrows():
-                preview_tree.insert("", "end", values=[row[c] for c in self._df.columns])
-        render_preview_table()
+                tree.insert("", "end", values=[row[c] for c in cols])
+            holder["widget"] = tree
+
+        def show_html_preview():
+            clear_container()
+            # Генерируем HTML строку
+            html = self._df.to_html(index=False)
+            try:
+                from tkhtmlview import HTMLLabel  # type: ignore
+                widget = HTMLLabel(preview_container, html=html)
+                widget.pack(fill="both", expand=True)
+                holder["widget"] = widget
+            except Exception:
+                # Фолбек: показать исходный HTML в текстовом окне
+                txt = ctk.CTkTextbox(preview_container)
+                txt.pack(fill="both", expand=True)
+                txt.insert("end", html)
+                holder["widget"] = txt
+
+        def show_pdf_preview():
+            clear_container()
+            # Попытка конвертировать PDF в изображение
+            import tempfile, os
+            from datetime import datetime
+            try:
+                tmp_path = os.path.join(tempfile.gettempdir(), f"report_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+                save_pdf(
+                    self._df,
+                    tmp_path,
+                    title="Отчет по нарядам",
+                    orientation=map_orientation_rus(orient.get()),
+                    font_size=int(font_size.get()),
+                    font_family=map_font_family(font_family.get()),
+                    margins_mm=(int(left_margin.get()), int(right_margin.get()), int(top_margin.get()), int(bottom_margin.get())),
+                )
+                from pdf2image import convert_from_path  # type: ignore
+                from PIL import ImageTk  # type: ignore
+                images = convert_from_path(tmp_path, dpi=120, first_page=1, last_page=1)
+                if not images:
+                    raise RuntimeError("Не удалось отобразить PDF")
+                img = images[0]
+                lbl = ctk.CTkLabel(preview_container, text="")
+                lbl.pack(fill="both", expand=True)
+                holder["widget"] = lbl
+                # сохранить ссылку, чтобы не собрать GC
+                lbl._img_ref = ImageTk.PhotoImage(img)
+                lbl.configure(image=lbl._img_ref)
+            except Exception as exc:
+                # Фолбек на табличный вид
+                show_table_preview()
 
         import os, tempfile, sys, subprocess
         from datetime import datetime
@@ -485,9 +577,13 @@ class ReportsView(ctk.CTkFrame):
             # Для остальных полагаемся на авто-поиск TTF
             return None
 
-        def regen() -> None:
-            # Перерисовать табличный предпросмотр (как результат настроек визуально ограничен)
-            render_preview_table()
+        def update_preview() -> None:
+            if fmt == "html":
+                show_html_preview()
+            elif fmt == "pdf":
+                show_pdf_preview()
+            else:
+                show_table_preview()
 
         def do_save() -> None:
             if fmt == "html":
@@ -549,6 +645,31 @@ class ReportsView(ctk.CTkFrame):
             except Exception as exc:
                 messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
 
-        ctk.CTkButton(btns, text="Обновить", command=regen).pack(side="left", padx=4)
         ctk.CTkButton(btns, text="Сохранить", command=do_save).pack(side="left", padx=4)
         ctk.CTkButton(btns, text="Печать", command=do_print).pack(side="left", padx=4)
+
+        # Автообновление предпросмотра при изменении настроек
+        font_menu.configure(command=lambda _: update_preview())
+        size_menu.configure(command=lambda _: update_preview())
+        orient_menu.configure(command=lambda _: update_preview())
+
+        def sort_preview_tree(tree: ttk.Treeview, cols: list[str], col: str):
+            d = getattr(tree, "_sort_dir", {})
+            new_dir = "desc" if d.get(col) == "asc" else "asc"
+            items = []
+            for iid in tree.get_children(""):
+                items.append((iid, tree.item(iid, "values")))
+            idx = cols.index(col)
+            def key_func(item):
+                v = item[1][idx]
+                try:
+                    return float(str(v).replace(" ", "").replace(",", "."))
+                except Exception:
+                    return str(v)
+            items.sort(key=key_func, reverse=(new_dir == "desc"))
+            for pos, (iid, _vals) in enumerate(items):
+                tree.move(iid, "", pos)
+            tree._sort_dir = {col: new_dir}
+
+        # Инициализация предпросмотра
+        update_preview()
