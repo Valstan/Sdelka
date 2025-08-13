@@ -44,10 +44,10 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _build_ui(self) -> None:
         container = ctk.CTkFrame(self)
         container.pack(expand=True, fill="both")
-        # Сетка для пропорций 60% (левая часть) / 40% (правая часть)
+        # Сетка для пропорций 65% (левая часть) / 35% (правая часть)
         try:
-            container.grid_columnconfigure(0, weight=60)
-            container.grid_columnconfigure(1, weight=40)
+            container.grid_columnconfigure(0, weight=65)
+            container.grid_columnconfigure(1, weight=35)
             container.grid_rowconfigure(0, weight=1)
         except Exception:
             pass
