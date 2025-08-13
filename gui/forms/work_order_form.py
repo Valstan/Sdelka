@@ -171,18 +171,23 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
         totals_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=6)
+        for i in range(4):
+            totals_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
 
         self.total_var = ctk.StringVar(value="0.00")
         self.per_worker_var = ctk.StringVar(value="0.00")
 
-        ctk.CTkLabel(totals_frame, text="Итог, руб:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        ctk.CTkLabel(totals_frame, textvariable=self.total_var).grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        # Итоги — верхняя строка
+        totals_row = ctk.CTkFrame(totals_frame)
+        totals_row.grid(row=0, column=0, columnspan=4, sticky="ew")
+        ctk.CTkLabel(totals_row, text="Итог, руб:").pack(side="left", padx=5)
+        ctk.CTkLabel(totals_row, textvariable=self.total_var).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(totals_row, text="На одного, руб:").pack(side="left", padx=5)
+        ctk.CTkLabel(totals_row, textvariable=self.per_worker_var).pack(side="left")
 
-        ctk.CTkLabel(totals_frame, text="На одного, руб:").grid(row=0, column=2, sticky="w", padx=5, pady=5)
-        ctk.CTkLabel(totals_frame, textvariable=self.per_worker_var).grid(row=0, column=3, sticky="w", padx=5, pady=5)
-
+        # Кнопки — ниже итогов
         actions = ctk.CTkFrame(totals_frame)
-        actions.grid(row=0, column=4, padx=10, pady=5)
+        actions.grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=(6, 0))
         self.save_btn = ctk.CTkButton(actions, text="Сохранить", command=self._save)
         self.save_btn.pack(side="left", padx=4)
         self.delete_btn = ctk.CTkButton(actions, text="Удалить", command=self._delete, fg_color="#b91c1c", hover_color="#7f1d1d")
