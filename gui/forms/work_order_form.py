@@ -63,25 +63,28 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Header form
         header = ctk.CTkFrame(left)
         header.pack(fill="x", padx=10, pady=10)
+        # 3 колонки
+        for i in range(3):
+            header.grid_columnconfigure(i, weight=1)
 
         # Date
         self.date_var = ctk.StringVar(value=dt.date.today().strftime(CONFIG.date_format))
-        ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, columnspan=2, sticky="w", padx=5)
-        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=160)
-        self.date_entry.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
+        ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, sticky="w", padx=5)
+        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var)
+        self.date_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
         # Contract
-        ctk.CTkLabel(header, text="Контракт").grid(row=2, column=0, columnspan=2, sticky="w", padx=5)
-        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр", width=260)
-        self.contract_entry.grid(row=3, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
+        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=1, sticky="w", padx=5)
+        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр")
+        self.contract_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 6))
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
 
         # Product
-        ctk.CTkLabel(header, text="Изделие").grid(row=4, column=0, columnspan=2, sticky="w", padx=5)
-        self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название", width=300)
-        self.product_entry.grid(row=5, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
+        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=2, sticky="w", padx=5)
+        self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название")
+        self.product_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
 
@@ -94,21 +97,24 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Items section
         items_frame = ctk.CTkFrame(left)
         items_frame.pack(fill="x", padx=10, pady=(0, 10))
+        for i in range(5):
+            items_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
 
-        ctk.CTkLabel(items_frame, text="Вид работ").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.job_entry = ctk.CTkEntry(items_frame, placeholder_text="Начните ввод", width=280)
-        self.job_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(items_frame, text="Вид работ").grid(row=0, column=0, sticky="w", padx=5)
+        self.job_entry = ctk.CTkEntry(items_frame, placeholder_text="Начните ввод")
+        self.job_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
         self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
         self.job_entry.bind("<Button-1>", lambda e: self.after(1, self._on_job_key))
 
-        ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=1, sticky="w", padx=5)
         self.qty_var = ctk.StringVar(value="1")
-        self.qty_entry = ctk.CTkEntry(items_frame, textvariable=self.qty_var, width=80)
-        self.qty_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
+        self.qty_entry = ctk.CTkEntry(items_frame, textvariable=self.qty_var)
+        self.qty_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.qty_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
-        ctk.CTkButton(items_frame, text="Добавить", command=self._add_item).grid(row=0, column=4, sticky="w", padx=5, pady=5)
+        add_btn = ctk.CTkButton(items_frame, text="Добавить", command=self._add_item)
+        add_btn.grid(row=1, column=4, sticky="e", padx=5, pady=(0, 6))
 
         self.suggest_job_frame = ctk.CTkFrame(self)
         self.suggest_job_frame.place_forget()
@@ -125,7 +131,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         for i, w in enumerate([6, 2, 2, 2, 1]):
             hdr.grid_columnconfigure(i, weight=w)
         # Scrollable rows
-        self.items_list = ctk.CTkScrollableFrame(items_list_frame, height=120)
+        self.items_list = ctk.CTkScrollableFrame(items_list_frame, height=100)
         self.items_list.pack(fill="x")
 
         # Workers section

@@ -37,10 +37,8 @@ class AppWindow(ctk.CTk):
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
-        # Наряды (прокручиваемая область)
-        orders_sf = ctk.CTkScrollableFrame(self.tab_orders)
-        orders_sf.pack(expand=True, fill="both")
-        WorkOrdersForm(orders_sf).pack(expand=True, fill="both")
+        # Наряды: без прокрутки, всё должно умещаться
+        WorkOrdersForm(self.tab_orders).pack(expand=True, fill="both")
 
         # Подвкладки справочников
         refs_tabs = ctk.CTkTabview(self.tab_refs)
