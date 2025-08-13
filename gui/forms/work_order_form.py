@@ -62,9 +62,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, sticky="w", padx=5, pady=5)
         self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=120)
         self.date_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
-        self.date_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
-        self.date_quick_btn = ctk.CTkButton(header, text="Календарь", width=120, command=self._open_date_picker)
-        self.date_quick_btn.grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
         # Contract
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=3, sticky="w", padx=5, pady=5)
@@ -370,7 +368,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
-        DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d))
+        DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d), anchor=self.date_entry)
 
     # ---- Orders list ----
     def _load_recent_orders(self) -> None:

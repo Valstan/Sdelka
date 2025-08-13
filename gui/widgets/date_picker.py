@@ -8,12 +8,13 @@ from config.settings import CONFIG
 
 
 class DatePicker(ctk.CTkToplevel):
-    def __init__(self, master, initial: str | None, on_pick):
+    def __init__(self, master, initial: str | None, on_pick, anchor: ctk.CTkEntry | None = None, close_on_focus_out: bool = True):
         super().__init__(master)
         self.title("Выбор даты")
         self.resizable(False, False)
         self.on_pick = on_pick
         self.attributes("-topmost", True)
+        self.overrideredirect(True)  # без системной рамки для эффекта выпадающего меню
 
         # Parse initial date
         selected_date = None
@@ -35,17 +36,26 @@ class DatePicker(ctk.CTkToplevel):
             date_pattern="dd.mm.yyyy",
             locale="ru_RU",
         )
-        self.calendar.pack(padx=10, pady=10)
+        self.calendar.pack(padx=1, pady=1)
 
-        btns = ctk.CTkFrame(self)
-        btns.pack(fill="x", padx=10, pady=(0, 10))
-        ctk.CTkButton(btns, text="ОК", command=self._ok).pack(side="left", padx=5)
-        ctk.CTkButton(btns, text="Отмена", command=self._cancel).pack(side="left", padx=5)
+        if anchor is not None:
+            try:
+                x = anchor.winfo_rootx()
+                y = anchor.winfo_rooty() + anchor.winfo_height()
+                self.geometry(f"+{x}+{y}")
+            except Exception:
+                pass
 
-    def _ok(self):
+        if close_on_focus_out:
+            self.bind("<FocusOut>", lambda e: self.destroy())
+
+        # Перехватываем клики вне окна
+        self.grab_set()
+
+        # Клик по дате
+        self.calendar.bind("<<CalendarSelected>>", self._on_select)
+
+    def _on_select(self, _evt=None):
         date_str = self.calendar.get_date()  # already dd.mm.yyyy
         self.on_pick(date_str)
-        self.destroy()
-
-    def _cancel(self):
         self.destroy()
