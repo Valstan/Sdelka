@@ -84,6 +84,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var)
         self.date_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
+        self.date_entry.bind("<Button-1>", lambda e: self.after(1, self._open_date_picker))
 
         # Contract
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=1, sticky="w", padx=5)
@@ -205,10 +206,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.filter_from_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_from, width=100)
         self.filter_from_entry.pack(side="left")
         self.filter_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_from, self.filter_from_entry))
+        self.filter_from_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker_for(self.filter_from, self.filter_from_entry)))
         ctk.CTkLabel(filter_frame, text="по").pack(side="left", padx=2)
         self.filter_to_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_to, width=100)
         self.filter_to_entry.pack(side="left")
         self.filter_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_to, self.filter_to_entry))
+        self.filter_to_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker_for(self.filter_to, self.filter_to_entry)))
         ctk.CTkButton(filter_frame, text="Фильтр", width=80, command=self._apply_filter).pack(side="left", padx=6)
 
         list_frame = ctk.CTkFrame(right)
