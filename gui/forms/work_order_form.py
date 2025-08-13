@@ -44,14 +44,21 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _build_ui(self) -> None:
         container = ctk.CTkFrame(self)
         container.pack(expand=True, fill="both")
+        # Сетка для пропорций 55% (левая часть) / 45% (правая часть)
+        try:
+            container.grid_columnconfigure(0, weight=55)
+            container.grid_columnconfigure(1, weight=45)
+            container.grid_rowconfigure(0, weight=1)
+        except Exception:
+            pass
 
         # Left side (form)
         left = ctk.CTkFrame(container)
-        left.pack(side="left", fill="both", expand=True)
+        left.grid(row=0, column=0, sticky="nsew")
 
         # Right side (orders list)
-        right = ctk.CTkFrame(container, width=420)
-        right.pack(side="left", fill="both", expand=True)
+        right = ctk.CTkFrame(container)
+        right.grid(row=0, column=1, sticky="nsew")
 
         # Header form
         header = ctk.CTkFrame(left)
