@@ -109,6 +109,7 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Печать", command=self._print_report).pack(side="left", padx=4)
 
         self.tree = ttk.Treeview(preview, show="headings")
         self.tree.pack(fill="both", expand=True)
@@ -424,3 +425,35 @@ class ReportsView(ctk.CTkFrame):
         from gui.widgets.date_picker import DatePicker
         self._hide_all_suggestions()
         DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)
+
+    def _print_report(self) -> None:
+        if self._df is None or self._df.empty:
+            messagebox.showwarning("Печать", "Сначала сформируйте отчет")
+            return
+        # Сохраняем во временный PDF и отправляем на печать
+        import sys, os, subprocess, tempfile
+        from datetime import datetime
+        try:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            tmp_pdf = os.path.join(tempfile.gettempdir(), f"report_print_{stamp}.pdf")
+            save_pdf(self._df, tmp_pdf, title="Отчет по нарядам")
+        except Exception as exc:
+            messagebox.showerror("Печать", f"Не удалось подготовить PDF: {exc}")
+            return
+        try:
+            if sys.platform == "win32":
+                try:
+                    import win32api  # type: ignore
+                    win32api.ShellExecute(0, "print", tmp_pdf, None, ".", 0)
+                except Exception:
+                    os.startfile(tmp_pdf, "print")  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["lp", tmp_pdf], check=False)
+            else:
+                # Linux/Unix — пробуем lp, иначе открываем файл
+                rc = subprocess.run(["lp", tmp_pdf]).returncode
+                if rc != 0:
+                    subprocess.Popen(["xdg-open", tmp_pdf])
+            messagebox.showinfo("Печать", "Отчет отправлен на печать (или открыт системной программой)")
+        except Exception as exc:
+            messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
