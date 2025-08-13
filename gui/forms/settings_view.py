@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+import tkinter as tk
 import threading
 import subprocess
 import sys
@@ -16,6 +17,9 @@ from utils.text import sanitize_filename
 class SettingsView(ctk.CTkFrame):
     def __init__(self, master) -> None:
         super().__init__(master)
+        self._build_log_win: ctk.CTkToplevel | None = None
+        self._build_log_text = None
+        self._build_progress_label: ctk.CTkLabel | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -89,6 +93,7 @@ class SettingsView(ctk.CTkFrame):
         if not target_path:
             return
         self.status.configure(text="Сборка .exe запущена, подождите...")
+        self._open_build_log_window()
         threading.Thread(target=self._build_exe_worker, args=(target_path,), daemon=True).start()
 
     def _build_exe_worker(self, target_path: str) -> None:
@@ -103,9 +108,9 @@ class SettingsView(ctk.CTkFrame):
                 import PyInstaller  # noqa: F401
             except Exception:
                 pip_cmd = [sys.executable, "-m", "pip", "install", "pyinstaller"]
-                proc = subprocess.run(pip_cmd, cwd=str(root_dir), capture_output=True, text=True)
-                if proc.returncode != 0:
-                    raise RuntimeError(f"Не удалось установить pyinstaller: {proc.stderr}")
+                rc = self._run_and_stream(pip_cmd, root_dir, title="Установка PyInstaller")
+                if rc != 0:
+                    raise RuntimeError("Не удалось установить pyinstaller, см. лог выше")
 
             name = "Sdelka"
             build_cmd = [
@@ -117,9 +122,9 @@ class SettingsView(ctk.CTkFrame):
                 "--collect-all", "customtkinter",
                 str(entry),
             ]
-            proc = subprocess.run(build_cmd, cwd=str(root_dir), capture_output=True, text=True)
-            if proc.returncode != 0:
-                raise RuntimeError(f"Ошибка сборки:\n{proc.stdout}\n{proc.stderr}")
+            rc = self._run_and_stream(build_cmd, root_dir, title="Сборка приложения")
+            if rc != 0:
+                raise RuntimeError("Ошибка сборки, см. лог выше")
 
             dist_exe = root_dir / "dist" / f"{name}.exe"
             if not dist_exe.exists():
@@ -137,6 +142,87 @@ class SettingsView(ctk.CTkFrame):
         except Exception as exc:
             self.after(0, lambda: self.status.configure(text=""))
             self.after(0, lambda: messagebox.showerror("Сборка .exe", str(exc)))
+            self.after(0, lambda: self._append_build_log("\n[ОШИБКА] " + str(exc) + "\n"))
             return
         self.after(0, lambda: self.status.configure(text="Готово: .exe сохранён."))
+        self.after(0, lambda: self._append_build_log("\n[ГОТОВО] Файл успешно собран и сохранён.\n"))
         self.after(0, lambda: messagebox.showinfo("Сборка .exe", "Сборка завершена и файл сохранён."))
+
+    # ----- Build log window helpers -----
+    def _open_build_log_window(self) -> None:
+        if self._build_log_win is not None and tk.Toplevel.winfo_exists(self._build_log_win):
+            # Уже открыто — просто очистим/поднимем
+            try:
+                self._build_log_text.configure(state="normal")
+                self._build_log_text.delete("1.0", "end")
+                self._build_log_text.configure(state="disabled")
+            except Exception:
+                pass
+            self._build_log_win.lift()
+            return
+        win = ctk.CTkToplevel(self)
+        win.title("Сборка .exe — журнал")
+        win.geometry("820x420")
+        win.attributes("-topmost", True)
+        self._build_log_win = win
+
+        self._build_progress_label = ctk.CTkLabel(win, text="Начало...")
+        self._build_progress_label.pack(fill="x", padx=8, pady=(8, 4))
+
+        # Текст с прокруткой
+        try:
+            text = ctk.CTkTextbox(win)
+            text.pack(expand=True, fill="both", padx=8, pady=8)
+        except Exception:
+            frame = ctk.CTkFrame(win)
+            frame.pack(expand=True, fill="both", padx=8, pady=8)
+            sb = tk.Scrollbar(frame)
+            sb.pack(side="right", fill="y")
+            text = tk.Text(frame, yscrollcommand=sb.set)
+            text.pack(expand=True, fill="both")
+            sb.config(command=text.yview)
+        self._build_log_text = text
+        try:
+            self._build_log_text.configure(state="disabled")
+        except Exception:
+            pass
+
+        ctk.CTkButton(win, text="Закрыть", command=win.destroy).pack(pady=(0, 8))
+
+    def _append_build_log(self, line: str) -> None:
+        if not self._build_log_win or not tk.Toplevel.winfo_exists(self._build_log_win):
+            return
+        def _do():
+            try:
+                self._build_log_text.configure(state="normal")
+            except Exception:
+                pass
+            try:
+                self._build_log_text.insert("end", line)
+                self._build_log_text.see("end")
+            finally:
+                try:
+                    self._build_log_text.configure(state="disabled")
+                except Exception:
+                    pass
+        self.after(0, _do)
+
+    def _set_progress(self, text: str) -> None:
+        if not self._build_progress_label:
+            return
+        self.after(0, lambda: self._build_progress_label.configure(text=text))
+
+    def _run_and_stream(self, cmd: list[str], cwd: Path, title: str) -> int:
+        self._append_build_log(f"\n=== {title} ===\n$ {' '.join(cmd)}\n")
+        self._set_progress(title)
+        try:
+            proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        except Exception as exc:
+            self._append_build_log(f"[ОШИБКА ЗАПУСКА] {exc}\n")
+            return -1
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            self._append_build_log(line)
+        rc = proc.wait()
+        self._append_build_log(f"\n[ЗАВЕРШЕНО] Код выхода: {rc}\n")
+        return rc
