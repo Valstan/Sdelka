@@ -164,6 +164,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.update_btn.pack(side="left", padx=4)
         self.delete_btn = ctk.CTkButton(actions, text="Удалить", command=self._delete, fg_color="#b91c1c", hover_color="#7f1d1d")
         self.delete_btn.pack(side="left", padx=4)
+        self.cancel_btn = ctk.CTkButton(actions, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
+        self.cancel_btn.pack(side="left", padx=4)
 
         # Right-side: existing orders list
         ctk.CTkLabel(right, text="Список нарядов").pack(padx=10, pady=(10, 0), anchor="w")
@@ -436,6 +438,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _fill_form_from_loaded(self, data) -> None:
         self.editing_order_id = data.id
+        self._loaded_snapshot = data
         self.date_var.set(data.date)
         # contract text
         with get_connection(CONFIG.db_path) as conn:
@@ -547,6 +550,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         messagebox.showinfo("Готово", "Наряд удален")
         self._reset_form()
         self._load_recent_orders()
+
+    def _cancel_edit(self) -> None:
+        # Если редактируем загруженный наряд — восстановить снапшот
+        if getattr(self, "_loaded_snapshot", None):
+            self._fill_form_from_loaded(self._loaded_snapshot)
+        else:
+            self._reset_form()
 
     def _reset_form(self) -> None:
         self.editing_order_id = None

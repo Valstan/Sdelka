@@ -15,6 +15,7 @@ class ProductsForm(ctk.CTkFrame):
     def __init__(self, master) -> None:
         super().__init__(master)
         self._selected_id: int | None = None
+        self._snapshot: tuple[str, str] | None = None
         self._build_ui()
         self._load()
 
@@ -38,6 +39,7 @@ class ProductsForm(ctk.CTkFrame):
         btns = ctk.CTkFrame(form)
         btns.grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=10)
         ctk.CTkButton(btns, text="Сохранить", command=self._save).pack(side="left", padx=5)
+        ctk.CTkButton(btns, text="Отмена", command=self._cancel, fg_color="#6b7280").pack(side="left", padx=5)
         ctk.CTkButton(btns, text="Очистить", command=self._clear).pack(side="left", padx=5)
         ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete).pack(side="left", padx=5)
 
@@ -119,14 +121,24 @@ class ProductsForm(ctk.CTkFrame):
         name, product_no = self.tree.item(sel[0], "values")
         self.name_var.set(name)
         self.no_var.set(product_no)
+        self._snapshot = (name, product_no)
 
     def _clear(self) -> None:
         self._selected_id = None
+        self._snapshot = None
         self.name_var.set("")
         self.no_var.set("")
         self.tree.selection_remove(self.tree.selection())
         self.suggest_name_frame.place_forget()
         self.suggest_no_frame.place_forget()
+
+    def _cancel(self) -> None:
+        if self._selected_id and self._snapshot:
+            name, no = self._snapshot
+            self.name_var.set(name)
+            self.no_var.set(no)
+        else:
+            self._clear()
 
     def _save(self) -> None:
         name = self.name_var.get().strip()

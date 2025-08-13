@@ -14,6 +14,7 @@ class ContractsForm(ctk.CTkFrame):
     def __init__(self, master) -> None:
         super().__init__(master)
         self._selected_id: int | None = None
+        self._snapshot: tuple[str, str | None, str | None, str | None] | None = None
         self._build_ui()
         self._load()
 
@@ -47,6 +48,7 @@ class ContractsForm(ctk.CTkFrame):
         btns = ctk.CTkFrame(form)
         btns.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=10)
         ctk.CTkButton(btns, text="Сохранить", command=self._save).pack(side="left", padx=5)
+        ctk.CTkButton(btns, text="Отмена", command=self._cancel, fg_color="#6b7280").pack(side="left", padx=5)
         ctk.CTkButton(btns, text="Очистить", command=self._clear).pack(side="left", padx=5)
         ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete).pack(side="left", padx=5)
 
@@ -109,15 +111,27 @@ class ContractsForm(ctk.CTkFrame):
         self.start_var.set(start or "")
         self.end_var.set(end or "")
         self.desc_var.set(desc or "")
+        self._snapshot = (code, start or "", end or "", desc or "")
 
     def _clear(self) -> None:
         self._selected_id = None
+        self._snapshot = None
         self.code_var.set("")
         self.start_var.set("")
         self.end_var.set("")
         self.desc_var.set("")
         self.tree.selection_remove(self.tree.selection())
         self.suggest_code_frame.place_forget()
+
+    def _cancel(self) -> None:
+        if self._selected_id and self._snapshot:
+            code, start, end, desc = self._snapshot
+            self.code_var.set(code)
+            self.start_var.set(start or "")
+            self.end_var.set(end or "")
+            self.desc_var.set(desc or "")
+        else:
+            self._clear()
 
     def _save(self) -> None:
         code = self.code_var.get().strip()
