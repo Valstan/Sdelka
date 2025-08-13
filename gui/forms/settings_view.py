@@ -12,11 +12,13 @@ import sys
 from config.settings import CONFIG
 from services.merge_db import merge_from_file
 from utils.text import sanitize_filename
+from utils.user_prefs import load_prefs, save_prefs, UserPrefs
 
 
 class SettingsView(ctk.CTkFrame):
     def __init__(self, master) -> None:
         super().__init__(master)
+        self._prefs = load_prefs()
         self._build_log_win: ctk.CTkToplevel | None = None
         self._build_log_text = None
         self._build_progress_label: ctk.CTkLabel | None = None
@@ -35,8 +37,29 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkButton(btns, text="Слить с другой базой...", command=self._merge_db).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe).pack(side="left", padx=6)
 
+        # UI Preferences
+        ui_box = ctk.CTkFrame(self)
+        ui_box.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(ui_box, text="Настройки интерфейса").pack(anchor="w", pady=(0, 8))
+        row = ctk.CTkFrame(ui_box)
+        row.pack(fill="x")
+        ctk.CTkLabel(row, text="Размер шрифта списков").pack(side="left", padx=6)
+        self._list_font_var = ctk.StringVar(value=str(self._prefs.list_font_size))
+        ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._list_font_var, command=lambda _: self._save_prefs()).pack(side="left")
+        ctk.CTkLabel(row, text="Размер шрифта кнопок/надписей").pack(side="left", padx=(16, 6))
+        self._ui_font_var = ctk.StringVar(value=str(self._prefs.ui_font_size))
+        ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._ui_font_var, command=lambda _: self._save_prefs()).pack(side="left")
+
         self.status = ctk.CTkLabel(self, text="")
         self.status.pack(fill="x", padx=10, pady=10)
+
+    def _save_prefs(self) -> None:
+        try:
+            prefs = UserPrefs(list_font_size=int(self._list_font_var.get()), ui_font_size=int(self._ui_font_var.get()))
+            save_prefs(prefs)
+            self.status.configure(text="Настройки интерфейса сохранены. Перезапустите программу для полного применения.")
+        except Exception as exc:
+            self.status.configure(text=f"Ошибка сохранения настроек: {exc}")
 
     def _export_db(self) -> None:
         src = Path(CONFIG.db_path)

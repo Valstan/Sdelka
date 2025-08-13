@@ -12,6 +12,7 @@ class AppConfig:
 
     data_dir: Path = base_dir / "data"
     db_path: Path = data_dir / "app.db"
+    user_settings_path: Path = data_dir / "user_settings.json"
 
     backups_dir: Path = base_dir / "backups"
     logs_dir: Path = base_dir / "logs"
