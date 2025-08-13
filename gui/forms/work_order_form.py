@@ -51,7 +51,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Right side (orders list)
         right = ctk.CTkFrame(container, width=420)
-        right.pack(side="left", fill="y")
+        right.pack(side="left", fill="both", expand=True)
 
         # Header form
         header = ctk.CTkFrame(left)
@@ -180,19 +180,31 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.filter_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_to, self.filter_to_entry))
         ctk.CTkButton(filter_frame, text="Фильтр", width=80, command=self._apply_filter).pack(side="left", padx=6)
 
-        self.orders_tree = ttk.Treeview(right, columns=("no", "date", "contract", "product", "total"), show="headings", height=18)
+        list_frame = ctk.CTkFrame(right)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.orders_tree = ttk.Treeview(list_frame, columns=("no", "date", "contract", "product", "total"), show="headings")
         self.orders_tree.heading("no", text="№")
         self.orders_tree.heading("date", text="Дата")
         self.orders_tree.heading("contract", text="Контракт")
         self.orders_tree.heading("product", text="Изделие")
         self.orders_tree.heading("total", text="Сумма")
-        self.orders_tree.column("no", width=60)
-        self.orders_tree.column("date", width=90)
-        self.orders_tree.column("contract", width=120)
-        self.orders_tree.column("product", width=160)
-        self.orders_tree.column("total", width=100)
-        self.orders_tree.pack(fill="y", padx=10, pady=5)
+        self.orders_tree.column("no", width=60, anchor="center")
+        self.orders_tree.column("date", width=100, anchor="center")
+        self.orders_tree.column("contract", width=140)
+        self.orders_tree.column("product", width=200)
+        self.orders_tree.column("total", width=110, anchor="e")
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.orders_tree.yview)
+        hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.orders_tree.xview)
+        self.orders_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self.orders_tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        list_frame.grid_rowconfigure(0, weight=1)
+        list_frame.grid_columnconfigure(0, weight=1)
         self.orders_tree.bind("<<TreeviewSelect>>", self._on_order_select)
+        # Заголовки кликабельны для сортировки
+        for col, title in (("no", "№"), ("date", "Дата"), ("contract", "Контракт"), ("product", "Изделие"), ("total", "Сумма")):
+            self.orders_tree.heading(col, text=title, command=lambda c=col: self._sort_orders_by(c))
 
     # --- suggest helpers ---
     def _hide_all_suggests(self) -> None:
@@ -420,6 +432,49 @@ class WorkOrdersForm(ctk.CTkFrame):
             rows = conn.execute(sql, params).fetchall()
         for r in rows:
             self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
+
+    def _sort_orders_by(self, col: str) -> None:
+        # Текущее направление
+        direction = getattr(self, "_orders_sort_dir", {}).get(col, "asc")
+        new_dir = "desc" if direction == "asc" else "asc"
+        # Собираем все элементы и сортируем локально
+        rows = []
+        for iid in self.orders_tree.get_children(""):
+            vals = self.orders_tree.item(iid, "values")
+            rows.append((iid, vals))
+        index_map = {"no": 0, "date": 1, "contract": 2, "product": 3, "total": 4}
+        idx = index_map[col]
+
+        def key_func(item):
+            vals = item[1]
+            val = vals[idx]
+            if col == "no":
+                try:
+                    return int(val)
+                except Exception:
+                    return 0
+            if col == "total":
+                try:
+                    return float(val.replace(" ", "").replace(",", "."))
+                except Exception:
+                    return 0.0
+            if col == "date":
+                # ДД.ММ.ГГГГ -> ГГГГММДД для корректной сортировки строкой
+                try:
+                    d, m, y = val.split(".")
+                    return f"{y}{m}{d}"
+                except Exception:
+                    return val
+            return val.casefold() if isinstance(val, str) else val
+
+        rows.sort(key=key_func, reverse=(new_dir == "desc"))
+        # Переставляем элементы
+        for pos, (iid, _vals) in enumerate(rows):
+            self.orders_tree.move(iid, "", pos)
+        # Сохраняем направление для колонки
+        if not hasattr(self, "_orders_sort_dir"):
+            self._orders_sort_dir = {}
+        self._orders_sort_dir[col] = new_dir
 
     def _on_order_select(self, _evt=None) -> None:
         sel = self.orders_tree.selection()
