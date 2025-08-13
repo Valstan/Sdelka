@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import time
 import customtkinter as ctk
 from tkcalendar import Calendar
 
@@ -13,8 +14,17 @@ class DatePicker(ctk.CTkToplevel):
         self.title("Выбор даты")
         self.resizable(False, False)
         self.on_pick = on_pick
+        self.anchor = anchor
         self.attributes("-topmost", True)
         self.overrideredirect(True)  # без системной рамки для эффекта выпадающего меню
+
+        # Проставить флаг "календарь открыт" на привязанном поле
+        try:
+            if self.anchor is not None:
+                setattr(self.anchor, "_dp_is_open", True)
+                setattr(self.anchor, "_dp_opened_at", time.monotonic())
+        except Exception:
+            pass
 
         # Parse initial date
         selected_date = None
@@ -70,6 +80,13 @@ class DatePicker(ctk.CTkToplevel):
         try:
             # Снять глобальные бинды, чтобы не влиять на остальной UI
             self.unbind_all("<Button-1>")
+        except Exception:
+            pass
+        # Снять флаг и отметить время закрытия для подавления мгновенного повторного открытия
+        try:
+            if self.anchor is not None:
+                setattr(self.anchor, "_dp_is_open", False)
+                setattr(self.anchor, "_dp_closed_at", time.monotonic())
         except Exception:
             pass
         try:

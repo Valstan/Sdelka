@@ -190,4 +190,13 @@ class ContractsForm(ctk.CTkFrame):
 
     def _open_date_picker(self, var, anchor=None) -> None:
         from gui.widgets.date_picker import DatePicker
+        try:
+            import time as _t
+            if anchor is not None:
+                last_closed = getattr(anchor, "_dp_closed_at", 0.0)
+                is_open = getattr(anchor, "_dp_is_open", False)
+                if is_open or (_t.monotonic() - last_closed) < 0.3:
+                    return
+        except Exception:
+            pass
         DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)

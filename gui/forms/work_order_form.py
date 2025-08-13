@@ -449,10 +449,29 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
+        # подавление мгновенного повторного открытия
+        anchor = self.date_entry
+        try:
+            import time as _t
+            last_closed = getattr(anchor, "_dp_closed_at", 0.0)
+            is_open = getattr(anchor, "_dp_is_open", False)
+            if is_open or (_t.monotonic() - last_closed) < 0.3:
+                return
+        except Exception:
+            pass
         DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d), anchor=self.date_entry)
 
     def _open_date_picker_for(self, var, anchor=None) -> None:
         self._hide_all_suggests()
+        try:
+            import time as _t
+            if anchor is not None:
+                last_closed = getattr(anchor, "_dp_closed_at", 0.0)
+                is_open = getattr(anchor, "_dp_is_open", False)
+                if is_open or (_t.monotonic() - last_closed) < 0.3:
+                    return
+        except Exception:
+            pass
         DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)
 
     # ---- Orders list ----
