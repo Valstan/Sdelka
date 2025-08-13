@@ -405,10 +405,12 @@ class ReportsView(ctk.CTkFrame):
         if self._df is None:
             messagebox.showwarning("Экспорт", "Сначала сформируйте отчет")
             return
+        # Спросить ориентацию
+        orientation = self._ask_orientation()
         path = self._ask_save_path("Сохранить PDF", ".pdf", [("PDF", "*.pdf")])
         if not path:
             return
-        save_pdf(self._df, path, title="Отчет по нарядам")
+        save_pdf(self._df, path, title="Отчет по нарядам", orientation=orientation)
         messagebox.showinfo("Экспорт", "PDF сохранен")
 
     def _export_excel(self) -> None:
@@ -433,10 +435,11 @@ class ReportsView(ctk.CTkFrame):
         # Сохраняем во временный PDF и отправляем на печать
         import sys, os, subprocess, tempfile
         from datetime import datetime
+        orientation = self._ask_orientation()
         try:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             tmp_pdf = os.path.join(tempfile.gettempdir(), f"report_print_{stamp}.pdf")
-            save_pdf(self._df, tmp_pdf, title="Отчет по нарядам")
+            save_pdf(self._df, tmp_pdf, title="Отчет по нарядам", orientation=orientation)
         except Exception as exc:
             messagebox.showerror("Печать", f"Не удалось подготовить PDF: {exc}")
             return
@@ -457,3 +460,20 @@ class ReportsView(ctk.CTkFrame):
             messagebox.showinfo("Печать", "Отчет отправлен на печать (или открыт системной программой)")
         except Exception as exc:
             messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
+
+    def _ask_orientation(self) -> str | None:
+        win = ctk.CTkToplevel(self)
+        win.title("Ориентация страницы")
+        win.grab_set()
+        ctk.CTkLabel(win, text="Выберите ориентацию страницы для PDF").pack(padx=12, pady=8)
+        choice = {"val": None}
+        btns = ctk.CTkFrame(win)
+        btns.pack(pady=8)
+        def set_choice(val):
+            choice["val"] = val
+            win.destroy()
+        ctk.CTkButton(btns, text="Портрет", command=lambda: set_choice("portrait")).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Ландшафт", command=lambda: set_choice("landscape")).pack(side="left", padx=6)
+        ctk.CTkButton(win, text="Авто", command=lambda: set_choice(None)).pack(pady=(0, 10))
+        win.wait_window()
+        return choice["val"]
