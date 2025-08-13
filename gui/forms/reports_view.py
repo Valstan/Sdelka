@@ -109,7 +109,7 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Печать", command=self._print_report).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Предпросмотр PDF", command=self._open_preview).pack(side="left", padx=4)
 
         self.tree = ttk.Treeview(preview, show="headings")
         self.tree.pack(fill="both", expand=True)
@@ -428,38 +428,99 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
         DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)
 
-    def _print_report(self) -> None:
+    def _open_preview(self) -> None:
         if self._df is None or self._df.empty:
-            messagebox.showwarning("Печать", "Сначала сформируйте отчет")
+            messagebox.showwarning("Предпросмотр", "Сначала сформируйте отчет")
             return
-        # Сохраняем во временный PDF и отправляем на печать
-        import sys, os, subprocess, tempfile
+        win = ctk.CTkToplevel(self)
+        win.title("Предпросмотр PDF")
+        win.geometry("980x700")
+        win.grab_set()
+        # Панель настроек
+        panel = ctk.CTkFrame(win)
+        panel.pack(fill="x", padx=10, pady=8)
+        ctk.CTkLabel(panel, text="Шрифт (семейство)").pack(side="left", padx=4)
+        font_family = ctk.StringVar(value="")
+        font_entry = ctk.CTkEntry(panel, textvariable=font_family, width=140, placeholder_text="по умолчанию")
+        font_entry.pack(side="left")
+        ctk.CTkLabel(panel, text="Кегль").pack(side="left", padx=6)
+        font_size = ctk.IntVar(value=14)
+        size_spin = ctk.CTkEntry(panel, textvariable=font_size, width=60)
+        size_spin.pack(side="left")
+        ctk.CTkLabel(panel, text="Ориентация").pack(side="left", padx=6)
+        orient = ctk.StringVar(value="auto")
+        ctk.CTkOptionMenu(panel, values=["auto", "portrait", "landscape"], variable=orient).pack(side="left")
+        ctk.CTkLabel(panel, text="Поля (мм): слева, справа, сверху, снизу").pack(side="left", padx=8)
+        margins = [ctk.IntVar(value=15) for _ in range(4)]
+        for var in margins:
+            ctk.CTkEntry(panel, textvariable=var, width=50).pack(side="left", padx=2)
+
+        btns = ctk.CTkFrame(panel)
+        btns.pack(side="right")
+
+        # Область предпросмотра: просто открываем PDF через системную программу или показываем ссылку
+        body = ctk.CTkFrame(win)
+        body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        preview_label = ctk.CTkLabel(body, text="Нажмите 'Обновить', чтобы сгенерировать PDF и открыть для просмотра")
+        preview_label.pack(pady=8)
+
+        import os, tempfile, sys, subprocess
         from datetime import datetime
-        orientation = self._ask_orientation()
-        try:
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            tmp_pdf = os.path.join(tempfile.gettempdir(), f"report_print_{stamp}.pdf")
-            save_pdf(self._df, tmp_pdf, title="Отчет по нарядам", orientation=orientation)
-        except Exception as exc:
-            messagebox.showerror("Печать", f"Не удалось подготовить PDF: {exc}")
-            return
-        try:
-            if sys.platform == "win32":
-                try:
-                    import win32api  # type: ignore
-                    win32api.ShellExecute(0, "print", tmp_pdf, None, ".", 0)
-                except Exception:
-                    os.startfile(tmp_pdf, "print")  # type: ignore[attr-defined]
-            elif sys.platform == "darwin":
-                subprocess.run(["lp", tmp_pdf], check=False)
-            else:
-                # Linux/Unix — пробуем lp, иначе открываем файл
-                rc = subprocess.run(["lp", tmp_pdf]).returncode
-                if rc != 0:
-                    subprocess.Popen(["xdg-open", tmp_pdf])
-            messagebox.showinfo("Печать", "Отчет отправлен на печать (или открыт системной программой)")
-        except Exception as exc:
-            messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
+
+        tmp_file = {"path": None}
+
+        def regen(open_after: bool) -> None:
+            # Генерируем PDF по настройкам
+            try:
+                left, right, top, bottom = [max(5, int(v.get())) for v in margins]
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                path = os.path.join(tempfile.gettempdir(), f"report_preview_{stamp}.pdf")
+                tmp_file["path"] = path
+                save_pdf(
+                    self._df,
+                    path,
+                    title="Отчет по нарядам",
+                    orientation=None if orient.get()=="auto" else orient.get(),
+                    font_size=int(font_size.get() or 14),
+                    font_family=(font_family.get().strip() or None),
+                    margins_mm=(left, right, top, bottom),
+                )
+                preview_label.configure(text=f"PDF создан: {path}")
+                if open_after:
+                    if sys.platform == "win32":
+                        os.startfile(path)  # type: ignore[attr-defined]
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(["open", path])
+                    else:
+                        subprocess.Popen(["xdg-open", path])
+            except Exception as exc:
+                messagebox.showerror("Предпросмотр", str(exc))
+
+        ctk.CTkButton(btns, text="Обновить", command=lambda: regen(open_after=True)).pack(side="left", padx=4)
+        ctk.CTkButton(btns, text="Сохранить PDF...", command=self._export_pdf).pack(side="left", padx=4)
+        def print_current():
+            if not tmp_file["path"]:
+                regen(open_after=False)
+            path = tmp_file["path"]
+            if not path:
+                return
+            # Печать файла
+            try:
+                if sys.platform == "win32":
+                    try:
+                        import win32api  # type: ignore
+                        win32api.ShellExecute(0, "print", path, None, ".", 0)
+                    except Exception:
+                        os.startfile(path, "print")  # type: ignore[attr-defined]
+                elif sys.platform == "darwin":
+                    subprocess.run(["lp", path], check=False)
+                else:
+                    rc = subprocess.run(["lp", path]).returncode
+                    if rc != 0:
+                        subprocess.Popen(["xdg-open", path])
+            except Exception as exc:
+                messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
+        ctk.CTkButton(btns, text="Печать", command=print_current).pack(side="left", padx=4)
 
     def _ask_orientation(self) -> str | None:
         win = ctk.CTkToplevel(self)
