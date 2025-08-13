@@ -4,9 +4,13 @@ import shutil
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+import threading
+import subprocess
+import sys
 
 from config.settings import CONFIG
 from services.merge_db import merge_from_file
+from utils.text import sanitize_filename
 
 
 class SettingsView(ctk.CTkFrame):
@@ -25,6 +29,7 @@ class SettingsView(ctk.CTkFrame):
 
         ctk.CTkButton(btns, text="Сохранить копию базы...", command=self._export_db).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Слить с другой базой...", command=self._merge_db).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe).pack(side="left", padx=6)
 
         self.status = ctk.CTkLabel(self, text="")
         self.status.pack(fill="x", padx=10, pady=10)
@@ -65,3 +70,73 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showerror("Слияние", f"Не удалось выполнить слияние: {exc}")
             return
         messagebox.showinfo("Слияние", f"Готово. Обновлено справочников: {refs}, добавлено нарядов: {orders}")
+
+    # ---- Build EXE ----
+    def _build_exe(self) -> None:
+        if sys.platform != "win32":
+            messagebox.showwarning("Сборка .exe", "Сборка .exe доступна только в Windows.")
+            return
+        # Выбор имени/места сохранения заранее
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        initial = sanitize_filename(f"sdelka_{stamp}") + ".exe"
+        target_path = filedialog.asksaveasfilename(
+            title="Сохранить собранный .exe",
+            defaultextension=".exe",
+            initialfile=initial,
+            filetypes=[("Windows Executable", "*.exe"), ("Все файлы", "*.*")],
+        )
+        if not target_path:
+            return
+        self.status.configure(text="Сборка .exe запущена, подождите...")
+        threading.Thread(target=self._build_exe_worker, args=(target_path,), daemon=True).start()
+
+    def _build_exe_worker(self, target_path: str) -> None:
+        try:
+            root_dir = Path(__file__).resolve().parents[2]  # проектный корень
+            entry = root_dir / "main.py"
+            if not entry.exists():
+                raise FileNotFoundError(f"Не найден main.py по пути {entry}")
+
+            # Обеспечить наличие pyinstaller
+            try:
+                import PyInstaller  # noqa: F401
+            except Exception:
+                pip_cmd = [sys.executable, "-m", "pip", "install", "pyinstaller"]
+                proc = subprocess.run(pip_cmd, cwd=str(root_dir), capture_output=True, text=True)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"Не удалось установить pyinstaller: {proc.stderr}")
+
+            name = "Sdelka"
+            build_cmd = [
+                sys.executable, "-m", "PyInstaller",
+                "--noconfirm", "--clean",
+                "--name", name,
+                "--onefile", "--windowed",
+                "--collect-all", "tkcalendar",
+                "--collect-all", "customtkinter",
+                str(entry),
+            ]
+            proc = subprocess.run(build_cmd, cwd=str(root_dir), capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(f"Ошибка сборки:\n{proc.stdout}\n{proc.stderr}")
+
+            dist_exe = root_dir / "dist" / f"{name}.exe"
+            if not dist_exe.exists():
+                raise FileNotFoundError(f"Собранный файл не найден: {dist_exe}")
+
+            # Копируем в выбранное место
+            shutil.copy2(dist_exe, target_path)
+            # Можно убрать временные артефакты (build, spec)
+            try:
+                (root_dir / f"{name}.spec").unlink(missing_ok=True)
+                shutil.rmtree(root_dir / "build", ignore_errors=True)
+                # dist оставим, чтобы не пересобирать заново, если надо
+            except Exception:
+                pass
+        except Exception as exc:
+            self.after(0, lambda: self.status.configure(text=""))
+            self.after(0, lambda: messagebox.showerror("Сборка .exe", str(exc)))
+            return
+        self.after(0, lambda: self.status.configure(text="Готово: .exe сохранён."))
+        self.after(0, lambda: messagebox.showinfo("Сборка .exe", "Сборка завершена и файл сохранён."))
