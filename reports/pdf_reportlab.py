@@ -87,6 +87,25 @@ def _is_long_text_column(name: str) -> bool:
     return any(k in n for k in ("вид", "работ", "фио", "работник", "издел", "name"))
 
 
+def _min_word_widths_for_wrap_cols(df: pd.DataFrame, cols: list[str], font_name: str, font_size: int, padding: float = 8.0) -> List[float]:
+    """Минимальная ширина для колонок, где разрешен перенос: ширина самого длинного слова + padding.
+    Для не-переносимых колонок возвращает 0 (нет минимума кроме общей ширины).
+    """
+    mins: List[float] = []
+    for c in cols:
+        if _is_long_text_column(str(c)):
+            max_token = 0.0
+            for text in df[c].astype(str).head(1000):
+                for token in text.split():
+                    w = pdfmetrics.stringWidth(token, font_name, font_size)
+                    if w > max_token:
+                        max_token = w
+            mins.append(max_token + padding)
+        else:
+            mins.append(0.0)
+    return mins
+
+
 def save_pdf(
     df: pd.DataFrame,
     file_path: str | Path,
@@ -143,15 +162,22 @@ def save_pdf(
             if total <= avail_w:
                 best_page, best_font, best_widths = page_size, fs, widths
                 break
-            # Попробуем ужать только длинные текстовые колонки (для переносов по словам)
+            # Попробуем ужать только длинные текстовые колонки (для переносов по словам), соблюдая минимальную ширину слова
+            mins = _min_word_widths_for_wrap_cols(df, cols, regular_font, fs)
             nonwrap_total = sum(w for w, c in zip(widths, cols) if not _is_long_text_column(str(c)))
-            wrap_total = total - nonwrap_total
-            if wrap_total > 0 and nonwrap_total < avail_w:
-                scale = (avail_w - nonwrap_total) / wrap_total
-                if scale < 1.0:
-                    adj_widths = [w * scale if _is_long_text_column(str(c)) else w for w, c in zip(widths, cols)]
-                else:
-                    adj_widths = widths
+            wrap_total = sum(w for w, c in zip(widths, cols) if _is_long_text_column(str(c)))
+            wrap_min_total = sum(m for m, c in zip(mins, cols) if _is_long_text_column(str(c)))
+            # доступно под переносимые колонки
+            avail_for_wrap = max(0.0, avail_w - nonwrap_total)
+            if wrap_total > 0 and avail_for_wrap >= wrap_min_total:
+                scale = min(1.0, avail_for_wrap / wrap_total)
+                adj_widths = []
+                for w, m, c in zip(widths, mins, cols):
+                    if _is_long_text_column(str(c)):
+                        adj = max(m, w * scale)
+                    else:
+                        adj = w
+                    adj_widths.append(adj)
                 if sum(adj_widths) <= avail_w:
                     best_page, best_font, best_widths = page_size, fs, adj_widths
                     break
@@ -169,12 +195,18 @@ def save_pdf(
     avail_w = page_w - (left_mm + right_mm) * mm
     total = sum(best_widths)
     if total > avail_w:
-        # финальный срез длинных колонок
+        # финальный пересчет с учетом минимальной ширины слов
+        mins = _min_word_widths_for_wrap_cols(df, cols, regular_font, best_font)
         nonwrap_total = sum(w for w, c in zip(best_widths, cols) if not _is_long_text_column(str(c)))
-        wrap_total = total - nonwrap_total
-        if wrap_total > 0 and nonwrap_total < avail_w:
-            scale = (avail_w - nonwrap_total) / wrap_total
-            best_widths = [w * scale if _is_long_text_column(str(c)) else w for w, c in zip(best_widths, cols)]
+        wrap_total = sum(w for w, c in zip(best_widths, cols) if _is_long_text_column(str(c)))
+        wrap_min_total = sum(m for m, c in zip(mins, cols) if _is_long_text_column(str(c)))
+        avail_for_wrap = max(0.0, avail_w - nonwrap_total)
+        if wrap_total > 0 and avail_for_wrap >= wrap_min_total:
+            scale = min(1.0, avail_for_wrap / wrap_total)
+            best_widths = [
+                max(m, w * scale) if _is_long_text_column(str(c)) else w
+                for w, m, c in zip(best_widths, mins, cols)
+            ]
 
     doc = SimpleDocTemplate(
         str(file_path),
