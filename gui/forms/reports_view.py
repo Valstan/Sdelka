@@ -116,6 +116,34 @@ class ReportsView(ctk.CTkFrame):
         self.sg_product.place_forget()
         self.sg_contract.place_forget()
 
+    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+        job_id = getattr(frame, "_auto_hide_job", None)
+        if job_id:
+            try:
+                self.after_cancel(job_id)
+            except Exception:
+                pass
+        def is_focus_within() -> bool:
+            focus_w = self.focus_get()
+            if not focus_w:
+                return False
+            if focus_w in related_entries:
+                return True
+            stack = list(frame.winfo_children())
+            while stack:
+                w = stack.pop()
+                if w == focus_w:
+                    return True
+                stack.extend(getattr(w, "winfo_children", lambda: [])())
+            return False
+        def check_and_hide():
+            if not is_focus_within():
+                frame.place_forget()
+                frame._auto_hide_job = None
+            else:
+                frame._auto_hide_job = self.after(5000, check_and_hide)
+        frame._auto_hide_job = self.after(5000, check_and_hide)
+
     def _on_worker_key(self, _evt=None) -> None:
         self._hide_all_suggestions()
         self._selected_worker_id = None
@@ -131,6 +159,7 @@ class ReportsView(ctk.CTkFrame):
         for label in get_recent("reports.worker", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
                 ctk.CTkButton(self.sg_worker, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x")
+        self._schedule_auto_hide(self.sg_worker, [self.worker_entry])
 
     def _pick_worker(self, worker_id: int, label: str) -> None:
         self._selected_worker_id = worker_id if worker_id else self._selected_worker_id
@@ -153,6 +182,7 @@ class ReportsView(ctk.CTkFrame):
         for label in get_recent("reports.dept", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
                 ctk.CTkButton(self.sg_dept, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x")
+        self._schedule_auto_hide(self.sg_dept, [self.dept_entry])
 
     def _pick_dept(self, val: str) -> None:
         self.dept_var.set(val)
@@ -173,6 +203,7 @@ class ReportsView(ctk.CTkFrame):
         for label in get_recent("reports.job_type", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
                 ctk.CTkButton(self.sg_job, text=label, command=lambda l=label: self._pick_job(0, l)).pack(fill="x")
+        self._schedule_auto_hide(self.sg_job, [self.job_entry])
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
         self._selected_job_type_id = job_type_id if job_type_id else self._selected_job_type_id
@@ -195,6 +226,7 @@ class ReportsView(ctk.CTkFrame):
         for label in get_recent("reports.product", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
                 ctk.CTkButton(self.sg_product, text=label, command=lambda l=label: self._pick_product(0, l)).pack(fill="x")
+        self._schedule_auto_hide(self.sg_product, [self.product_entry])
 
     def _pick_product(self, product_id: int, label: str) -> None:
         self._selected_product_id = product_id if product_id else self._selected_product_id
@@ -217,6 +249,7 @@ class ReportsView(ctk.CTkFrame):
         for label in get_recent("reports.contract", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
                 ctk.CTkButton(self.sg_contract, text=label, command=lambda l=label: self._pick_contract(0, l)).pack(fill="x")
+        self._schedule_auto_hide(self.sg_contract, [self.contract_entry])
 
     def _pick_contract(self, contract_id: int, label: str) -> None:
         self._selected_contract_id = contract_id if contract_id else self._selected_contract_id

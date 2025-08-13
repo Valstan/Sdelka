@@ -79,6 +79,34 @@ class JobTypesForm(ctk.CTkFrame):
         frame.place(x=x, y=y)
         frame.lift()
 
+    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+        job_id = getattr(frame, "_auto_hide_job", None)
+        if job_id:
+            try:
+                self.after_cancel(job_id)
+            except Exception:
+                pass
+        def is_focus_within() -> bool:
+            focus_w = self.focus_get()
+            if not focus_w:
+                return False
+            if focus_w in related_entries:
+                return True
+            stack = list(frame.winfo_children())
+            while stack:
+                w = stack.pop()
+                if w == focus_w:
+                    return True
+                stack.extend(getattr(w, "winfo_children", lambda: [])())
+            return False
+        def check_and_hide():
+            if not is_focus_within():
+                frame.place_forget()
+                frame._auto_hide_job = None
+            else:
+                frame._auto_hide_job = self.after(5000, check_and_hide)
+        frame._auto_hide_job = self.after(5000, check_and_hide)
+
     def _on_name_key(self, event=None) -> None:
         self._hide_all_suggestions()
         prefix = self.name_var.get().strip()
@@ -103,6 +131,7 @@ class JobTypesForm(ctk.CTkFrame):
             if label not in names:
                 ctk.CTkButton(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_name_frame, [self.name_entry])
 
     def _pick_name(self, val: str) -> None:
         self.name_var.set(val)
@@ -127,6 +156,7 @@ class JobTypesForm(ctk.CTkFrame):
             if label not in vals:
                 ctk.CTkButton(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_unit_frame, [self.unit_entry])
 
     def _pick_unit(self, val: str) -> None:
         self.unit_var.set(val)

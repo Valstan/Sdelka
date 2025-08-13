@@ -17,6 +17,7 @@ class WorkersForm(ctk.CTkFrame):
         super().__init__(master)
         self._selected_id: int | None = None
         self._edit_snapshot: dict | None = None
+        self._hide_jobs: dict[int, str] = {}
         self._build_ui()
         self._load_workers()
 
@@ -95,6 +96,39 @@ class WorkersForm(ctk.CTkFrame):
         self.suggest_position_frame.place_forget()
         self.suggest_personnel_frame.place_forget()
 
+    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+        # cancel previous job for this frame
+        job_id = getattr(frame, "_auto_hide_job", None)
+        if job_id:
+            try:
+                self.after_cancel(job_id)
+            except Exception:
+                pass
+
+        def is_focus_within() -> bool:
+            focus_w = self.focus_get()
+            if not focus_w:
+                return False
+            if focus_w in related_entries:
+                return True
+            # check inside frame children
+            stack = list(frame.winfo_children())
+            while stack:
+                w = stack.pop()
+                if w == focus_w:
+                    return True
+                stack.extend(getattr(w, "winfo_children", lambda: [])())
+            return False
+
+        def check_and_hide():
+            if not is_focus_within():
+                frame.place_forget()
+                frame._auto_hide_job = None
+            else:
+                frame._auto_hide_job = self.after(5000, check_and_hide)
+
+        frame._auto_hide_job = self.after(5000, check_and_hide)
+
     def _on_name_key(self, event=None) -> None:
         self._hide_all_suggestions()
         prefix = self.full_name_var.get().strip()
@@ -121,6 +155,7 @@ class WorkersForm(ctk.CTkFrame):
             if label not in [lbl for _, lbl in items]:
                 ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_frame, [self.full_name_entry])
 
     def _on_dept_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -145,6 +180,7 @@ class WorkersForm(ctk.CTkFrame):
             if label not in vals:
                 ctk.CTkButton(self.suggest_dept_frame, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_dept_frame, [self.dept_entry])
 
     def _on_position_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -169,6 +205,7 @@ class WorkersForm(ctk.CTkFrame):
             if label not in vals:
                 ctk.CTkButton(self.suggest_position_frame, text=label, command=lambda s=label: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_position_frame, [self.position_entry])
 
     def _on_personnel_key(self, event=None) -> None:
         self._hide_all_suggestions()
@@ -193,6 +230,7 @@ class WorkersForm(ctk.CTkFrame):
             if label not in vals:
                 ctk.CTkButton(self.suggest_personnel_frame, text=label, command=lambda s=label: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        self._schedule_auto_hide(self.suggest_personnel_frame, [self.personnel_entry])
 
     def _pick_name(self, name: str) -> None:
         self.full_name_var.set(name)
