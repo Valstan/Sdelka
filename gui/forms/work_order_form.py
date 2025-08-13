@@ -66,26 +66,24 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Date
         self.date_var = ctk.StringVar(value=dt.date.today().strftime(CONFIG.date_format))
-        ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=120)
-        self.date_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, columnspan=2, sticky="w", padx=5)
+        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=160)
+        self.date_entry.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
         # Contract
-        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=3, sticky="w", padx=5, pady=5)
-        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр", width=180)
-        self.contract_entry.grid(row=0, column=4, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(header, text="Контракт").grid(row=2, column=0, columnspan=2, sticky="w", padx=5)
+        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр", width=260)
+        self.contract_entry.grid(row=3, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
-        self.contract_entry.bind("<Button-1>", lambda e: self.after(1, self._on_contract_key))
 
         # Product
-        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=5, sticky="w", padx=5, pady=5)
-        self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название", width=220)
-        self.product_entry.grid(row=0, column=6, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(header, text="Изделие").grid(row=4, column=0, columnspan=2, sticky="w", padx=5)
+        self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название", width=300)
+        self.product_entry.grid(row=5, column=0, columnspan=2, sticky="w", padx=5, pady=(0, 6))
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
-        self.product_entry.bind("<Button-1>", lambda e: self.after(1, self._on_product_key))
 
         # Suggestion frames
         self.suggest_contract_frame = ctk.CTkFrame(self)
