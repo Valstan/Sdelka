@@ -10,6 +10,8 @@ from gui.forms.work_order_form import WorkOrdersForm
 from gui.forms.reports_view import ReportsView
 from gui.forms.import_export_view import ImportExportView
 from gui.forms.settings_view import SettingsView
+from utils.user_prefs import load_prefs
+from utils.ui_theming import apply_user_fonts
 
 
 class AppWindow(ctk.CTk):
@@ -17,6 +19,12 @@ class AppWindow(ctk.CTk):
         super().__init__()
         self.title("Учет сдельной работы бригад")
         self.geometry("1200x760")
+        # Применить пользовательские шрифты
+        try:
+            prefs = load_prefs()
+            apply_user_fonts(self, prefs)
+        except Exception:
+            pass
         self._build_ui()
 
     def _build_ui(self) -> None:
