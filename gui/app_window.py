@@ -19,16 +19,16 @@ class AppWindow(ctk.CTk):
         super().__init__()
         self.title("Учет сдельной работы бригад")
         self.geometry("1200x760")
-        # Применить пользовательские шрифты
+        self._tab_font_normal = None
+        self._tab_font_active = None
+        self._tabview = None
+        self._segmented_button = None
+        # Применить пользовательские шрифты для остального UI
         try:
             prefs = load_prefs()
             apply_user_fonts(self, prefs)
         except Exception:
             pass
-        self._tab_font_normal = None
-        self._tab_font_active = None
-        self._tabview = None
-        self._segmented_button = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -41,10 +41,10 @@ class AppWindow(ctk.CTk):
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
-        # Наряды: без прокрутки, всё должно умещаться
+        # Наряды
         WorkOrdersForm(self.tab_orders).pack(expand=True, fill="both")
 
-        # Подвкладки справочников
+        # Справочники (внутренние вкладки)
         refs_tabs = ctk.CTkTabview(self.tab_refs)
         refs_tabs.pack(expand=True, fill="both", padx=10, pady=10)
         tab_workers = refs_tabs.add("Работники")
@@ -63,44 +63,37 @@ class AppWindow(ctk.CTk):
         # Настройки
         SettingsView(self.tab_settings).pack(expand=True, fill="both")
 
-        # Настроить фиксированные шрифты для кнопок разделов (вкладок)
-        self._setup_tab_fonts()
+        # Фиксированные шрифты вкладок (не зависят от настроек пользователя)
+        self._setup_tab_fonts(self._tabview)
+        self._setup_tab_fonts(refs_tabs)
 
-    def _setup_tab_fonts(self) -> None:
+    def _setup_tab_fonts(self, tabview: ctk.CTkTabview) -> None:
         try:
             base_family = tkfont.nametofont("TkDefaultFont").cget("family")
         except Exception:
             base_family = "TkDefaultFont"
-        self._tab_font_normal = tkfont.Font(family=base_family, size=20, weight="normal")
-        self._tab_font_active = tkfont.Font(family=base_family, size=24, weight="bold")
-        seg = getattr(self._tabview, "_segmented_button", None)
+        normal = tkfont.Font(family=base_family, size=20, weight="normal")
+        active = tkfont.Font(family=base_family, size=24, weight="bold")
+        seg = getattr(tabview, "_segmented_button", None)
         if seg is None:
             return
-        self._segmented_button = seg
-        # Обновлять шрифты при кликах/клавишах на сегмент-кнопках
-        try:
-            seg.bind("<ButtonRelease-1>", lambda e: self._apply_tab_fonts(), add="+")
-            seg.bind("<KeyRelease>", lambda e: self._apply_tab_fonts(), add="+")
-        except Exception:
-            pass
-        # Первоначальная установка
-        self.after(50, self._apply_tab_fonts)
-
-    def _apply_tab_fonts(self) -> None:
-        seg = self._segmented_button
-        if not seg:
-            return
-        current = None
-        try:
-            current = self._tabview.get()
-        except Exception:
-            pass
-        buttons = getattr(seg, "_buttons_dict", {})
-        for name, btn in buttons.items():
+        # Применить шрифты и обновлять при переключении
+        def apply_fonts():
+            current = None
             try:
-                if name == current:
-                    btn.configure(font=self._tab_font_active)
-                else:
-                    btn.configure(font=self._tab_font_normal)
+                current = tabview.get()
             except Exception:
                 pass
+            buttons = getattr(seg, "_buttons_dict", {})
+            for name, btn in buttons.items():
+                try:
+                    btn.configure(font=active if name == current else normal)
+                except Exception:
+                    pass
+        try:
+            seg.bind("<ButtonRelease-1>", lambda e: apply_fonts(), add="+")
+            seg.bind("<KeyRelease>", lambda e: apply_fonts(), add="+")
+        except Exception:
+            pass
+        # Начальная установка
+        tabview.after(50, apply_fonts)

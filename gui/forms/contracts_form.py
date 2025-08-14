@@ -35,7 +35,7 @@ class ContractsForm(ctk.CTkFrame):
         self.code_entry.bind("<FocusIn>", lambda e: self._on_code_key())
         self.code_entry.bind("<Button-1>", lambda e: self.after(1, self._on_code_key))
 
-        ctk.CTkLabel(form, text="Дата начала (ДД.ММ.ГГГГ)").grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(form, text="Дата начала").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.start_entry = ctk.CTkEntry(form, textvariable=self.start_var, width=120)
         self.start_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.start_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.start_var, self.start_entry))
