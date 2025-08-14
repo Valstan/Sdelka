@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+from typing import Callable
 import customtkinter as ctk
 from tkcalendar import Calendar
 
 from config.settings import CONFIG
+
+
+# Минимальная задержка перед повторным открытием календаря на том же поле (секунды)
+RECENT_REOPEN_THRESHOLD_S: float = 0.3
 
 
 class DatePicker(ctk.CTkToplevel):
@@ -100,3 +105,26 @@ class DatePicker(ctk.CTkToplevel):
             self.on_pick(date_str)
         finally:
             self._close()
+
+
+def can_open_for_anchor(anchor: ctk.CTkEntry | None) -> bool:
+    """Возвращает True, если для данного поля можно открыть календарь (нет повторного открытия сразу)."""
+    if anchor is None:
+        return True
+    try:
+        last_closed = getattr(anchor, "_dp_closed_at", 0.0)
+        is_open = getattr(anchor, "_dp_is_open", False)
+        if is_open:
+            return False
+        if (time.monotonic() - float(last_closed)) < RECENT_REOPEN_THRESHOLD_S:
+            return False
+        return True
+    except Exception:
+        return True
+
+
+def open_for_anchor(master, anchor: ctk.CTkEntry, initial: str, on_pick: Callable[[str], None]) -> None:
+    """Открывает DatePicker под указанным полем, если это допустимо согласно can_open_for_anchor."""
+    if not can_open_for_anchor(anchor):
+        return
+    DatePicker(master, initial, on_pick, anchor=anchor)

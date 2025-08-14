@@ -17,6 +17,7 @@ from services.work_orders import WorkOrderInput, WorkOrderItemInput, create_work
 from services.validation import validate_date
 from db import queries as q
 from gui.widgets.date_picker import DatePicker
+from gui.widgets.date_picker import open_for_anchor
 from utils.usage_history import record_use, get_recent
 
 
@@ -498,30 +499,13 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
-        # подавление мгновенного повторного открытия
-        anchor = self.date_entry
-        try:
-            import time as _t
-            last_closed = getattr(anchor, "_dp_closed_at", 0.0)
-            is_open = getattr(anchor, "_dp_is_open", False)
-            if is_open or (_t.monotonic() - last_closed) < 0.3:
-                return
-        except Exception:
-            pass
-        DatePicker(self, self.date_var.get().strip(), lambda d: self.date_var.set(d), anchor=self.date_entry)
+        open_for_anchor(self, self.date_entry, self.date_var.get().strip(), lambda d: self.date_var.set(d))
 
     def _open_date_picker_for(self, var, anchor=None) -> None:
         self._hide_all_suggests()
-        try:
-            import time as _t
-            if anchor is not None:
-                last_closed = getattr(anchor, "_dp_closed_at", 0.0)
-                is_open = getattr(anchor, "_dp_is_open", False)
-                if is_open or (_t.monotonic() - last_closed) < 0.3:
-                    return
-        except Exception:
-            pass
-        DatePicker(self, var.get().strip(), lambda d: var.set(d), anchor=anchor)
+        if anchor is None:
+            return
+        open_for_anchor(self, anchor, var.get().strip(), lambda d: var.set(d))
 
     # ---- Orders list ----
     def _load_recent_orders(self) -> None:
