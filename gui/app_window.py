@@ -46,7 +46,7 @@ class AppWindow(ctk.CTk):
             fam = tkfont.nametofont("TkDefaultFont").cget("family")
         except Exception:
             fam = "TkDefaultFont"
-        small = tkfont.Font(family=fam, size=8)
+        small = ctk.CTkFont(family=fam, size=8)
         ctk.CTkLabel(topbar, text=f"{self._app_title}, Программа учёта нарядов и контрактов РМЗ", font=small, anchor="w", justify="left").pack(anchor="w")
 
         tabview = ctk.CTkTabview(self)
