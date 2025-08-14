@@ -8,6 +8,7 @@ from typing import Optional
 
 import customtkinter as ctk
 from tkinter import ttk, messagebox
+import tkinter.font as tkfont
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -45,6 +46,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Перетаскиваемый сплиттер между левой и правой частями
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(expand=True, fill="both")
+        self._paned = paned
 
         # Left side (form)
         left = ctk.CTkFrame(paned)
@@ -64,18 +66,19 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Right side (orders list)
         right = ctk.CTkFrame(paned)
         paned.add(right, weight=2)
+        self._right = right
 
-        # Установить начальную позицию разделителя ~65/35 после инициализации размеров
+        # Установить начальную позицию разделителя <= 40% и под контент списка
         def _set_initial_sash() -> None:
-            try:
-                total = paned.winfo_width() or self.winfo_width()
-                if not total or total <= 1:
-                    self.after(120, _set_initial_sash)
-                    return
-                paned.sashpos(0, int(total * 0.65))
-            except Exception:
-                pass
-        self.after(150, _set_initial_sash)
+            self._enforce_right_width_limit(adjust_to_content=True)
+        self.after(200, _set_initial_sash)
+
+        # Также ограничивать при ресайзе окна/панели и после перетаскивания
+        def _on_resize(_evt=None):
+            self._enforce_right_width_limit(adjust_to_content=False)
+        paned.bind("<Configure>", _on_resize, add="+")
+        self.bind("<Configure>", _on_resize, add="+")
+        paned.bind("<ButtonRelease-1>", lambda e: self._enforce_right_width_limit(adjust_to_content=False), add="+")
 
         # Header form
         header = ctk.CTkFrame(left)
@@ -246,6 +249,53 @@ class WorkOrdersForm(ctk.CTkFrame):
         for col, title in (("no", "№"), ("date", "Дата"), ("contract", "Контракт"), ("product", "Изделие"), ("total", "Сумма")):
             self.orders_tree.heading(col, text=title, command=lambda c=col: self._sort_orders_by(c))
 
+    # --- enforce right panel width and autosize columns ---
+    def _autosize_orders_columns(self) -> None:
+        try:
+            font = tkfont.nametofont("TkDefaultFont")
+        except Exception:
+            font = tkfont.Font()
+        pad = 24
+        min_widths = {"no": 50, "date": 90, "contract": 80, "product": 120, "total": 90}
+        for col in self.orders_tree["columns"]:
+            header = self.orders_tree.heading(col).get("text", "")
+            max_w = font.measure(str(header))
+            for iid in self.orders_tree.get_children(""):
+                text = str(self.orders_tree.set(iid, col))
+                w = font.measure(text)
+                if w > max_w:
+                    max_w = w
+            self.orders_tree.column(col, width=max(max_w + pad, min_widths.get(col, 60)))
+
+    def _get_orders_content_width(self) -> int:
+        total = 0
+        try:
+            for col in self.orders_tree["columns"]:
+                total += int(self.orders_tree.column(col, "width") or 0)
+            # учесть вертикальный скроллбар и внутренние отступы
+            total += 20 + 16
+        except Exception:
+            total = 360
+        return total
+
+    def _enforce_right_width_limit(self, adjust_to_content: bool) -> None:
+        try:
+            total = self._paned.winfo_width() or self.winfo_width()
+            if not total or total <= 1:
+                self.after(120, lambda: self._enforce_right_width_limit(adjust_to_content))
+                return
+            max_right = int(total * 0.40)
+            desired = max_right
+            if adjust_to_content:
+                desired = min(max_right, self._get_orders_content_width())
+            # Минимальная ширина справа, чтобы элементы управления не ломались
+            min_right = 260
+            desired = max(min_right, desired)
+            pos = max(0, total - desired)
+            self._paned.sashpos(0, pos)
+        except Exception:
+            pass
+
     # --- suggest helpers ---
     def _hide_all_suggests(self) -> None:
         for frame in (
@@ -294,13 +344,6 @@ class WorkOrdersForm(ctk.CTkFrame):
         for label in get_recent("work_orders.product", self.product_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
                 ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
-
-    def _pick_product(self, product_id: int, label: str) -> None:
-        self.selected_product_id = product_id
-        self.product_entry.delete(0, "end")
-        self.product_entry.insert(0, label)
-        record_use("work_orders.product", label)
-        self.suggest_product_frame.place_forget()
 
     def _on_job_key(self, _evt=None) -> None:
         self._hide_all_suggests()
@@ -502,6 +545,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         for r in rows:
             iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
             self._order_rows.append(iid)
+        self._autosize_orders_columns()
 
     def _apply_filter(self) -> None:
         date_from = (self.filter_from.get().strip() or None)
@@ -524,6 +568,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             rows = conn.execute(sql, params).fetchall()
         for r in rows:
             self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
+        self._autosize_orders_columns()
 
     def _sort_orders_by(self, col: str) -> None:
         # Текущее направление
