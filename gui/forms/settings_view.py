@@ -14,7 +14,7 @@ from services.merge_db import merge_from_file
 from utils.text import sanitize_filename
 from utils.user_prefs import load_prefs, save_prefs, UserPrefs
 from utils.ui_theming import apply_user_fonts
-from utils.db import get_connection
+from db.sqlite import get_connection
 
 
 class SettingsView(ctk.CTkFrame):
