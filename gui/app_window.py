@@ -46,7 +46,7 @@ class AppWindow(ctk.CTk):
 
         # Справочники (внутренние вкладки)
         refs_tabs = ctk.CTkTabview(self.tab_refs)
-        refs_tabs.pack(expand=True, fill="both", padx=10, pady=(4, 8))
+        refs_tabs.pack(expand=True, fill="both", padx=10, pady=(0, 0))
         tab_workers = refs_tabs.add("Работники")
         tab_jobs = refs_tabs.add("Виды работ")
         tab_products = refs_tabs.add("Изделия")
@@ -102,12 +102,12 @@ class AppWindow(ctk.CTk):
                     btn.configure(font=f)
                 except Exception:
                     pass
-                # Разрыв между кнопками (визуально отдельные кнопки)
+                # Без разрывов между кнопками
                 try:
-                    btn.grid_configure(padx=6, pady=4)
+                    btn.grid_configure(padx=0, pady=0)
                 except Exception:
                     try:
-                        btn.pack_configure(padx=6, pady=4)
+                        btn.pack_configure(padx=0, pady=0)
                     except Exception:
                         pass
                 # Применим шрифт всем дочерним виджетам внутри кнопки
