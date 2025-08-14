@@ -116,4 +116,19 @@ class AppWindow(ctk.CTk):
             seg.bind("<KeyRelease>", lambda e: apply_fonts(), add="+")
         except Exception:
             pass
+        # Периодически отслеживать смену вкладки и обновлять шрифты
+        try:
+            seg._last_tab_caption = None
+            def _watch():
+                try:
+                    current = tabview.get()
+                except Exception:
+                    current = None
+                if getattr(seg, "_last_tab_caption", None) != current:
+                    seg._last_tab_caption = current
+                    apply_fonts()
+                tabview.after(120, _watch)
+            tabview.after(80, _watch)
+        except Exception:
+            pass
         tabview.after(50, apply_fonts)
