@@ -47,6 +47,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         paned = ttk.Panedwindow(self, orient="horizontal")
         paned.pack(expand=True, fill="both")
         self._paned = paned
+        # Запретить перетаскивание разделителя: блокируем клики по саше/ручке
+        paned.bind("<ButtonPress-1>", self._block_paned_drag, add="+")
+        paned.bind("<B1-Motion>", self._block_paned_drag, add="+")
 
         # Left side (form)
         left = ctk.CTkFrame(paned)
@@ -248,6 +251,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Заголовки кликабельны для сортировки
         for col, title in (("no", "№"), ("date", "Дата"), ("contract", "Контракт"), ("product", "Изделие"), ("total", "Сумма")):
             self.orders_tree.heading(col, text=title, command=lambda c=col: self._sort_orders_by(c))
+
+    def _block_paned_drag(self, event):
+        try:
+            ident = self._paned.identify(event.x, event.y)
+            if isinstance(ident, str) and ("sash" in ident or "handle" in ident):
+                return "break"
+        except Exception:
+            pass
+        # Ничего не блокируем для кликов по содержимому панелей
+        return None
 
     # --- enforce right panel width and autosize columns ---
     def _autosize_orders_columns(self) -> None:
