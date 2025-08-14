@@ -77,12 +77,18 @@ class AppWindow(ctk.CTk):
             base_family = tkfont.nametofont("TkDefaultFont").cget("family")
         except Exception:
             base_family = "TkDefaultFont"
-        normal = tkfont.Font(family=base_family, size=20, weight="normal")
-        active = tkfont.Font(family=base_family, size=24, weight="bold")
+        # Отрицательное значение размера = пиксели (не зависит от tk scaling и пользовательских настроек)
+        normal = tkfont.Font(family=base_family, size=-20, weight="normal")
+        active = tkfont.Font(family=base_family, size=-24, weight="bold")
         seg = getattr(tabview, "_segmented_button", None)
         if seg is None:
             return
-        # Применить шрифты и обновлять при переключении
+        # Сохраняем ссылки, чтобы GC не удалил шрифты
+        if not hasattr(seg, "_fixed_fonts"):
+            seg._fixed_fonts = {}
+        seg._fixed_fonts["normal"] = normal
+        seg._fixed_fonts["active"] = active
+
         def apply_fonts():
             current = None
             try:
@@ -91,8 +97,18 @@ class AppWindow(ctk.CTk):
                 pass
             buttons = getattr(seg, "_buttons_dict", {})
             for name, btn in buttons.items():
+                f = active if name == current else normal
                 try:
-                    btn.configure(font=active if name == current else normal)
+                    btn.configure(font=f)
+                except Exception:
+                    pass
+                # На всякий случай — применим шрифт всем дочерним виджетам сегмента
+                try:
+                    for child in btn.winfo_children():
+                        try:
+                            child.configure(font=f)
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         try:
@@ -100,5 +116,4 @@ class AppWindow(ctk.CTk):
             seg.bind("<KeyRelease>", lambda e: apply_fonts(), add="+")
         except Exception:
             pass
-        # Начальная установка
         tabview.after(50, apply_fonts)
