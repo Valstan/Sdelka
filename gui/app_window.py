@@ -66,6 +66,11 @@ class AppWindow(ctk.CTk):
         # Фиксированные шрифты вкладок (не зависят от настроек пользователя)
         self._setup_tab_fonts(self._tabview)
         self._setup_tab_fonts(refs_tabs)
+        # Переприменять после изменения пользовательских настроек шрифтов
+        try:
+            self.bind("<<UIFontsChanged>>", lambda e: [self._setup_tab_fonts(self._tabview), self._setup_tab_fonts(refs_tabs)])
+        except Exception:
+            pass
 
     def _setup_tab_fonts(self, tabview: ctk.CTkTabview) -> None:
         try:
