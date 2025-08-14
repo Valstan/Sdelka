@@ -43,17 +43,19 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._load_recent_orders()
 
     def _build_ui(self) -> None:
-        # Перетаскиваемый сплиттер между левой и правой частями
-        paned = ttk.Panedwindow(self, orient="horizontal")
-        paned.pack(expand=True, fill="both")
-        self._paned = paned
-        # Запретить перетаскивание разделителя: блокируем клики по саше/ручке
-        paned.bind("<ButtonPress-1>", self._block_paned_drag, add="+")
-        paned.bind("<B1-Motion>", self._block_paned_drag, add="+")
+        # Контейнер без разделителя: правая панель фиксированной ширины, левая — остальное
+        container = ctk.CTkFrame(self)
+        container.pack(expand=True, fill="both")
 
-        # Left side (form)
-        left = ctk.CTkFrame(paned)
-        paned.add(left, weight=3)
+        # Right side (orders list) — пакуем справа, ширина управляется программно
+        right = ctk.CTkFrame(container, width=320)
+        right.pack(side="right", fill="y")
+        right.pack_propagate(False)
+        self._right = right
+
+        # Left side (form) — занимает всё оставшееся
+        left = ctk.CTkFrame(container)
+        left.pack(side="left", expand=True, fill="both")
         # Резиновая сетка: списки тянут высоту
         try:
             left.grid_rowconfigure(0, weight=0)  # header
@@ -65,23 +67,14 @@ class WorkOrdersForm(ctk.CTkFrame):
             left.grid_columnconfigure(0, weight=1)
         except Exception:
             pass
-
-        # Right side (orders list)
-        right = ctk.CTkFrame(paned)
-        paned.add(right, weight=2)
-        self._right = right
-
-        # Установить начальную позицию разделителя <= 40% и под контент списка
-        def _set_initial_sash() -> None:
+        # Первичная установка ширины правой панели и пересчет при ресайзе
+        def _set_initial_width() -> None:
             self._enforce_right_width_limit(adjust_to_content=True)
-        self.after(200, _set_initial_sash)
+        self.after(200, _set_initial_width)
 
-        # Также ограничивать при ресайзе окна/панели и после перетаскивания
         def _on_resize(_evt=None):
             self._enforce_right_width_limit(adjust_to_content=False)
-        paned.bind("<Configure>", _on_resize, add="+")
         self.bind("<Configure>", _on_resize, add="+")
-        paned.bind("<ButtonRelease-1>", lambda e: self._enforce_right_width_limit(adjust_to_content=False), add="+")
 
         # Header form
         header = ctk.CTkFrame(left)
@@ -252,16 +245,6 @@ class WorkOrdersForm(ctk.CTkFrame):
         for col, title in (("no", "№"), ("date", "Дата"), ("contract", "Контракт"), ("product", "Изделие"), ("total", "Сумма")):
             self.orders_tree.heading(col, text=title, command=lambda c=col: self._sort_orders_by(c))
 
-    def _block_paned_drag(self, event):
-        try:
-            ident = self._paned.identify(event.x, event.y)
-            if isinstance(ident, str) and ("sash" in ident or "handle" in ident):
-                return "break"
-        except Exception:
-            pass
-        # Ничего не блокируем для кликов по содержимому панелей
-        return None
-
     # --- enforce right panel width and autosize columns ---
     def _autosize_orders_columns(self) -> None:
         try:
@@ -293,7 +276,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _enforce_right_width_limit(self, adjust_to_content: bool) -> None:
         try:
-            total = self._paned.winfo_width() or self.winfo_width()
+            total = self.winfo_width()
             if not total or total <= 1:
                 self.after(120, lambda: self._enforce_right_width_limit(adjust_to_content))
                 return
@@ -304,8 +287,12 @@ class WorkOrdersForm(ctk.CTkFrame):
             # Минимальная ширина справа, чтобы элементы управления не ломались
             min_right = 260
             desired = max(min_right, desired)
-            pos = max(0, total - desired)
-            self._paned.sashpos(0, pos)
+            # Применить ширину к правой панели
+            try:
+                self._right.configure(width=desired)
+                self._right.pack_propagate(False)
+            except Exception:
+                pass
         except Exception:
             pass
 

@@ -8,7 +8,6 @@ from gui.forms.products_form import ProductsForm
 from gui.forms.contracts_form import ContractsForm
 from gui.forms.work_order_form import WorkOrdersForm
 from gui.forms.reports_view import ReportsView
-from gui.forms.import_export_view import ImportExportView
 from gui.forms.settings_view import SettingsView
 from utils.user_prefs import load_prefs
 from utils.ui_theming import apply_user_fonts
@@ -33,7 +32,6 @@ class AppWindow(ctk.CTk):
 
         self.tab_orders = tabview.add("Наряды")
         self.tab_refs = tabview.add("Справочники")
-        self.tab_import = tabview.add("Импорт/Экспорт")
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
@@ -55,9 +53,6 @@ class AppWindow(ctk.CTk):
 
         # Отчеты
         ReportsView(self.tab_reports).pack(expand=True, fill="both")
-
-        # Импорт/Экспорт
-        ImportExportView(self.tab_import).pack(expand=True, fill="both")
 
         # Настройки
         SettingsView(self.tab_settings).pack(expand=True, fill="both")
