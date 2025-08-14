@@ -12,12 +12,18 @@ from gui.forms.reports_view import ReportsView
 from gui.forms.settings_view import SettingsView
 from utils.user_prefs import load_prefs
 from utils.ui_theming import apply_user_fonts
+from utils.versioning import get_version
 
 
 class AppWindow(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Учет сдельной работы бригад")
+        try:
+            ver = get_version()
+        except Exception:
+            ver = "2.0.0.1"
+        self._app_title = f"СДЕЛКА РМЗ в. {ver}"
+        self.title(self._app_title)
         self.geometry("1200x760")
         self._tab_font_normal = None
         self._tab_font_active = None
@@ -32,8 +38,19 @@ class AppWindow(ctk.CTk):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        # Верхняя панель с названием программы (фиксированный шрифт 8pt), компактно
+        topbar = ctk.CTkFrame(self)
+        topbar.pack(fill="x", padx=6, pady=(2, 0))
+        import tkinter.font as tkfont
+        try:
+            fam = tkfont.nametofont("TkDefaultFont").cget("family")
+        except Exception:
+            fam = "TkDefaultFont"
+        small = tkfont.Font(family=fam, size=8)
+        ctk.CTkLabel(topbar, text=f"{self._app_title}, Программа учёта нарядов и контрактов РМЗ", font=small, anchor="w", justify="left").pack(anchor="w")
+
         tabview = ctk.CTkTabview(self)
-        tabview.pack(expand=True, fill="both")
+        tabview.pack(expand=True, fill="both", pady=(0, 0))
         self._tabview = tabview
 
         self.tab_orders = tabview.add("Наряды")
