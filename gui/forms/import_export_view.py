@@ -62,7 +62,7 @@ class ImportExportView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_workers_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано работников: {n}")
         except Exception as exc:
@@ -73,7 +73,7 @@ class ImportExportView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_job_types_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано видов работ: {n}")
         except Exception as exc:
@@ -84,7 +84,7 @@ class ImportExportView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_products_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано изделий: {n}")
         except Exception as exc:
@@ -95,7 +95,7 @@ class ImportExportView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_contracts_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано контрактов: {n}")
         except Exception as exc:
@@ -117,7 +117,7 @@ class ImportExportView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 export_table_to_excel(conn, table, path)
             messagebox.showinfo("Экспорт", "Готово")
         except Exception as exc:
@@ -128,7 +128,7 @@ class ImportExportView(ctk.CTkFrame):
         if not directory:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 export_all_tables_to_excel(conn, directory)
             messagebox.showinfo("Экспорт", "Готово")
         except Exception as exc:

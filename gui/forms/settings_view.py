@@ -12,7 +12,17 @@ import sys
 from config.settings import CONFIG
 from services.merge_db import merge_from_file
 from utils.text import sanitize_filename
-from utils.user_prefs import load_prefs, save_prefs, UserPrefs
+from utils.user_prefs import (
+    load_prefs,
+    save_prefs,
+    UserPrefs,
+    get_current_db_path,
+    set_db_path,
+    get_enable_wal,
+    set_enable_wal,
+    get_busy_timeout_ms,
+    set_busy_timeout_ms,
+)
 from utils.ui_theming import apply_user_fonts
 from db.sqlite import get_connection
 
@@ -42,6 +52,36 @@ class SettingsView(ctk.CTkFrame):
         self._btn_merge_db.pack(side="left", padx=6)
         self._btn_build_exe = ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe)
         self._btn_build_exe.pack(side="left", padx=6)
+
+        # ---- Настройки базы данных и совместной работы ----
+        db_box = ctk.CTkFrame(self)
+        db_box.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(db_box, text="Настройки базы данных (для совместной работы)").pack(anchor="w", pady=(0, 8))
+
+        # Путь к БД
+        row_db = ctk.CTkFrame(db_box)
+        row_db.pack(fill="x", pady=(2, 6))
+        ctk.CTkLabel(row_db, text="Путь к файлу БД (.db)").pack(side="left", padx=6)
+        self._db_path_var = ctk.StringVar(value=str(get_current_db_path()))
+        self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var, width=560)
+        self._db_path_entry.pack(side="left", padx=6, fill="x", expand=True)
+        ctk.CTkButton(row_db, text="Обзор...", command=self._choose_db_path).pack(side="left", padx=6)
+        ctk.CTkButton(row_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
+
+        # WAL и таймауты
+        row_wal = ctk.CTkFrame(db_box)
+        row_wal.pack(fill="x", pady=(2, 6))
+        self._wal_var = ctk.BooleanVar(value=get_enable_wal())
+        self._wal_chk = ctk.CTkCheckBox(row_wal, text="Включить WAL (рекомендуется для совместной работы)", variable=self._wal_var, command=lambda: None)
+        self._wal_chk.pack(side="left", padx=6)
+
+        row_to = ctk.CTkFrame(db_box)
+        row_to.pack(fill="x", pady=(2, 6))
+        ctk.CTkLabel(row_to, text="Таймаут ожидания блокировок (мс)").pack(side="left", padx=6)
+        self._busy_var = ctk.StringVar(value=str(get_busy_timeout_ms()))
+        self._busy_entry = ctk.CTkEntry(row_to, textvariable=self._busy_var, width=120)
+        self._busy_entry.pack(side="left", padx=6)
+        ctk.CTkButton(row_to, text="Сохранить", command=self._apply_db_settings).pack(side="left", padx=6)
 
         # UI Preferences
         ui_box = ctk.CTkFrame(self)
@@ -108,6 +148,7 @@ class SettingsView(ctk.CTkFrame):
             for b in (
                 self._btn_merge_db,
                 self._btn_build_exe,
+                self._db_path_entry,
                 self._btn_imp_workers,
                 self._btn_imp_jobs,
                 self._btn_imp_products,
@@ -134,8 +175,45 @@ class SettingsView(ctk.CTkFrame):
         except Exception as exc:
             self.status.configure(text=f"Ошибка сохранения настроек: {exc}")
 
+    def _choose_db_path(self) -> None:
+        path = filedialog.asksaveasfilename(
+            title="Выберите или создайте файл базы",
+            defaultextension=".db",
+            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+            initialfile=str(get_current_db_path().name),
+        )
+        if not path:
+            return
+        self._db_path_var.set(path)
+
+    def _apply_db_settings(self) -> None:
+        try:
+            # Сохранить путь
+            new_path = Path(self._db_path_var.get().strip())
+            if not new_path:
+                raise ValueError("Путь к базе не указан")
+            try:
+                new_path.parent.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            set_db_path(new_path)
+
+            # Сохранить WAL и таймаут
+            set_enable_wal(bool(self._wal_var.get()))
+            try:
+                to_ms = int(self._busy_var.get())
+                if to_ms < 1000:
+                    to_ms = 1000
+            except Exception:
+                to_ms = 10000
+            set_busy_timeout_ms(to_ms)
+
+            self.status.configure(text="Настройки БД сохранены. Перезапустите приложение на всех клиентах.")
+        except Exception as exc:
+            self.status.configure(text=f"Ошибка применения настроек БД: {exc}")
+
     def _export_db(self) -> None:
-        src = Path(CONFIG.db_path)
+        src = Path(get_current_db_path())
         if not src.exists():
             messagebox.showerror("Экспорт", "Файл базы данных не найден")
             return
@@ -164,8 +242,9 @@ class SettingsView(ctk.CTkFrame):
         )
         if not path:
             return
+        from utils.user_prefs import get_current_db_path
         try:
-            refs, orders = merge_from_file(CONFIG.db_path, path)
+            refs, orders = merge_from_file(get_current_db_path(), path)
         except Exception as exc:
             messagebox.showerror("Слияние", f"Не удалось выполнить слияние: {exc}")
             return
@@ -184,7 +263,7 @@ class SettingsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_workers_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано работников: {n}")
         except Exception as exc:
@@ -196,7 +275,7 @@ class SettingsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_job_types_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано видов работ: {n}")
         except Exception as exc:
@@ -208,7 +287,7 @@ class SettingsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_products_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано изделий: {n}")
         except Exception as exc:
@@ -220,7 +299,7 @@ class SettingsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 n = import_contracts_from_excel(conn, path)
             messagebox.showinfo("Импорт", f"Импортировано контрактов: {n}")
         except Exception as exc:
@@ -241,7 +320,7 @@ class SettingsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 export_table_to_excel(conn, table, path)
             messagebox.showinfo("Экспорт", "Готово")
         except Exception as exc:
@@ -253,7 +332,7 @@ class SettingsView(ctk.CTkFrame):
         if not directory:
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 export_all_tables_to_excel(conn, directory)
             messagebox.showinfo("Экспорт", "Готово")
         except Exception as exc:

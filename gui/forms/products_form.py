@@ -97,7 +97,7 @@ class ProductsForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.name_entry, self.suggest_name_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = q.list_products(conn, prefix or None, CONFIG.autocomplete_limit)
         vals = [r["name"] for r in rows]
         
@@ -113,7 +113,7 @@ class ProductsForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все изделия
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_products = q.list_products(conn, None, CONFIG.autocomplete_limit)
             for row in all_products:
                 if shown >= CONFIG.autocomplete_limit:
@@ -128,7 +128,7 @@ class ProductsForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.no_entry, self.suggest_no_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = q.search_products_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["product_no"] for r in rows]
         
@@ -144,7 +144,7 @@ class ProductsForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все номера изделий
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_products = q.search_products_by_prefix(conn, "", CONFIG.autocomplete_limit)
             for row in all_products:
                 if shown >= CONFIG.autocomplete_limit:
@@ -180,7 +180,7 @@ class ProductsForm(ctk.CTkFrame):
     def _load(self) -> None:
         for i in self.tree.get_children():
             self.tree.delete(i)
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = ref.list_products(conn)
         for r in rows:
             self.tree.insert("", "end", iid=str(r["id"]), values=(r["name"], r["product_no"]))
@@ -216,7 +216,7 @@ class ProductsForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Заполните наименование и номер изделия")
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 if self._selected_id:
                     ref.save_product(conn, self._selected_id, name, no)
                 else:
@@ -238,7 +238,7 @@ class ProductsForm(ctk.CTkFrame):
         if not messagebox.askyesno("Подтверждение", "Удалить выбранное изделие?"):
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 ref.delete_product(conn, self._selected_id)
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")

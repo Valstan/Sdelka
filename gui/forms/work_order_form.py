@@ -327,7 +327,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.contract_entry, self.suggest_contract_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_contracts(conn, self.contract_entry.get().strip(), CONFIG.autocomplete_limit)
         
         shown = 0
@@ -342,7 +342,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все контракты
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_contracts:
                 if shown >= CONFIG.autocomplete_limit:
@@ -364,7 +364,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.product_entry, self.suggest_product_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_products(conn, self.product_entry.get().strip(), CONFIG.autocomplete_limit)
         
         shown = 0
@@ -379,7 +379,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все изделия
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_products:
                 if shown >= CONFIG.autocomplete_limit:
@@ -394,7 +394,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.job_entry, self.suggest_job_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_job_types(conn, self.job_entry.get().strip(), CONFIG.autocomplete_limit)
         
         shown = 0
@@ -409,7 +409,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все виды работ
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_job_types = suggestions.suggest_job_types(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_job_types:
                 if shown >= CONFIG.autocomplete_limit:
@@ -438,7 +438,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.worker_entry, self.suggest_worker_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_workers(conn, self.worker_entry.get().strip(), CONFIG.autocomplete_limit)
         
         shown = 0
@@ -453,7 +453,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем всех работников
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_workers:
                 if shown >= CONFIG.autocomplete_limit:
@@ -496,7 +496,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Количество должно быть > 0")
             return
 
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             row = conn.execute("SELECT name, price FROM job_types WHERE id = ?", (job_type_id,)).fetchone()
             if not row:
                 messagebox.showerror("Ошибка", "Вид работ не найден")
@@ -597,7 +597,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             except Exception:
                 pass
         self._order_rows = []
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = conn.execute(
                 """
                 SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, p.name AS product_name, wo.total_amount
@@ -630,7 +630,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         sql += " ORDER BY date DESC, order_no DESC LIMIT 500"
         for iid in self.orders_tree.get_children():
             self.orders_tree.delete(iid)
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = conn.execute(sql, params).fetchall()
         for r in rows:
             self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
@@ -686,7 +686,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         work_order_id = int(sel[0])
         try:
             from services.work_orders import load_work_order  # lazy import
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 data = load_work_order(conn, work_order_id)
         except Exception as exc:
             messagebox.showerror("Ошибка", f"Не удалось загрузить наряд: {exc}")
@@ -703,7 +703,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             pass
         self.date_var.set(data.date)
         # contract text
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             c = conn.execute("SELECT code FROM contracts WHERE id=?", (data.contract_id,)).fetchone()
             p = conn.execute("SELECT name, product_no FROM products WHERE id=?", (data.product_id,)).fetchone() if data.product_id else None
         self.contract_entry.delete(0, "end")
@@ -734,7 +734,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             row._del_btn = del_btn
         # workers
         self.selected_workers.clear()
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             for wid in data.worker_ids:
                 r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
                 self.selected_workers[wid] = r["full_name"] if r else str(wid)
@@ -789,11 +789,11 @@ class WorkOrdersForm(ctk.CTkFrame):
         try:
             if self.editing_order_id:
                 from services.work_orders import update_work_order  # lazy import
-                with get_connection(CONFIG.db_path) as conn:
+                with get_connection() as conn:
                     update_work_order(conn, self.editing_order_id, wo)
                 messagebox.showinfo("Сохранено", "Наряд обновлен")
             else:
-                with get_connection(CONFIG.db_path) as conn:
+                with get_connection() as conn:
                     _id = create_work_order(conn, wo)
                 messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
         except sqlite3.IntegrityError as exc:
@@ -815,7 +815,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             return
         try:
             from services.work_orders import delete_work_order  # lazy import
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 delete_work_order(conn, self.editing_order_id)
         except Exception as exc:
             messagebox.showerror("Ошибка", f"Не удалось удалить наряд: {exc}")

@@ -9,6 +9,7 @@ from utils.backup import backup_sqlite_db
 from utils.logging import configure_logging
 from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
+from utils.user_prefs import get_current_db_path
 
 
 def main() -> None:
@@ -16,10 +17,10 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     # Бэкап БД (если файл существует)
-    backup_sqlite_db(CONFIG.db_path)
+    backup_sqlite_db(get_current_db_path())
 
     # Инициализация схемы
-    with get_connection(CONFIG.db_path) as conn:
+    with get_connection() as conn:
         initialize_schema(conn)
 
     # Запуск GUI

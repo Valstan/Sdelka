@@ -108,7 +108,7 @@ class ContractsForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.code_entry, self.suggest_code_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = q.list_contracts(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["code"] for r in rows]
         
@@ -124,7 +124,7 @@ class ContractsForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все контракты
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_contracts = q.list_contracts(conn, "", CONFIG.autocomplete_limit)
             for row in all_contracts:
                 if shown >= CONFIG.autocomplete_limit:
@@ -152,7 +152,7 @@ class ContractsForm(ctk.CTkFrame):
     def _load(self) -> None:
         for i in self.tree.get_children():
             self.tree.delete(i)
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = ref.list_contracts(conn)
         for r in rows:
             self.tree.insert("", "end", iid=str(r["id"]), values=(r["code"], r["start_date"], r["end_date"], r["description"]))
@@ -193,7 +193,7 @@ class ContractsForm(ctk.CTkFrame):
         end = self.end_var.get().strip() or None
         desc = self.desc_var.get().strip() or None
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 if self._selected_id:
                     ref.save_contract(conn, self._selected_id, code, start, end, desc)
                 else:
@@ -215,7 +215,7 @@ class ContractsForm(ctk.CTkFrame):
         if not messagebox.askyesno("Подтверждение", "Удалить выбранный контракт?"):
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 ref.delete_contract(conn, self._selected_id)
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")

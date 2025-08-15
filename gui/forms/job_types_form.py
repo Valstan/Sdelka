@@ -142,10 +142,10 @@ class JobTypesForm(ctk.CTkFrame):
         
         # запросы
         if prefix:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 rows = q.search_job_types_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
         else:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 rows = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
         
         names = [r["name"] for r in rows]
@@ -163,7 +163,7 @@ class JobTypesForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все виды работ
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_job_types = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
             for row in all_job_types:
                 if shown >= CONFIG.autocomplete_limit:
@@ -186,7 +186,7 @@ class JobTypesForm(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.unit_entry, self.suggest_unit_frame, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             vals = q.distinct_units_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
         
         shown = 0
@@ -203,7 +203,7 @@ class JobTypesForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все единицы измерения
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_units = q.distinct_units_by_prefix(conn, "", CONFIG.autocomplete_limit)
             for unit in all_units:
                 if shown >= CONFIG.autocomplete_limit:
@@ -234,7 +234,7 @@ class JobTypesForm(ctk.CTkFrame):
     def _load(self) -> None:
         for i in self.tree.get_children():
             self.tree.delete(i)
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = ref.list_job_types(conn)
         for r in rows:
             self.tree.insert("", "end", iid=str(r["id"]), values=(r["name"], r["unit"], r["price"]))
@@ -282,7 +282,7 @@ class JobTypesForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Цена должна быть неотрицательным числом")
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 if self._selected_id:
                     ref.save_job_type(conn, self._selected_id, name, unit, price)
                 else:
@@ -305,7 +305,7 @@ class JobTypesForm(ctk.CTkFrame):
         if not messagebox.askyesno("Подтверждение", "Удалить выбранный вид работ?"):
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 ref.delete_job_type(conn, self._selected_id)
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")

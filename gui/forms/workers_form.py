@@ -171,7 +171,7 @@ class WorkersForm(ctk.CTkFrame):
         
         items: list[tuple[int, str]] = []
         if prefix:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 items = suggestions.suggest_workers(conn, prefix, CONFIG.autocomplete_limit)
         
         shown = 0
@@ -190,7 +190,7 @@ class WorkersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все работников
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_workers:
                 if shown >= CONFIG.autocomplete_limit:
@@ -210,7 +210,7 @@ class WorkersForm(ctk.CTkFrame):
         
         vals = []
         if prefix:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 vals = suggestions.suggest_depts(conn, prefix, CONFIG.autocomplete_limit)
         
         shown = 0
@@ -227,7 +227,7 @@ class WorkersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все цеха
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
             for dept in all_depts:
                 if shown >= CONFIG.autocomplete_limit:
@@ -247,7 +247,7 @@ class WorkersForm(ctk.CTkFrame):
         
         vals = []
         if prefix:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 vals = suggestions.suggest_positions(conn, prefix, CONFIG.autocomplete_limit)
         
         shown = 0
@@ -264,7 +264,7 @@ class WorkersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все должности
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_positions = suggestions.suggest_positions(conn, "", CONFIG.autocomplete_limit)
             for position in all_positions:
                 if shown >= CONFIG.autocomplete_limit:
@@ -284,7 +284,7 @@ class WorkersForm(ctk.CTkFrame):
         
         vals = []
         if prefix:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 vals = suggestions.suggest_personnel_nos(conn, prefix, CONFIG.autocomplete_limit)
         
         shown = 0
@@ -301,7 +301,7 @@ class WorkersForm(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все табельные номера
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_personnel = suggestions.suggest_personnel_nos(conn, "", CONFIG.autocomplete_limit)
             for personnel in all_personnel:
                 if shown >= CONFIG.autocomplete_limit:
@@ -349,7 +349,7 @@ class WorkersForm(ctk.CTkFrame):
     def _load_workers(self) -> None:
         for item in self.tree.get_children():
             self.tree.delete(item)
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = ref.list_workers(conn)
         for r in rows:
             self.tree.insert("", "end", iid=str(r["id"]), values=(r["full_name"], r["dept"], r["position"], r["personnel_no"]))
@@ -400,7 +400,7 @@ class WorkersForm(ctk.CTkFrame):
         dept = self.dept_var.get().strip() or None
         position = self.position_var.get().strip() or None
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 if self._selected_id:
                     ref.update_worker(conn, self._selected_id, full_name, dept, position, personnel_no)
                 else:
@@ -423,7 +423,7 @@ class WorkersForm(ctk.CTkFrame):
         if not messagebox.askyesno("Подтверждение", "Удалить выбранного работника?"):
             return
         try:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 ref.delete_worker(conn, self._selected_id)
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")

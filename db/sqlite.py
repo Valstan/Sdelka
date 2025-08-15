@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Generator, Iterable, Sequence
 
 from config.settings import CONFIG
+from utils.user_prefs import get_current_db_path, get_enable_wal, get_busy_timeout_ms
 from utils.runtime_mode import is_readonly
 
 logger = logging.getLogger(__name__)
@@ -14,22 +15,44 @@ logger = logging.getLogger(__name__)
 
 def _apply_pragmas(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys = ON;")
-    if CONFIG.enable_wal:
+    # Включаем WAL по пользовательской настройке (или по умолчанию)
+    if get_enable_wal():
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA temp_store = MEMORY;")
+    # Настройка таймаута блокировок в миллисекундах
+    try:
+        timeout_ms = int(get_busy_timeout_ms())
+        conn.execute(f"PRAGMA busy_timeout = {timeout_ms};")
+    except Exception:
+        pass
 
 
 @contextmanager
 def get_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Connection, None, None]:
-    path = Path(db_path) if db_path else CONFIG.db_path
+    # Берем путь из аргумента, иначе из пользовательских настроек (prefs), иначе из CONFIG
+    path = Path(db_path) if db_path else get_current_db_path()
     needs_init = not path.exists()
+    # В секундах для sqlite3.connect(timeout=...)
+    try:
+        connect_timeout_sec = max(1.0, float(get_busy_timeout_ms()) / 1000.0)
+    except Exception:
+        connect_timeout_sec = 10.0
     # В режиме только чтение открываем БД с mode=ro, чтобы запись была физически невозможна
     if is_readonly():
         uri = f"file:{path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+        conn = sqlite3.connect(
+            uri,
+            uri=True,
+            timeout=connect_timeout_sec,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        )
     else:
-        conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+        conn = sqlite3.connect(
+            path,
+            timeout=connect_timeout_sec,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        )
     conn.row_factory = sqlite3.Row
     try:
         try:

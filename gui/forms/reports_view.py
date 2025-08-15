@@ -172,7 +172,7 @@ class ReportsView(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.worker_entry, self.sg_worker, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_workers(conn, text, CONFIG.autocomplete_limit)
         
         seen: set[str] = set()
@@ -189,7 +189,7 @@ class ReportsView(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем всех работников
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_workers:
                 if shown >= CONFIG.autocomplete_limit:
@@ -213,7 +213,7 @@ class ReportsView(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.dept_entry, self.sg_dept, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             vals = suggestions.suggest_depts(conn, text, CONFIG.autocomplete_limit)
         
         seen = set()
@@ -230,7 +230,7 @@ class ReportsView(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все цеха
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
             for dept in all_depts:
                 if shown >= CONFIG.autocomplete_limit:
@@ -252,7 +252,7 @@ class ReportsView(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.job_entry, self.sg_job, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_job_types(conn, text, CONFIG.autocomplete_limit)
         
         seen = set()
@@ -269,7 +269,7 @@ class ReportsView(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все виды работ
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_job_types = suggestions.suggest_job_types(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_job_types:
                 if shown >= CONFIG.autocomplete_limit:
@@ -293,7 +293,7 @@ class ReportsView(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.product_entry, self.sg_product, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_products(conn, text, CONFIG.autocomplete_limit)
         
         seen = set()
@@ -310,7 +310,7 @@ class ReportsView(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все изделия
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_products:
                 if shown >= CONFIG.autocomplete_limit:
@@ -334,7 +334,7 @@ class ReportsView(ctk.CTkFrame):
         
         place_suggestions_under_entry(self.contract_entry, self.sg_contract, self)
         
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             rows = suggestions.suggest_contracts(conn, text, CONFIG.autocomplete_limit)
         
         seen = set()
@@ -351,7 +351,7 @@ class ReportsView(ctk.CTkFrame):
         
         # Если нет данных из БД и истории, показываем все контракты
         if shown == 0:
-            with get_connection(CONFIG.db_path) as conn:
+            with get_connection() as conn:
                 all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_contracts:
                 if shown >= CONFIG.autocomplete_limit:
@@ -405,7 +405,7 @@ class ReportsView(ctk.CTkFrame):
         return df.rename(columns={c: norm(c) for c in df.columns})
 
     def _build_report(self) -> None:
-        with get_connection(CONFIG.db_path) as conn:
+        with get_connection() as conn:
             df = work_orders_report_df(
                 conn,
                 date_from=self.date_from.get().strip() or None,
