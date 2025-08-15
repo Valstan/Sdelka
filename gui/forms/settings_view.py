@@ -18,8 +18,9 @@ from db.sqlite import get_connection
 
 
 class SettingsView(ctk.CTkFrame):
-    def __init__(self, master) -> None:
+    def __init__(self, master, readonly: bool = False) -> None:
         super().__init__(master)
+        self._readonly = readonly
         self._prefs = load_prefs()
         self._build_log_win: ctk.CTkToplevel | None = None
         self._build_log_text = None
@@ -35,9 +36,12 @@ class SettingsView(ctk.CTkFrame):
         btns = ctk.CTkFrame(box)
         btns.pack(fill="x")
 
-        ctk.CTkButton(btns, text="Сохранить копию базы...", command=self._export_db).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Слить с другой базой...", command=self._merge_db).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe).pack(side="left", padx=6)
+        self._btn_export_db = ctk.CTkButton(btns, text="Сохранить копию базы...", command=self._export_db)
+        self._btn_export_db.pack(side="left", padx=6)
+        self._btn_merge_db = ctk.CTkButton(btns, text="Слить с другой базой...", command=self._merge_db)
+        self._btn_merge_db.pack(side="left", padx=6)
+        self._btn_build_exe = ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe)
+        self._btn_build_exe.pack(side="left", padx=6)
 
         # UI Preferences
         ui_box = ctk.CTkFrame(self)
@@ -47,10 +51,12 @@ class SettingsView(ctk.CTkFrame):
         row.pack(fill="x")
         ctk.CTkLabel(row, text="Размер шрифта списков").pack(side="left", padx=6)
         self._list_font_var = ctk.StringVar(value=str(self._prefs.list_font_size))
-        ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._list_font_var, command=lambda _: self._save_prefs()).pack(side="left")
+        self._opt_list_font = ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._list_font_var, command=lambda _: self._save_prefs())
+        self._opt_list_font.pack(side="left")
         ctk.CTkLabel(row, text="Размер шрифта кнопок/надписей").pack(side="left", padx=(16, 6))
         self._ui_font_var = ctk.StringVar(value=str(self._prefs.ui_font_size))
-        ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._ui_font_var, command=lambda _: self._save_prefs()).pack(side="left")
+        self._opt_ui_font = ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._ui_font_var, command=lambda _: self._save_prefs())
+        self._opt_ui_font.pack(side="left")
 
         self.status = ctk.CTkLabel(self, text="")
         self.status.pack(fill="x", padx=10, pady=10)
@@ -61,27 +67,58 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkLabel(io_box, text="Импорт из Excel").pack(anchor="w")
         row1 = ctk.CTkFrame(io_box)
         row1.pack(fill="x", pady=(4, 8))
-        ctk.CTkButton(row1, text="Импорт Работников", command=self._import_workers).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts).pack(side="left", padx=5)
+        self._btn_imp_workers = ctk.CTkButton(row1, text="Импорт Работников", command=self._import_workers)
+        self._btn_imp_workers.pack(side="left", padx=5)
+        self._btn_imp_jobs = ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs)
+        self._btn_imp_jobs.pack(side="left", padx=5)
+        self._btn_imp_products = ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products)
+        self._btn_imp_products.pack(side="left", padx=5)
+        self._btn_imp_contracts = ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts)
+        self._btn_imp_contracts.pack(side="left", padx=5)
 
         ctk.CTkLabel(io_box, text="Экспорт таблиц").pack(anchor="w")
         row2 = ctk.CTkFrame(io_box)
         row2.pack(fill="x", pady=(4, 8))
-        ctk.CTkButton(row2, text="Экспорт Работников", command=lambda: self._export_table("workers")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Видов работ", command=lambda: self._export_table("job_types")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Изделий", command=lambda: self._export_table("products")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Контрактов", command=lambda: self._export_table("contracts")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all).pack(side="left", padx=5)
+        self._btn_exp_workers = ctk.CTkButton(row2, text="Экспорт Работников", command=lambda: self._export_table("workers"))
+        self._btn_exp_workers.pack(side="left", padx=5)
+        self._btn_exp_jobs = ctk.CTkButton(row2, text="Экспорт Видов работ", command=lambda: self._export_table("job_types"))
+        self._btn_exp_jobs.pack(side="left", padx=5)
+        self._btn_exp_products = ctk.CTkButton(row2, text="Экспорт Изделий", command=lambda: self._export_table("products"))
+        self._btn_exp_products.pack(side="left", padx=5)
+        self._btn_exp_contracts = ctk.CTkButton(row2, text="Экспорт Контрактов", command=lambda: self._export_table("contracts"))
+        self._btn_exp_contracts.pack(side="left", padx=5)
+        self._btn_exp_all = ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all)
+        self._btn_exp_all.pack(side="left", padx=5)
 
         ctk.CTkLabel(io_box, text="Шаблоны Excel").pack(anchor="w")
         row3 = ctk.CTkFrame(io_box)
         row3.pack(fill="x", pady=(4, 8))
-        ctk.CTkButton(row3, text="Шаблон Работники", command=lambda: self._save_template("workers")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Виды работ", command=lambda: self._save_template("job_types")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Изделия", command=lambda: self._save_template("products")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts")).pack(side="left", padx=5)
+        self._btn_tpl_workers = ctk.CTkButton(row3, text="Шаблон Работники", command=lambda: self._save_template("workers"))
+        self._btn_tpl_workers.pack(side="left", padx=5)
+        self._btn_tpl_jobs = ctk.CTkButton(row3, text="Шаблон Виды работ", command=lambda: self._save_template("job_types"))
+        self._btn_tpl_jobs.pack(side="left", padx=5)
+        self._btn_tpl_products = ctk.CTkButton(row3, text="Шаблон Изделия", command=lambda: self._save_template("products"))
+        self._btn_tpl_products.pack(side="left", padx=5)
+        self._btn_tpl_contracts = ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts"))
+        self._btn_tpl_contracts.pack(side="left", padx=5)
+
+        # Применить ограничения режима только просмотра
+        if self._readonly:
+            # Запретить изменяющие БД и системные действия
+            for b in (
+                self._btn_merge_db,
+                self._btn_build_exe,
+                self._btn_imp_workers,
+                self._btn_imp_jobs,
+                self._btn_imp_products,
+                self._btn_imp_contracts,
+                self._opt_list_font,
+                self._opt_ui_font,
+            ):
+                try:
+                    b.configure(state="disabled")
+                except Exception:
+                    pass
 
     def _save_prefs(self) -> None:
         try:

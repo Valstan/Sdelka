@@ -8,6 +8,7 @@ from db.sqlite import get_connection
 from utils.backup import backup_sqlite_db
 from utils.logging import configure_logging
 from gui.app_window import AppWindow
+from gui.login_dialog import LoginDialog
 
 
 def main() -> None:
@@ -23,6 +24,14 @@ def main() -> None:
 
     # Запуск GUI
     app = AppWindow()
+    # Диалог выбора режима до показа основного окна
+    from utils.runtime_mode import get_mode, set_mode, AppMode
+    try:
+        dlg = LoginDialog(app)
+        app.wait_window(dlg)
+    except Exception:
+        # по умолчанию полный доступ
+        set_mode(AppMode.FULL)
     app.mainloop()
 
 

@@ -36,6 +36,14 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     validate_date(data.date)
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
+    # Провалидируем наличие контракта и изделия, чтобы не ловить FK ошибку
+    c_row = conn.execute("SELECT id FROM contracts WHERE id = ?", (data.contract_id,)).fetchone()
+    if not c_row:
+        raise ValueError("Выбранный контракт не найден. Выберите контракт из списка.")
+    if data.product_id is not None:
+        p_row = conn.execute("SELECT id FROM products WHERE id = ?", (data.product_id,)).fetchone()
+        if not p_row:
+            raise ValueError("Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле.")
 
     total = Decimal("0")
     line_values: list[tuple[int, float, float, float]] = []
@@ -58,6 +66,13 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     for (job_type_id, quantity, unit_price, line_amount) in line_values:
         q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
 
+    # Проверим работников
+    if not data.worker_ids:
+        raise ValueError("Добавьте работников в бригаду")
+    placeholders = ",".join(["?"] * len(data.worker_ids))
+    found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(data.worker_ids)).fetchall()
+    if len(found) != len(set(data.worker_ids)):
+        raise ValueError("Найдены некорректные работники в составе бригады. Выберите работников из списка.")
     q.set_work_order_workers(conn, work_order_id, data.worker_ids)
 
     logger.info("Создан наряд #%s, сумма: %s", order_no, total)

@@ -17,8 +17,9 @@ from utils.autocomplete_positioning import (
 
 
 class ContractsForm(ctk.CTkFrame):
-    def __init__(self, master) -> None:
+    def __init__(self, master, readonly: bool = False) -> None:
         super().__init__(master)
+        self._readonly = readonly
         self._selected_id: int | None = None
         self._snapshot: tuple[str, str | None, str | None, str | None] | None = None
         self._build_ui()
@@ -57,10 +58,20 @@ class ContractsForm(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=10)
-        ctk.CTkButton(btns, text="Сохранить", command=self._save).pack(side="left", padx=5)
-        ctk.CTkButton(btns, text="Отмена", command=self._cancel, fg_color="#6b7280").pack(side="left", padx=5)
-        ctk.CTkButton(btns, text="Очистить", command=self._clear).pack(side="left", padx=5)
-        ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete).pack(side="left", padx=5)
+        save_btn = ctk.CTkButton(btns, text="Сохранить", command=self._save)
+        cancel_btn = ctk.CTkButton(btns, text="Отмена", command=self._cancel, fg_color="#6b7280")
+        clear_btn = ctk.CTkButton(btns, text="Очистить", command=self._clear)
+        del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
+        for b in (save_btn, cancel_btn, clear_btn, del_btn):
+            b.pack(side="left", padx=5)
+        if self._readonly:
+            for w in (self.code_entry, self.start_entry, self.end_entry):
+                try:
+                    w.configure(state="disabled")
+                except Exception:
+                    pass
+            for b in (save_btn, cancel_btn, clear_btn, del_btn):
+                b.configure(state="disabled")
 
         table_frame = ctk.CTkFrame(self)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -172,6 +183,8 @@ class ContractsForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
+        if getattr(self, "_readonly", False):
+            return
         code = self.code_var.get().strip()
         if not code:
             messagebox.showwarning("Проверка", "Укажите шифр контракта")
@@ -195,6 +208,8 @@ class ContractsForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
+        if getattr(self, "_readonly", False):
+            return
         if not self._selected_id:
             return
         if not messagebox.askyesno("Подтверждение", "Удалить выбранный контракт?"):

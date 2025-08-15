@@ -13,6 +13,7 @@ from gui.forms.settings_view import SettingsView
 from utils.user_prefs import load_prefs
 from utils.ui_theming import apply_user_fonts
 from utils.versioning import get_version
+from utils.runtime_mode import is_readonly
 
 
 class AppWindow(ctk.CTk):
@@ -51,7 +52,7 @@ class AppWindow(ctk.CTk):
         self.tab_settings = tabview.add("Настройки")
 
         # Формы
-        WorkOrdersForm(self.tab_orders).pack(expand=True, fill="both")
+        WorkOrdersForm(self.tab_orders, readonly=is_readonly()).pack(expand=True, fill="both")
 
         refs_tabs = ctk.CTkTabview(self.tab_refs)
         refs_tabs.pack(expand=True, fill="both", padx=10, pady=(0, 0))
@@ -60,13 +61,13 @@ class AppWindow(ctk.CTk):
         tab_products = refs_tabs.add("Изделия")
         tab_contracts = refs_tabs.add("Контракты")
 
-        WorkersForm(tab_workers).pack(expand=True, fill="both")
-        JobTypesForm(tab_jobs).pack(expand=True, fill="both")
-        ProductsForm(tab_products).pack(expand=True, fill="both")
-        ContractsForm(tab_contracts).pack(expand=True, fill="both")
+        WorkersForm(tab_workers, readonly=is_readonly()).pack(expand=True, fill="both")
+        JobTypesForm(tab_jobs, readonly=is_readonly()).pack(expand=True, fill="both")
+        ProductsForm(tab_products, readonly=is_readonly()).pack(expand=True, fill="both")
+        ContractsForm(tab_contracts, readonly=is_readonly()).pack(expand=True, fill="both")
 
         ReportsView(self.tab_reports).pack(expand=True, fill="both")
-        SettingsView(self.tab_settings).pack(expand=True, fill="both")
+        SettingsView(self.tab_settings, readonly=is_readonly()).pack(expand=True, fill="both")
 
         # Фиксированные шрифты вкладок (не зависят от настроек пользователя)
         self._setup_tab_fonts(self._tabview)

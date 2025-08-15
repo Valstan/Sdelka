@@ -3,6 +3,9 @@ from __future__ import annotations
 import customtkinter as ctk
 from tkinter import ttk, filedialog, messagebox
 import pandas as pd
+import os
+import sys
+import subprocess
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -19,7 +22,7 @@ from utils.autocomplete_positioning import (
 
 
 class ReportsView(ctk.CTkFrame):
-    def __init__(self, master) -> None:
+    def __init__(self, master, readonly: bool = False) -> None:
         super().__init__(master)
         self._selected_worker_id: int | None = None
         self._selected_job_type_id: int | None = None
@@ -104,29 +107,20 @@ class ReportsView(ctk.CTkFrame):
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
         self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
-        # Preview and export
-        preview = ctk.CTkFrame(self)
-        preview.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        # Панель экспорта (без предпросмотра)
+        toolbar = ctk.CTkFrame(self)
+        toolbar.pack(fill="x", padx=10, pady=(6, 8))
+        ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
 
-        toolbar = ctk.CTkFrame(preview)
-        toolbar.pack(fill="x", padx=5, pady=5)
-        ctk.CTkButton(toolbar, text="Экспорт HTML", command=lambda: self._open_preview("html")).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Экспорт PDF", command=lambda: self._open_preview("pdf")).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Экспорт Excel", command=lambda: self._open_preview("excel")).pack(side="left", padx=4)
-
-        # Вложенный фрейм для grid-верстки превью (чтобы не смешивать с pack родителя)
-        preview_body = ctk.CTkFrame(preview)
-        preview_body.pack(fill="both", expand=True)
-        preview_body.grid_rowconfigure(0, weight=1)
-        preview_body.grid_columnconfigure(0, weight=1)
-
-        self.tree = ttk.Treeview(preview_body, show="headings")
-        vsb = ttk.Scrollbar(preview_body, orient="vertical", command=self.tree.yview)
-        hsb = ttk.Scrollbar(preview_body, orient="horizontal", command=self.tree.xview)
+        # Простая табличка предпросмотра списка (не обязательна для печати)
+        self.tree = ttk.Treeview(self, show="headings")
+        vsb = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
+        self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        vsb.place_forget(); hsb.place_forget()  # оставим без явных скроллов
 
     def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         place_suggestions_under_entry(entry, frame, self)
@@ -512,14 +506,39 @@ class ReportsView(ctk.CTkFrame):
         return filedialog.asksaveasfilename(title=title, defaultextension=defaultextension, initialfile=initial, filetypes=filetypes)
 
     def _export_html(self) -> None:
-        # Переопределено: вызываем предпросмотр
-        self._open_preview("html")
+        if self._df is None or self._df.empty:
+            messagebox.showwarning("Экспорт HTML", "Сначала сформируйте отчет")
+            return
+        path = self._ask_save_path("Сохранить HTML", ".html", [("HTML", "*.html")])
+        if not path:
+            return
+        save_html(self._df, title="Отчет", path=path)
+        self._open_file(path)
 
     def _export_pdf(self) -> None:
-        self._open_preview("pdf")
+        if self._df is None or self._df.empty:
+            messagebox.showwarning("Экспорт PDF", "Сначала сформируйте отчет")
+            return
+        path = self._ask_save_path("Сохранить PDF", ".pdf", [("PDF", "*.pdf")])
+        if not path:
+            return
+        # Портрет по умолчанию, но авто-подбор в save_pdf переключит, если не влезает
+        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None)
+        self._open_file(path)
 
     def _export_excel(self) -> None:
-        self._open_preview("excel")
+        if self._df is None or self._df.empty:
+            messagebox.showwarning("Экспорт Excel", "Сначала сформируйте отчет")
+            return
+        path = self._ask_save_path("Сохранить Excel", ".xlsx", [("Excel", "*.xlsx")])
+        if not path:
+            return
+        try:
+            self._df.to_excel(path, index=False)
+        except Exception as e:
+            messagebox.showerror("Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}")
+            return
+        self._open_file(path)
 
     def _open_date_picker(self, var, anchor=None) -> None:
         from gui.widgets.date_picker import open_for_anchor
@@ -528,246 +547,13 @@ class ReportsView(ctk.CTkFrame):
             return
         open_for_anchor(self, anchor, var.get().strip(), lambda d: var.set(d))
 
-    def _open_preview(self, fmt: str) -> None:
-        if self._df is None or self._df.empty:
-            messagebox.showwarning("Предпросмотр", "Сначала сформируйте отчет")
-            return
-        win = ctk.CTkToplevel(self)
-        win.title(f"Предпросмотр ({fmt.upper()})")
-        win.geometry("980x700")
-        win.grab_set()
-        # Панели настроек (2 строки для адаптивности)
-        panel_top = ctk.CTkFrame(win)
-        panel_top.pack(fill="x", padx=10, pady=(8, 4))
-        panel_bottom = ctk.CTkFrame(win)
-        panel_bottom.pack(fill="x", padx=10, pady=(0, 8))
-
-        ctk.CTkLabel(panel_top, text="Шрифт").pack(side="left", padx=4)
-        font_family = ctk.StringVar(value="Авто")
-        font_opts = ["Авто", "DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans"]
-        font_menu = ctk.CTkOptionMenu(panel_top, values=font_opts, variable=font_family)
-        font_menu.pack(side="left")
-        ctk.CTkLabel(panel_top, text="Размер шрифта").pack(side="left", padx=6)
-        font_size = ctk.StringVar(value="14")
-        size_values = [str(i) for i in range(10, 19)]
-        size_menu = ctk.CTkOptionMenu(panel_top, values=size_values, variable=font_size)
-        size_menu.pack(side="left")
-        ctk.CTkLabel(panel_top, text="Ориентация").pack(side="left", padx=6)
-        orient = ctk.StringVar(value="Автоматически")
-        orient_menu = ctk.CTkOptionMenu(panel_top, values=["Автоматически", "Портрет", "Альбом"], variable=orient)
-        orient_menu.pack(side="left")
-
-        # Поля и кнопки на второй строке
-        ctk.CTkLabel(panel_bottom, text="Поля:").pack(side="left", padx=(4, 8))
-        ctk.CTkLabel(panel_bottom, text="Левое").pack(side="left", padx=(4, 2))
-        left_margin = ctk.StringVar(value="15")
-        margin_vals = [str(i) for i in range(2, 21, 2)]
-        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=left_margin, width=60, command=lambda _: update_preview()).pack(side="left")
-        ctk.CTkLabel(panel_bottom, text="Правое").pack(side="left", padx=(8, 2))
-        right_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=right_margin, width=60, command=lambda _: update_preview()).pack(side="left")
-        ctk.CTkLabel(panel_bottom, text="Верхнее").pack(side="left", padx=(8, 2))
-        top_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=top_margin, width=60, command=lambda _: update_preview()).pack(side="left")
-        ctk.CTkLabel(panel_bottom, text="Нижнее").pack(side="left", padx=(8, 2))
-        bottom_margin = ctk.StringVar(value="15")
-        ctk.CTkOptionMenu(panel_bottom, values=margin_vals, variable=bottom_margin, width=60, command=lambda _: update_preview()).pack(side="left")
-
-        btns = ctk.CTkFrame(panel_bottom)
-        btns.pack(side="right")
-
-        # Область предпросмотра (внутри окна)
-        body = ctk.CTkFrame(win)
-        body.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        # Контейнер под разные типы предпросмотра
-        preview_container = ctk.CTkFrame(body)
-        preview_container.pack(fill="both", expand=True)
-        # Держатели виджетов
-        holder = {"widget": None}
-
-        def clear_container():
-            if holder["widget"] is not None:
-                try:
-                    holder["widget"].destroy()
-                except Exception:
-                    pass
-                holder["widget"] = None
-
-        def show_table_preview():
-            clear_container()
-            tree = ttk.Treeview(preview_container, show="headings")
-            tree.pack(fill="both", expand=True)
-            # колонки
-            cols = list(self._df.columns)
-            tree["columns"] = cols
-            for col in cols:
-                tree.heading(col, text=str(col), command=lambda cc=col: sort_preview_tree(tree, cols, cc))
-                tree.column(col, width=140)
-            for _, row in self._df.head(200).iterrows():
-                tree.insert("", "end", values=[row[c] for c in cols])
-            holder["widget"] = tree
-
-        def show_html_preview():
-            clear_container()
-            # Генерируем HTML строку
-            html = self._df.to_html(index=False)
-            try:
-                from tkhtmlview import HTMLLabel  # type: ignore
-                widget = HTMLLabel(preview_container, html=html)
-                widget.pack(fill="both", expand=True)
-                holder["widget"] = widget
-            except Exception:
-                # Фолбек: показать исходный HTML в текстовом окне
-                txt = ctk.CTkTextbox(preview_container)
-                txt.pack(fill="both", expand=True)
-                txt.insert("end", html)
-                holder["widget"] = txt
-
-        def show_pdf_preview():
-            clear_container()
-            # Попытка конвертировать PDF в изображение
-            import tempfile, os
-            from datetime import datetime
-            try:
-                tmp_path = os.path.join(tempfile.gettempdir(), f"report_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
-                save_pdf(
-                    self._df,
-                    tmp_path,
-                    title="Отчет по нарядам",
-                    orientation=map_orientation_rus(orient.get()),
-                    font_size=int(font_size.get()),
-                    font_family=map_font_family(font_family.get()),
-                    margins_mm=(int(left_margin.get()), int(right_margin.get()), int(top_margin.get()), int(bottom_margin.get())),
-                )
-                from pdf2image import convert_from_path  # type: ignore
-                from PIL import ImageTk  # type: ignore
-                images = convert_from_path(tmp_path, dpi=120, first_page=1, last_page=1)
-                if not images:
-                    raise RuntimeError("Не удалось отобразить PDF")
-                img = images[0]
-                lbl = ctk.CTkLabel(preview_container, text="")
-                lbl.pack(fill="both", expand=True)
-                holder["widget"] = lbl
-                # сохранить ссылку, чтобы не собрать GC
-                lbl._img_ref = ImageTk.PhotoImage(img)
-                lbl.configure(image=lbl._img_ref)
-            except Exception as exc:
-                # Фолбек на табличный вид
-                show_table_preview()
-
-        import os, tempfile, sys, subprocess
-        from datetime import datetime
-
-        tmp_file = {"path": None}
-
-        def map_orientation_rus(val: str) -> str | None:
-            if val == "Автоматически":
-                return None
-            if val == "Портрет":
-                return "portrait"
-            if val == "Альбом":
-                return "landscape"
-            return None
-
-        def map_font_family(val: str) -> str | None:
-            if val == "Авто":
-                return None
-            # Для остальных полагаемся на авто-поиск TTF
-            return None
-
-        def update_preview() -> None:
-            if fmt == "html":
-                show_html_preview()
-            elif fmt == "pdf":
-                show_pdf_preview()
+    def _open_file(self, path: str) -> None:
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
             else:
-                show_table_preview()
-
-        def do_save() -> None:
-            if fmt == "html":
-                path = self._ask_save_path("Сохранить HTML", ".html", [("HTML", "*.html")])
-                if not path:
-                    return
-                save_html(self._df, path, title="Отчет по нарядам")
-                messagebox.showinfo("Экспорт", "HTML сохранен")
-            elif fmt == "pdf":
-                path = self._ask_save_path("Сохранить PDF", ".pdf", [("PDF", "*.pdf")])
-                if not path:
-                    return
-                save_pdf(
-                    self._df,
-                    path,
-                    title="Отчет по нарядам",
-                    orientation=map_orientation_rus(orient.get()),
-                    font_size=int(font_size.get()),
-                    font_family=map_font_family(font_family.get()),
-                    margins_mm=(int(left_margin.get()), int(right_margin.get()), int(top_margin.get()), int(bottom_margin.get())),
-                )
-                messagebox.showinfo("Экспорт", "PDF сохранен")
-            else:  # excel
-                path = self._ask_save_path("Сохранить Excel", ".xlsx", [("Excel", "*.xlsx")])
-                if not path:
-                    return
-                self._df.to_excel(path, index=False)
-                messagebox.showinfo("Экспорт", "Excel сохранен")
-
-        def do_print() -> None:
-            if fmt != "pdf":
-                messagebox.showinfo("Печать", "Печать доступна из PDF")
-                return
-            # Сгенерировать временный PDF с текущими настройками и отправить на печать
-            try:
-                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                path = os.path.join(tempfile.gettempdir(), f"report_print_{stamp}.pdf")
-                save_pdf(
-                    self._df,
-                    path,
-                    title="Отчет по нарядам",
-                    orientation=map_orientation_rus(orient.get()),
-                    font_size=int(font_size.get()),
-                    font_family=map_font_family(font_family.get()),
-                    margins_mm=(int(left_margin.get()), int(right_margin.get()), int(top_margin.get()), int(bottom_margin.get())),
-                )
-                if sys.platform == "win32":
-                    try:
-                        import win32api  # type: ignore
-                        win32api.ShellExecute(0, "print", path, None, ".", 0)
-                    except Exception:
-                        os.startfile(path, "print")  # type: ignore[attr-defined]
-                elif sys.platform == "darwin":
-                    subprocess.run(["lp", path], check=False)
-                else:
-                    rc = subprocess.run(["lp", path]).returncode
-                    if rc != 0:
-                        subprocess.Popen(["xdg-open", path])
-            except Exception as exc:
-                messagebox.showerror("Печать", f"Не удалось отправить на печать: {exc}")
-
-        ctk.CTkButton(btns, text="Сохранить", command=do_save).pack(side="left", padx=4)
-        ctk.CTkButton(btns, text="Печать", command=do_print).pack(side="left", padx=4)
-
-        # Автообновление предпросмотра при изменении настроек
-        font_menu.configure(command=lambda _: update_preview())
-        size_menu.configure(command=lambda _: update_preview())
-        orient_menu.configure(command=lambda _: update_preview())
-
-        def sort_preview_tree(tree: ttk.Treeview, cols: list[str], col: str):
-            d = getattr(tree, "_sort_dir", {})
-            new_dir = "desc" if d.get(col) == "asc" else "asc"
-            items = []
-            for iid in tree.get_children(""):
-                items.append((iid, tree.item(iid, "values")))
-            idx = cols.index(col)
-            def key_func(item):
-                v = item[1][idx]
-                try:
-                    return float(str(v).replace(" ", "").replace(",", "."))
-                except Exception:
-                    return str(v)
-            items.sort(key=key_func, reverse=(new_dir == "desc"))
-            for pos, (iid, _vals) in enumerate(items):
-                tree.move(iid, "", pos)
-            tree._sort_dir = {col: new_dir}
-
-        # Инициализация предпросмотра
-        update_preview()
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass

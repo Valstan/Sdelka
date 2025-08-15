@@ -32,8 +32,9 @@ class ItemRow:
 
 
 class WorkOrdersForm(ctk.CTkFrame):
-    def __init__(self, master) -> None:
+    def __init__(self, master, readonly: bool = False) -> None:
         super().__init__(master)
+        self._readonly = readonly
         self.selected_contract_id: Optional[int] = None
         self.selected_product_id: Optional[int] = None
         self.selected_workers: dict[int, str] = {}
@@ -201,6 +202,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.delete_btn.pack(side="left", padx=4)
         self.cancel_btn = ctk.CTkButton(actions, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
         self.cancel_btn.pack(side="left", padx=4)
+
+        if self._readonly:
+            # Заблокировать ввод и действия редактирования
+            for w in (self.date_entry, self.contract_entry, self.product_entry, self.job_entry, self.qty_entry, self.worker_entry):
+                try:
+                    w.configure(state="disabled")
+                except Exception:
+                    pass
+            for b in (add_btn, self.save_btn, self.delete_btn, self.cancel_btn):
+                b.configure(state="disabled")
 
         # Right-side: existing orders list
         ctk.CTkLabel(right, text="Список нарядов").pack(padx=10, pady=(10, 0), anchor="w")
@@ -754,7 +765,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         if not worker_ids:
             messagebox.showwarning("Проверка", "Добавьте работников в бригаду")
             return None
-        items = [WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity) for i in self.item_rows]
+        # Проверим, что виды работ выбраны корректно
+        items: list[WorkOrderItemInput] = []
+        for i in self.item_rows:
+            if not i.job_type_id:
+                messagebox.showwarning("Проверка", "Выберите вид работ из подсказок для каждой строки")
+                return None
+            items.append(WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity))
         return WorkOrderInput(
             date=date_str,
             product_id=self.selected_product_id,
@@ -764,6 +781,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         )
 
     def _save(self) -> None:
+        if getattr(self, "_readonly", False):
+            return
         wo = self._build_input()
         if not wo:
             return
@@ -787,6 +806,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._load_recent_orders()
 
     def _delete(self) -> None:
+        if getattr(self, "_readonly", False):
+            return
         if not self.editing_order_id:
             messagebox.showwarning("Проверка", "Выберите наряд в списке справа")
             return
