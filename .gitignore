@@ -188,6 +188,37 @@ cython_debug/
 /dist/
 /build/
 
+# Project exports / outputs (generated)
+/exports/
+/output/
+/out/
+/tmp/
+/temp/
+
+# Generated previews/prints (in case saved in repo root)
+report_preview_*.pdf
+report_print_*.pdf
+
+# Installers / archives / binaries
+*.exe
+*.msi
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+
 # Abstra
 # Abstra is an AI-powered process automation framework.
 # Ignore directories containing user credentials, local state, and settings.
