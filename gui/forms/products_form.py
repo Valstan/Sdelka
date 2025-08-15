@@ -10,6 +10,11 @@ from services import reference_data as ref
 from db import queries as q
 from services import suggestions
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import (
+    place_suggestions_under_entry, 
+    create_suggestion_button, 
+    create_suggestions_frame
+)
 
 
 class ProductsForm(ctk.CTkFrame):
@@ -66,9 +71,9 @@ class ProductsForm(ctk.CTkFrame):
         hsb.grid(row=1, column=0, sticky="ew")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        self.suggest_name_frame = ctk.CTkFrame(self)
+        self.suggest_name_frame = create_suggestions_frame(self)
         self.suggest_name_frame.place_forget()
-        self.suggest_no_frame = ctk.CTkFrame(self)
+        self.suggest_no_frame = create_suggestions_frame(self)
         self.suggest_no_frame.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -78,33 +83,63 @@ class ProductsForm(ctk.CTkFrame):
         prefix = self.name_var.get().strip()
         for w in self.suggest_name_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.name_entry, self.suggest_name_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = q.list_products(conn, prefix or None, CONFIG.autocomplete_limit)
         vals = [r["name"] for r in rows]
-        x = self.name_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.name_entry.winfo_rooty() - self.winfo_rooty() + self.name_entry.winfo_height()
-        self.suggest_name_frame.place(x=x, y=y)
+        
+        shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("products.name", prefix, CONFIG.autocomplete_limit):
             if label not in vals:
-                ctk.CTkButton(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все изделия
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_products = q.list_products(conn, None, CONFIG.autocomplete_limit)
+            for row in all_products:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_name_frame, text=row["name"], command=lambda s=row["name"]: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _on_no_key(self, _evt=None) -> None:
         prefix = self.no_var.get().strip()
         for w in self.suggest_no_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.no_entry, self.suggest_no_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = q.search_products_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["product_no"] for r in rows]
-        x = self.no_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.no_entry.winfo_rooty() - self.winfo_rooty() + self.no_entry.winfo_height()
-        self.suggest_no_frame.place(x=x, y=y)
+        
+        shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_no_frame, text=val, command=lambda s=val: self._pick_no(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_no_frame, text=val, command=lambda s=val: self._pick_no(s)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("products.product_no", prefix, CONFIG.autocomplete_limit):
             if label not in vals:
-                ctk.CTkButton(self.suggest_no_frame, text=label, command=lambda s=label: self._pick_no(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_no_frame, text=label, command=lambda s=label: self._pick_no(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все номера изделий
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_products = q.search_products_by_prefix(conn, "", CONFIG.autocomplete_limit)
+            for row in all_products:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_no_frame, text=row["product_no"], command=lambda s=row["product_no"]: self._pick_no(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_name(self, val: str) -> None:
         self.name_var.set(val)

@@ -10,6 +10,11 @@ from services import reference_data as ref
 from services import suggestions
 from db import queries as q
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import (
+    place_suggestions_under_entry, 
+    create_suggestion_button, 
+    create_suggestions_frame
+)
 
 
 class WorkersForm(ctk.CTkFrame):
@@ -93,13 +98,13 @@ class WorkersForm(ctk.CTkFrame):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
         # Списки подсказок под полями
-        self.suggest_frame = ctk.CTkFrame(self)
+        self.suggest_frame = create_suggestions_frame(self)
         self.suggest_frame.place_forget()
-        self.suggest_dept_frame = ctk.CTkFrame(self)
+        self.suggest_dept_frame = create_suggestions_frame(self)
         self.suggest_dept_frame.place_forget()
-        self.suggest_position_frame = ctk.CTkFrame(self)
+        self.suggest_position_frame = create_suggestions_frame(self)
         self.suggest_position_frame.place_forget()
-        self.suggest_personnel_frame = ctk.CTkFrame(self)
+        self.suggest_personnel_frame = create_suggestions_frame(self)
         self.suggest_personnel_frame.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -149,27 +154,39 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.full_name_var.get().strip()
         for w in self.suggest_frame.winfo_children():
             w.destroy()
+        
+        # Показываем подсказки даже при пустом вводе
+        place_suggestions_under_entry(self.full_name_entry, self.suggest_frame, self)
+        
         items: list[tuple[int, str]] = []
         if prefix:
             with get_connection(CONFIG.db_path) as conn:
                 items = suggestions.suggest_workers(conn, prefix, CONFIG.autocomplete_limit)
-        # Показать под полем ввода
-        x = self.full_name_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.full_name_entry.winfo_rooty() - self.winfo_rooty() + self.full_name_entry.winfo_height()
-        self.suggest_frame.place(x=x, y=y)
-        self.suggest_frame.lift()
+        
         shown = 0
         for _id, label in items:
-            ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         # Дополняем историей (если пустой ввод — показываем только историю)
         recent = [v for v in get_recent("workers.full_name", prefix or None, CONFIG.autocomplete_limit)]
         for label in recent:
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in [lbl for _, lbl in items]:
-                ctk.CTkButton(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все работников
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_workers:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_frame, [self.full_name_entry])
 
     def _on_dept_key(self, event=None) -> None:
@@ -177,24 +194,36 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.dept_var.get().strip()
         for w in self.suggest_dept_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.dept_entry, self.suggest_dept_frame, self)
+        
         vals = []
         if prefix:
             with get_connection(CONFIG.db_path) as conn:
                 vals = suggestions.suggest_depts(conn, prefix, CONFIG.autocomplete_limit)
-        x = self.dept_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.dept_entry.winfo_rooty() - self.winfo_rooty() + self.dept_entry.winfo_height()
-        self.suggest_dept_frame.place(x=x, y=y)
-        self.suggest_dept_frame.lift()
+        
         shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_dept_frame, text=val, command=lambda s=val: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_dept_frame, text=val, command=lambda s=val: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         for label in get_recent("workers.dept", prefix or None, CONFIG.autocomplete_limit):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                ctk.CTkButton(self.suggest_dept_frame, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_dept_frame, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все цеха
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
+            for dept in all_depts:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_dept_frame, text=dept, command=lambda s=dept: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_dept_frame, [self.dept_entry])
 
     def _on_position_key(self, event=None) -> None:
@@ -202,24 +231,36 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.position_var.get().strip()
         for w in self.suggest_position_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.position_entry, self.suggest_position_frame, self)
+        
         vals = []
         if prefix:
             with get_connection(CONFIG.db_path) as conn:
                 vals = suggestions.suggest_positions(conn, prefix, CONFIG.autocomplete_limit)
-        x = self.position_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.position_entry.winfo_rooty() - self.winfo_rooty() + self.position_entry.winfo_height()
-        self.suggest_position_frame.place(x=x, y=y)
-        self.suggest_position_frame.lift()
+        
         shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_position_frame, text=val, command=lambda s=val: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_position_frame, text=val, command=lambda s=val: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         for label in get_recent("workers.position", prefix or None, CONFIG.autocomplete_limit):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                ctk.CTkButton(self.suggest_position_frame, text=label, command=lambda s=label: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_position_frame, text=label, command=lambda s=label: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все должности
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_positions = suggestions.suggest_positions(conn, "", CONFIG.autocomplete_limit)
+            for position in all_positions:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_position_frame, text=position, command=lambda s=position: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_position_frame, [self.position_entry])
 
     def _on_personnel_key(self, event=None) -> None:
@@ -227,24 +268,36 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.personnel_no_var.get().strip()
         for w in self.suggest_personnel_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.personnel_entry, self.suggest_personnel_frame, self)
+        
         vals = []
         if prefix:
             with get_connection(CONFIG.db_path) as conn:
                 vals = suggestions.suggest_personnel_nos(conn, prefix, CONFIG.autocomplete_limit)
-        x = self.personnel_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.personnel_entry.winfo_rooty() - self.winfo_rooty() + self.personnel_entry.winfo_height()
-        self.suggest_personnel_frame.place(x=x, y=y)
-        self.suggest_personnel_frame.lift()
+        
         shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_personnel_frame, text=val, command=lambda s=val: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_personnel_frame, text=val, command=lambda s=val: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         for label in get_recent("workers.personnel_no", prefix or None, CONFIG.autocomplete_limit):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                ctk.CTkButton(self.suggest_personnel_frame, text=label, command=lambda s=label: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_personnel_frame, text=label, command=lambda s=label: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все табельные номера
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_personnel = suggestions.suggest_personnel_nos(conn, "", CONFIG.autocomplete_limit)
+            for personnel in all_personnel:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_personnel_frame, text=personnel, command=lambda s=personnel: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_personnel_frame, [self.personnel_entry])
 
     def _pick_name(self, name: str) -> None:

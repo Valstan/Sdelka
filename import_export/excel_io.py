@@ -21,7 +21,7 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
             "full_name": "ФИО",
             "dept": "Цех",
             "position": "Должность",
-            "personnel_no": "Табельный номер",
+            "personnel_no": "Таб. номер",
         },
     },
     "job_types": {
@@ -38,7 +38,7 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
         "headers": {
             "id": "Идентификатор",
             "name": "Наименование",
-            "product_no": "Номер изделия",
+            "product_no": "№ изд.",
         },
     },
     "contracts": {
@@ -68,7 +68,7 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
             "id": "Идентификатор",
             "work_order_id": "ID наряда",
             "job_type_id": "ID вида работ",
-            "quantity": "Количество",
+            "quantity": "Кол-во",
             "unit_price": "Цена",
             "line_amount": "Сумма",
         },

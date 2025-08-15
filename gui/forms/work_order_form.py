@@ -19,6 +19,7 @@ from db import queries as q
 from gui.widgets.date_picker import DatePicker
 from gui.widgets.date_picker import open_for_anchor
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import place_suggestions_under_entry, create_suggestion_button, create_suggestions_frame
 
 
 @dataclass
@@ -90,7 +91,6 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var)
         self.date_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
-        self.date_entry.bind("<Button-1>", lambda e: self.after(1, self._open_date_picker))
 
         # Contract
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=1, sticky="w", padx=5)
@@ -107,9 +107,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
 
         # Suggestion frames
-        self.suggest_contract_frame = ctk.CTkFrame(self)
+        self.suggest_contract_frame = create_suggestions_frame(self)
         self.suggest_contract_frame.place_forget()
-        self.suggest_product_frame = ctk.CTkFrame(self)
+        self.suggest_product_frame = create_suggestions_frame(self)
         self.suggest_product_frame.place_forget()
 
         # Items section
@@ -134,7 +134,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         add_btn = ctk.CTkButton(items_frame, text="Добавить", command=self._add_item)
         add_btn.grid(row=1, column=4, sticky="e", padx=5, pady=(0, 6))
 
-        self.suggest_job_frame = ctk.CTkFrame(self)
+        self.suggest_job_frame = create_suggestions_frame(self)
         self.suggest_job_frame.place_forget()
 
         # Items list (adaptive rows with delete buttons)
@@ -166,7 +166,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
         ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
-        self.suggest_worker_frame = ctk.CTkFrame(self)
+        self.suggest_worker_frame = create_suggestions_frame(self)
         self.suggest_worker_frame.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -212,12 +212,11 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.filter_from_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_from, width=100)
         self.filter_from_entry.pack(side="left")
         self.filter_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_from, self.filter_from_entry))
-        self.filter_from_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker_for(self.filter_from, self.filter_from_entry)))
+
         ctk.CTkLabel(filter_frame, text="по").pack(side="left", padx=2)
         self.filter_to_entry = ctk.CTkEntry(filter_frame, textvariable=self.filter_to, width=100)
         self.filter_to_entry.pack(side="left")
         self.filter_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker_for(self.filter_to, self.filter_to_entry))
-        self.filter_to_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker_for(self.filter_to, self.filter_to_entry)))
         ctk.CTkButton(filter_frame, text="Фильтр", width=80, command=self._apply_filter).pack(side="left", padx=6)
 
         list_frame = ctk.CTkFrame(right)
@@ -308,23 +307,37 @@ class WorkOrdersForm(ctk.CTkFrame):
             frame.place_forget()
 
     def _place_suggest_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
-        x = entry.winfo_rootx() - self.winfo_rootx()
-        y = entry.winfo_rooty() - self.winfo_rooty() + entry.winfo_height()
-        frame.place(x=x, y=y)
-        frame.lift()
+        place_suggestions_under_entry(entry, frame, self)
 
     def _on_contract_key(self, _evt=None) -> None:
         self._hide_all_suggests()
         for w in self.suggest_contract_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.contract_entry, self.suggest_contract_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_contracts(conn, self.contract_entry.get().strip(), CONFIG.autocomplete_limit)
-        self._place_suggest_under(self.contract_entry, self.suggest_contract_frame)
+        
+        shown = 0
         for _id, label in rows:
-            ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("work_orders.contract", self.contract_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                ctk.CTkButton(self.suggest_contract_frame, text=label, command=lambda l=label: self._pick_contract(self.selected_contract_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda l=label: self._pick_contract(self.selected_contract_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все контракты
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_contracts:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_contract(self, contract_id: int, label: str) -> None:
         self.selected_contract_id = contract_id
@@ -337,27 +350,61 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_product_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.product_entry, self.suggest_product_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_products(conn, self.product_entry.get().strip(), CONFIG.autocomplete_limit)
-        self._place_suggest_under(self.product_entry, self.suggest_product_frame)
+        
+        shown = 0
         for _id, label in rows:
-            ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("work_orders.product", self.product_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                ctk.CTkButton(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все изделия
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_products:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _on_job_key(self, _evt=None) -> None:
         self._hide_all_suggests()
         for w in self.suggest_job_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.job_entry, self.suggest_job_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_job_types(conn, self.job_entry.get().strip(), CONFIG.autocomplete_limit)
-        self._place_suggest_under(self.job_entry, self.suggest_job_frame)
+        
+        shown = 0
         for _id, label in rows:
-            ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_job_frame, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("work_orders.job_type", self.job_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                ctk.CTkButton(self.suggest_job_frame, text=label, command=lambda l=label: self._pick_job(getattr(self.job_entry, "_selected_job_id", 0) or 0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_job_frame, text=label, command=lambda l=label: self._pick_job(getattr(self.job_entry, "_selected_job_id", 0) or 0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все виды работ
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_job_types = suggestions.suggest_job_types(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_job_types:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_job_frame, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
         self.job_entry.delete(0, "end")
@@ -366,18 +413,42 @@ class WorkOrdersForm(ctk.CTkFrame):
         record_use("work_orders.job_type", label)
         self.suggest_job_frame.place_forget()
 
+    def _pick_product(self, product_id: int, label: str) -> None:
+        self.product_entry.delete(0, "end")
+        self.product_entry.insert(0, label)
+        self.selected_product_id = product_id
+        record_use("work_orders.product", label)
+        self.suggest_product_frame.place_forget()
+
     def _on_worker_key(self, _evt=None) -> None:
         self._hide_all_suggests()
         for w in self.suggest_worker_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.worker_entry, self.suggest_worker_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_workers(conn, self.worker_entry.get().strip(), CONFIG.autocomplete_limit)
-        self._place_suggest_under(self.worker_entry, self.suggest_worker_frame)
+        
+        shown = 0
         for _id, label in rows:
-            ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("work_orders.worker", self.worker_entry.get().strip(), CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                ctk.CTkButton(self.suggest_worker_frame, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_worker_frame, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем всех работников
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_workers:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_worker(self, worker_id: int, label: str) -> None:
         self.worker_entry.delete(0, "end")

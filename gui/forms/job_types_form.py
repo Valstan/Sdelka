@@ -10,6 +10,11 @@ from services import reference_data as ref
 from db import queries as q
 from services import suggestions
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import (
+    place_suggestions_under_entry, 
+    create_suggestion_button, 
+    create_suggestions_frame
+)
 
 
 class JobTypesForm(ctk.CTkFrame):
@@ -73,9 +78,9 @@ class JobTypesForm(ctk.CTkFrame):
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
         # Suggest frames
-        self.suggest_name_frame = ctk.CTkFrame(self)
+        self.suggest_name_frame = create_suggestions_frame(self)
         self.suggest_name_frame.place_forget()
-        self.suggest_unit_frame = ctk.CTkFrame(self)
+        self.suggest_unit_frame = create_suggestions_frame(self)
         self.suggest_unit_frame.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -86,10 +91,7 @@ class JobTypesForm(ctk.CTkFrame):
         self.suggest_unit_frame.place_forget()
 
     def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
-        x = entry.winfo_rootx() - self.winfo_rootx()
-        y = entry.winfo_rooty() - self.winfo_rooty() + entry.winfo_height()
-        frame.place(x=x, y=y)
-        frame.lift()
+        place_suggestions_under_entry(entry, frame, self)
 
     def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
         job_id = getattr(frame, "_auto_hide_job", None)
@@ -124,6 +126,9 @@ class JobTypesForm(ctk.CTkFrame):
         prefix = self.name_var.get().strip()
         for w in self.suggest_name_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.name_entry, self.suggest_name_frame, self)
+        
         # запросы
         if prefix:
             with get_connection(CONFIG.db_path) as conn:
@@ -131,18 +136,30 @@ class JobTypesForm(ctk.CTkFrame):
         else:
             with get_connection(CONFIG.db_path) as conn:
                 rows = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
+        
         names = [r["name"] for r in rows]
-        self._place_under(self.name_entry, self.suggest_name_frame)
         shown = 0
         for val in names:
-            ctk.CTkButton(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         for label in get_recent("job_types.name", prefix or None, CONFIG.autocomplete_limit):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in names:
-                ctk.CTkButton(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все виды работ
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_job_types = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
+            for row in all_job_types:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_name_frame, text=row["name"], command=lambda s=row["name"]: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_name_frame, [self.name_entry])
 
     def _pick_name(self, val: str) -> None:
@@ -155,19 +172,34 @@ class JobTypesForm(ctk.CTkFrame):
         prefix = self.unit_var.get().strip()
         for w in self.suggest_unit_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.unit_entry, self.suggest_unit_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             vals = q.distinct_units_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
-        self._place_under(self.unit_entry, self.suggest_unit_frame)
+        
         shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_unit_frame, text=val, command=lambda s=val: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_unit_frame, text=val, command=lambda s=val: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
             shown += 1
+        
         for label in get_recent("job_types.unit", prefix or None, CONFIG.autocomplete_limit):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                ctk.CTkButton(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+        
+        # Если нет данных из БД и истории, показываем все единицы измерения
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_units = q.distinct_units_by_prefix(conn, "", CONFIG.autocomplete_limit)
+            for unit in all_units:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_unit_frame, text=unit, command=lambda s=unit: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.suggest_unit_frame, [self.unit_entry])
 
     def _pick_unit(self, val: str) -> None:

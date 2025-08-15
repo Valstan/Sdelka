@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence, List, Tuple
+from typing import Sequence, List, Tuple, Optional
 import os
 
 import pandas as pd
@@ -20,6 +20,15 @@ _ABBR = {
     "Номер_изделия": "№ изд.",
     "Вид_работ": "Вид работ",
 }
+
+
+def _normalize_header(name: str) -> str:
+    s = str(name)
+    s = s.replace("_", " ")
+    s = s.replace("Номер изделия", "№ изд.")
+    s = s.replace("Номер", "№")
+    s = s.replace("Количество", "Кол-во")
+    return _ABBR.get(s, s)
 
 
 def _find_font_file() -> tuple[str | None, str | None]:
@@ -187,6 +196,8 @@ def save_pdf(
     fallback_candidate: Tuple | None = None
 
     cols = list(df.columns)
+    # Применяем нормализацию заголовков
+    cols = [_normalize_header(c) for c in cols]
 
     # Подбор шрифта/страницы
     for page_size in page_candidates:
@@ -312,7 +323,7 @@ def save_pdf(
     story.append(Spacer(1, 6 * mm))
 
     # Данные: разрешаем перенос только в длинных текстовых колонках; в остальных заменяем пробелы на неразрывные
-    header_row = [Paragraph(str(_ABBR.get(c, c)), header_style) for c in cols]
+    header_row = [Paragraph(str(c), header_style) for c in cols]
     data_rows: List[List] = [header_row]
     for _, row in df.iterrows():
         r: List = []

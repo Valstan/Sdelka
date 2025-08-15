@@ -11,6 +11,11 @@ from reports.report_builders import work_orders_report_df
 from reports.html_export import save_html
 from reports.pdf_reportlab import save_pdf
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import (
+    place_suggestions_under_entry, 
+    create_suggestion_button, 
+    create_suggestions_frame
+)
 
 
 class ReportsView(ctk.CTkFrame):
@@ -35,12 +40,11 @@ class ReportsView(ctk.CTkFrame):
         self.date_from_entry = ctk.CTkEntry(filters, textvariable=self.date_from, width=120)
         self.date_from_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
         self.date_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_from, self.date_from_entry))
-        self.date_from_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.date_from, self.date_from_entry)))
+        
         ctk.CTkLabel(filters, text="по").grid(row=0, column=2, padx=5, pady=5, sticky="w")
         self.date_to_entry = ctk.CTkEntry(filters, textvariable=self.date_to, width=120)
         self.date_to_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         self.date_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_to, self.date_to_entry))
-        self.date_to_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.date_to, self.date_to_entry)))
 
         # Worker
         ctk.CTkLabel(filters, text="Работник").grid(row=1, column=0, padx=5, pady=5, sticky="w")
@@ -86,15 +90,15 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(filters, text="Сформировать", command=self._build_report).grid(row=3, column=3, padx=5, pady=5, sticky="e")
 
         # Suggest frames
-        self.sg_worker = ctk.CTkFrame(self)
+        self.sg_worker = create_suggestions_frame(self)
         self.sg_worker.place_forget()
-        self.sg_dept = ctk.CTkFrame(self)
+        self.sg_dept = create_suggestions_frame(self)
         self.sg_dept.place_forget()
-        self.sg_job = ctk.CTkFrame(self)
+        self.sg_job = create_suggestions_frame(self)
         self.sg_job.place_forget()
-        self.sg_product = ctk.CTkFrame(self)
+        self.sg_product = create_suggestions_frame(self)
         self.sg_product.place_forget()
-        self.sg_contract = ctk.CTkFrame(self)
+        self.sg_contract = create_suggestions_frame(self)
         self.sg_contract.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -125,10 +129,7 @@ class ReportsView(ctk.CTkFrame):
         hsb.grid(row=1, column=0, sticky="ew")
 
     def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
-        x = entry.winfo_rootx() - self.winfo_rootx()
-        y = entry.winfo_rooty() - self.winfo_rooty() + entry.winfo_height()
-        frame.place(x=x, y=y)
-        frame.lift()
+        place_suggestions_under_entry(entry, frame, self)
 
     def _clear_frame(self, frame: ctk.CTkFrame) -> None:
         for w in frame.winfo_children():
@@ -174,16 +175,34 @@ class ReportsView(ctk.CTkFrame):
         self._selected_worker_id = None
         self._clear_frame(self.sg_worker)
         text = self.worker_entry.get().strip()
+        
+        place_suggestions_under_entry(self.worker_entry, self.sg_worker, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_workers(conn, text, CONFIG.autocomplete_limit)
-        self._place_under(self.worker_entry, self.sg_worker)
+        
         seen: set[str] = set()
+        shown = 0
         for _id, label in rows:
             seen.add(label)
-            ctk.CTkButton(self.sg_worker, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x")
+            create_suggestion_button(self.sg_worker, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("reports.worker", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
-                ctk.CTkButton(self.sg_worker, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x")
+                create_suggestion_button(self.sg_worker, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем всех работников
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_workers:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.sg_worker, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.sg_worker, [self.worker_entry])
 
     def _pick_worker(self, worker_id: int, label: str) -> None:
@@ -197,16 +216,34 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
         self._clear_frame(self.sg_dept)
         text = self.dept_entry.get().strip()
+        
+        place_suggestions_under_entry(self.dept_entry, self.sg_dept, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             vals = suggestions.suggest_depts(conn, text, CONFIG.autocomplete_limit)
-        self._place_under(self.dept_entry, self.sg_dept)
+        
         seen = set()
+        shown = 0
         for v in vals:
             seen.add(v)
-            ctk.CTkButton(self.sg_dept, text=v, command=lambda s=v: self._pick_dept(s)).pack(fill="x")
+            create_suggestion_button(self.sg_dept, text=v, command=lambda s=v: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("reports.dept", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
-                ctk.CTkButton(self.sg_dept, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x")
+                create_suggestion_button(self.sg_dept, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все цеха
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
+            for dept in all_depts:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.sg_dept, text=dept, command=lambda s=dept: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.sg_dept, [self.dept_entry])
 
     def _pick_dept(self, val: str) -> None:
@@ -218,16 +255,34 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
         self._clear_frame(self.sg_job)
         text = self.job_entry.get().strip()
+        
+        place_suggestions_under_entry(self.job_entry, self.sg_job, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_job_types(conn, text, CONFIG.autocomplete_limit)
-        self._place_under(self.job_entry, self.sg_job)
+        
         seen = set()
+        shown = 0
         for _id, label in rows:
             seen.add(label)
-            ctk.CTkButton(self.sg_job, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x")
+            create_suggestion_button(self.sg_job, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("reports.job_type", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
-                ctk.CTkButton(self.sg_job, text=label, command=lambda l=label: self._pick_job(0, l)).pack(fill="x")
+                create_suggestion_button(self.sg_job, text=label, command=lambda l=label: self._pick_job(0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все виды работ
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_job_types = suggestions.suggest_job_types(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_job_types:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.sg_job, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.sg_job, [self.job_entry])
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
@@ -241,16 +296,34 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
         self._clear_frame(self.sg_product)
         text = self.product_entry.get().strip()
+        
+        place_suggestions_under_entry(self.product_entry, self.sg_product, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_products(conn, text, CONFIG.autocomplete_limit)
-        self._place_under(self.product_entry, self.sg_product)
+        
         seen = set()
+        shown = 0
         for _id, label in rows:
             seen.add(label)
-            ctk.CTkButton(self.sg_product, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x")
+            create_suggestion_button(self.sg_product, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("reports.product", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
-                ctk.CTkButton(self.sg_product, text=label, command=lambda l=label: self._pick_product(0, l)).pack(fill="x")
+                create_suggestion_button(self.sg_product, text=label, command=lambda l=label: self._pick_product(0, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все изделия
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_products:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.sg_product, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.sg_product, [self.product_entry])
 
     def _pick_product(self, product_id: int, label: str) -> None:
@@ -264,16 +337,34 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
         self._clear_frame(self.sg_contract)
         text = self.contract_entry.get().strip()
+        
+        place_suggestions_under_entry(self.contract_entry, self.sg_contract, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = suggestions.suggest_contracts(conn, text, CONFIG.autocomplete_limit)
-        self._place_under(self.contract_entry, self.sg_contract)
+        
         seen = set()
+        shown = 0
         for _id, label in rows:
             seen.add(label)
-            ctk.CTkButton(self.sg_contract, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x")
+            create_suggestion_button(self.sg_contract, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("reports.contract", text or None, CONFIG.autocomplete_limit):
             if label not in seen:
-                ctk.CTkButton(self.sg_contract, text=label, command=lambda l=label: self._pick_contract(0, l)).pack(fill="x")
+                create_suggestion_button(self.sg_contract, text=label, command=lambda s=label: self._pick_contract(0, s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все контракты
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
+            for _id, label in all_contracts:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.sg_contract, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
         self._schedule_auto_hide(self.sg_contract, [self.contract_entry])
 
     def _pick_contract(self, contract_id: int, label: str) -> None:
@@ -297,41 +388,27 @@ class ReportsView(ctk.CTkFrame):
         self._hide_all_suggestions()
 
     def _localize_df_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Общий словарь для потенциально англ. колонок -> русские названия
+        # Базовое сопоставление тех. колонок к русским
         mapping = {
-            # workers
-            "id": "Идентификатор",
             "full_name": "ФИО",
             "dept": "Цех",
             "position": "Должность",
-            "personnel_no": "Табельный номер",
-            # job_types
-            "name": "Наименование",
-            "unit": "Ед. изм.",
-            "price": "Цена",
-            # products
-            "product_no": "Номер изделия",
-            # contracts
-            "code": "Шифр контракта",
-            "start_date": "Дата начала",
-            "end_date": "Дата окончания",
-            "description": "Описание",
-            # work_orders
+            "personnel_no": "Таб. номер",
+            "product_no": "№ изд.",
             "order_no": "№ наряда",
-            "date": "Дата",
-            "product_id": "ID изделия",
-            "contract_id": "ID контракта",
-            "total_amount": "Итоговая сумма",
-            # items
-            "work_order_id": "ID наряда",
-            "job_type_id": "ID вида работ",
-            "quantity": "Количество",
-            "unit_price": "Цена",
-            "line_amount": "Сумма",
-            "worker_id": "ID работника",
+            "quantity": "Кол-во",
         }
-        # Если df уже с русскими заголовками, rename ничего не изменит
-        return df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+        # Сначала переименуем по известным ключам
+        df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+        # Универсальные правила поверх: убрать подчёркивания и заменить слова
+        def norm(name: str) -> str:
+            s = str(name)
+            s = s.replace("_", " ")
+            s = s.replace("Номер изделия", "№ изд.")
+            s = s.replace("Номер", "№")
+            s = s.replace("Количество", "Кол-во")
+            return s
+        return df.rename(columns={c: norm(c) for c in df.columns})
 
     def _build_report(self) -> None:
         with get_connection(CONFIG.db_path) as conn:
@@ -346,7 +423,16 @@ class ReportsView(ctk.CTkFrame):
                 contract_id=self._selected_contract_id,
             )
         self._df = self._localize_df_columns(df)
-        self._render_preview(self._df)
+        # Применим локализацию заголовков в превью
+        cols = list(self._df.columns)
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=str(c))
+        # Заполнить данными
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        for row in self._df.itertuples(index=False):
+            self.tree.insert("", "end", values=tuple(row))
 
     def _render_preview(self, df: pd.DataFrame) -> None:
         # Clear previous

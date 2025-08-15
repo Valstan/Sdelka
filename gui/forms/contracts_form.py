@@ -9,6 +9,11 @@ from db.sqlite import get_connection
 from services import reference_data as ref
 from db import queries as q
 from utils.usage_history import record_use, get_recent
+from utils.autocomplete_positioning import (
+    place_suggestions_under_entry, 
+    create_suggestion_button, 
+    create_suggestions_frame
+)
 
 
 class ContractsForm(ctk.CTkFrame):
@@ -39,13 +44,13 @@ class ContractsForm(ctk.CTkFrame):
         self.start_entry = ctk.CTkEntry(form, textvariable=self.start_var, width=120)
         self.start_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.start_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.start_var, self.start_entry))
-        self.start_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.start_var, self.start_entry)))
+        
 
         ctk.CTkLabel(form, text="Дата окончания").grid(row=1, column=2, sticky="w", padx=5, pady=5)
         self.end_entry = ctk.CTkEntry(form, textvariable=self.end_var, width=120)
         self.end_entry.grid(row=1, column=3, sticky="w", padx=5, pady=5)
         self.end_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.end_var, self.end_entry))
-        self.end_entry.bind("<Button-1>", lambda e: self.after(1, lambda: self._open_date_picker(self.end_var, self.end_entry)))
+        
 
         ctk.CTkLabel(form, text="Описание").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         ctk.CTkEntry(form, textvariable=self.desc_var, width=240).grid(row=1, column=1, sticky="w", padx=5, pady=5)
@@ -79,7 +84,7 @@ class ContractsForm(ctk.CTkFrame):
         hsb.grid(row=1, column=0, sticky="ew")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        self.suggest_code_frame = ctk.CTkFrame(self)
+        self.suggest_code_frame = create_suggestions_frame(self)
         self.suggest_code_frame.place_forget()
 
         # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
@@ -89,17 +94,32 @@ class ContractsForm(ctk.CTkFrame):
         prefix = self.code_var.get().strip()
         for w in self.suggest_code_frame.winfo_children():
             w.destroy()
+        
+        place_suggestions_under_entry(self.code_entry, self.suggest_code_frame, self)
+        
         with get_connection(CONFIG.db_path) as conn:
             rows = q.list_contracts(conn, prefix, CONFIG.autocomplete_limit)
         vals = [r["code"] for r in rows]
-        x = self.code_entry.winfo_rootx() - self.winfo_rootx()
-        y = self.code_entry.winfo_rooty() - self.winfo_rooty() + self.code_entry.winfo_height()
-        self.suggest_code_frame.place(x=x, y=y)
+        
+        shown = 0
         for val in vals:
-            ctk.CTkButton(self.suggest_code_frame, text=val, command=lambda s=val: self._pick_code(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_code_frame, text=val, command=lambda s=val: self._pick_code(s)).pack(fill="x", padx=2, pady=1)
+            shown += 1
+        
         for label in get_recent("contracts.code", prefix, CONFIG.autocomplete_limit):
             if label not in vals:
-                ctk.CTkButton(self.suggest_code_frame, text=label, command=lambda s=label: self._pick_code(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_code_frame, text=label, command=lambda s=label: self._pick_code(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
+        
+        # Если нет данных из БД и истории, показываем все контракты
+        if shown == 0:
+            with get_connection(CONFIG.db_path) as conn:
+                all_contracts = q.list_contracts(conn, "", CONFIG.autocomplete_limit)
+            for row in all_contracts:
+                if shown >= CONFIG.autocomplete_limit:
+                    break
+                create_suggestion_button(self.suggest_code_frame, text=row["code"], command=lambda s=row["code"]: self._pick_code(s)).pack(fill="x", padx=2, pady=1)
+                shown += 1
 
     def _pick_code(self, val: str) -> None:
         self.code_var.set(val)
