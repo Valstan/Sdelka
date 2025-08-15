@@ -67,6 +67,7 @@ class SettingsView(ctk.CTkFrame):
         self._db_path_entry.pack(side="left", padx=6, fill="x", expand=True)
         ctk.CTkButton(row_db, text="Обзор...", command=self._choose_db_path).pack(side="left", padx=6)
         ctk.CTkButton(row_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
+        ctk.CTkButton(row_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
 
         # WAL и таймауты
         row_wal = ctk.CTkFrame(db_box)
@@ -192,13 +193,28 @@ class SettingsView(ctk.CTkFrame):
             new_path = Path(self._db_path_var.get().strip())
             if not new_path:
                 raise ValueError("Путь к базе не указан")
-            try:
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-            except Exception:
-                pass
-            set_db_path(new_path)
 
-            # Сохранить WAL и таймаут
+            # Если путь существует — просто используем его, ничего не копируем и не сливаем
+            if new_path.exists():
+                set_db_path(new_path)
+            else:
+                # Предложить создать новую БД
+                from tkinter import messagebox
+                if not messagebox.askyesno("База данных", f"Файл не найден:\n{new_path}\n\nСоздать новую базу по этому пути?"):
+                    self.status.configure(text="Создание отменено. Путь к БД не изменён.")
+                    return
+                try:
+                    new_path.parent.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+                set_db_path(new_path)
+                # Создаём пустую БД с нужной схемой
+                from db.sqlite import get_connection
+                from db.schema import initialize_schema
+                with get_connection(new_path) as conn:
+                    initialize_schema(conn)
+
+            # Сохранить WAL и таймаут (влияют на будущие подключения)
             set_enable_wal(bool(self._wal_var.get()))
             try:
                 to_ms = int(self._busy_var.get())
@@ -208,9 +224,18 @@ class SettingsView(ctk.CTkFrame):
                 to_ms = 10000
             set_busy_timeout_ms(to_ms)
 
-            self.status.configure(text="Настройки БД сохранены. Перезапустите приложение на всех клиентах.")
+            self.status.configure(text="Путь к БД применён. Перезапустите приложение, чтобы все окна использовали новую БД.")
         except Exception as exc:
             self.status.configure(text=f"Ошибка применения настроек БД: {exc}")
+
+    def _test_db_connection(self) -> None:
+        try:
+            p = Path(self._db_path_var.get().strip())
+            with get_connection(p if p else None) as conn:
+                conn.execute("SELECT 1")
+            messagebox.showinfo("База данных", "Подключение успешно")
+        except Exception as exc:
+            messagebox.showerror("База данных", f"Не удалось подключиться: {exc}")
 
     def _export_db(self) -> None:
         src = Path(get_current_db_path())
