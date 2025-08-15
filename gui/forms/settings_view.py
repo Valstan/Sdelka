@@ -65,7 +65,8 @@ class SettingsView(ctk.CTkFrame):
         self._db_path_var = ctk.StringVar(value=str(get_current_db_path()))
         self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var, width=560)
         self._db_path_entry.pack(side="left", padx=6, fill="x", expand=True)
-        ctk.CTkButton(row_db, text="Обзор...", command=self._choose_db_path).pack(side="left", padx=6)
+        ctk.CTkButton(row_db, text="Выбрать...", command=self._choose_existing_db).pack(side="left", padx=6)
+        ctk.CTkButton(row_db, text="Создать...", command=self._create_new_db).pack(side="left", padx=6)
         ctk.CTkButton(row_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
         ctk.CTkButton(row_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
 
@@ -176,16 +177,51 @@ class SettingsView(ctk.CTkFrame):
         except Exception as exc:
             self.status.configure(text=f"Ошибка сохранения настроек: {exc}")
 
-    def _choose_db_path(self) -> None:
-        path = filedialog.asksaveasfilename(
-            title="Выберите или создайте файл базы",
-            defaultextension=".db",
+    def _choose_existing_db(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Выберите файл базы данных",
             filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
-            initialfile=str(get_current_db_path().name),
         )
         if not path:
             return
-        self._db_path_var.set(path)
+        p = Path(path)
+        if not p.exists():
+            messagebox.showerror("База данных", "Файл не найден")
+            return
+        self._db_path_var.set(str(p))
+        set_db_path(p)
+        self.status.configure(text="Путь к существующей БД применён. Перезапустите приложение.")
+
+    def _create_new_db(self) -> None:
+        initial_name = "app.db"
+        cur = Path(get_current_db_path())
+        try:
+            if cur.parent.exists():
+                initial_name = cur.name
+        except Exception:
+            pass
+        path = filedialog.asksaveasfilename(
+            title="Создать новую базу данных",
+            defaultextension=".db",
+            initialfile=initial_name,
+            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+        )
+        if not path:
+            return
+        p = Path(path)
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        try:
+            set_db_path(p)
+            with get_connection(p) as conn:
+                from db.schema import initialize_schema
+                initialize_schema(conn)
+            self._db_path_var.set(str(p))
+            self.status.configure(text="Новая база создана и путь сохранён. Перезапустите приложение.")
+        except Exception as exc:
+            messagebox.showerror("Создание БД", f"Не удалось создать БД: {exc}")
 
     def _apply_db_settings(self) -> None:
         try:

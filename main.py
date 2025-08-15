@@ -11,29 +11,40 @@ from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path
 from gui.db_setup_dialog import DbSetupDialog
+import customtkinter as ctk
 
 
 def main() -> None:
     configure_logging()
     logger = logging.getLogger(__name__)
 
-    # Проверка наличия БД; при отсутствии — запросить путь/создать
+    # Проверка наличия БД ДО создания основного окна.
+    # Если БД нет — показываем диалог выбора/создания на временном скрытом корне.
     db_path = get_current_db_path()
     if not db_path.exists():
         try:
-            setup = DbSetupDialog(app)
-            app.wait_window(setup)
+            tmp_root = ctk.CTk()
+            tmp_root.withdraw()
+            setup = DbSetupDialog(tmp_root)
+            tmp_root.wait_window(setup)
+            try:
+                tmp_root.destroy()
+            except Exception:
+                pass
         except Exception:
-            # если диалог не удалось показать, продолжим с дефолтным путём
             pass
-        # обновим путь
+        # обновим путь после диалога
         from utils.user_prefs import get_current_db_path as _gp
         db_path = _gp()
+        # Если по-прежнему файла нет — выходим тихо
+        if not db_path.exists():
+            logger.error("База данных не выбрана/не создана. Завершение.")
+            return
 
     # Бэкап БД (если файл существует)
     backup_sqlite_db(db_path)
 
-    # Инициализация схемы
+    # Инициализация схемы (идемпотентно, не затирает данные существующей БД)
     with get_connection() as conn:
         initialize_schema(conn)
 
