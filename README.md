@@ -1,4 +1,4 @@
-# Учет сдельной работы бригад (CustomTkinter + SQLite)
+# Учет сдельной работы бригад v3.0 (CustomTkinter + SQLite)
 
 ## Быстрый запуск
 
