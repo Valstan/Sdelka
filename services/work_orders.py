@@ -69,11 +69,29 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     # Проверим работников
     if not data.worker_ids:
         raise ValueError("Добавьте работников в бригаду")
-    placeholders = ",".join(["?"] * len(data.worker_ids))
-    found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(data.worker_ids)).fetchall()
-    if len(found) != len(set(data.worker_ids)):
-        raise ValueError("Найдены некорректные работники в составе бригады. Выберите работников из списка.")
-    q.set_work_order_workers(conn, work_order_id, data.worker_ids)
+    
+    # Убираем дубликаты и проверяем корректность ID
+    unique_worker_ids = list(set(data.worker_ids))
+    if len(unique_worker_ids) != len(data.worker_ids):
+        logger.warning("Обнаружены дублирующиеся ID работников: %s -> %s", data.worker_ids, unique_worker_ids)
+    
+    # Проверяем, что все ID являются положительными числами
+    for worker_id in unique_worker_ids:
+        if not isinstance(worker_id, int) or worker_id <= 0:
+            raise ValueError(f"Некорректный ID работника: {worker_id}")
+    
+    # Проверяем существование работников в базе
+    placeholders = ",".join(["?"] * len(unique_worker_ids))
+    found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(unique_worker_ids)).fetchall()
+    found_ids = [row["id"] for row in found]
+    
+    if len(found_ids) != len(unique_worker_ids):
+        missing_ids = set(unique_worker_ids) - set(found_ids)
+        logger.error("Работники не найдены в базе: %s", missing_ids)
+        raise ValueError(f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка.")
+    
+    # Используем уникальные ID для установки работников
+    q.set_work_order_workers(conn, work_order_id, unique_worker_ids)
 
     logger.info("Создан наряд #%s, сумма: %s", order_no, total)
     return work_order_id

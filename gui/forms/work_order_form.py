@@ -20,6 +20,9 @@ from gui.widgets.date_picker import DatePicker
 from gui.widgets.date_picker import open_for_anchor
 from utils.usage_history import record_use, get_recent
 from utils.autocomplete_positioning import place_suggestions_under_entry, create_suggestion_button, create_suggestions_frame
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -555,17 +558,48 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _add_worker(self, worker_id: Optional[int] = None, label: Optional[str] = None) -> None:
         if worker_id is None:
             return
-        if worker_id in self.selected_workers:
+        
+        # Проверяем корректность ID
+        if not isinstance(worker_id, int) or worker_id <= 0:
+            logger.warning("Попытка добавить некорректный ID работника: %s", worker_id)
             return
-        self.selected_workers[worker_id] = label or ""
+        
+        # Проверяем, не добавлен ли уже этот работник
+        if worker_id in self.selected_workers:
+            logger.info("Работник %s уже добавлен в бригаду", worker_id)
+            return
+        
+        # Добавляем работника
+        self.selected_workers[worker_id] = label or f"Работник {worker_id}"
+        
+        # Обновляем отображение списка работников
+        self._refresh_workers_display()
+        self._update_totals()
+    
+    def _refresh_workers_display(self) -> None:
+        """Обновляет отображение списка работников"""
+        # Очищаем текущий список
         for w in self.workers_list.winfo_children():
             w.destroy()
+        
+        # Создаем новые строки для каждого работника
         for wid, name in self.selected_workers.items():
             row = ctk.CTkFrame(self.workers_list)
             row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=name).pack(side="left")
-            ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda i=wid: self._remove_worker(i)).pack(side="right")
-        self._update_totals()
+            
+            # Имя работника
+            ctk.CTkLabel(row, text=name).pack(side="left", padx=4)
+            
+            # Кнопка удаления
+            del_btn = ctk.CTkButton(
+                row, 
+                text="Удалить", 
+                width=80, 
+                fg_color="#b91c1c", 
+                hover_color="#7f1d1d", 
+                command=lambda i=wid: self._remove_worker(i)
+            )
+            del_btn.pack(side="right", padx=4)
 
     def _remove_worker(self, worker_id: int) -> None:
         if worker_id in self.selected_workers:
@@ -738,13 +772,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             for wid in data.worker_ids:
                 r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
                 self.selected_workers[wid] = r["full_name"] if r else str(wid)
-        for w in self.workers_list.winfo_children():
-            w.destroy()
-        for wid, name in self.selected_workers.items():
-            row = ctk.CTkFrame(self.workers_list)
-            row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=name).pack(side="left")
-            ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda i=wid: self._remove_worker(i)).pack(side="right")
+        self._refresh_workers_display()
         self._update_totals()
 
     # ---- Save/Update/Delete ----
@@ -761,10 +789,25 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception as exc:
             messagebox.showwarning("Проверка", str(exc))
             return None
+        
+        # Проверяем работников
         worker_ids = list(self.selected_workers.keys())
         if not worker_ids:
             messagebox.showwarning("Проверка", "Добавьте работников в бригаду")
             return None
+        
+        # Проверяем на дубликаты и некорректные ID
+        unique_worker_ids = list(set(worker_ids))
+        if len(unique_worker_ids) != len(worker_ids):
+            messagebox.showwarning("Проверка", "Обнаружены дублирующиеся работники в бригаде")
+            return None
+        
+        # Проверяем корректность ID
+        for worker_id in unique_worker_ids:
+            if not isinstance(worker_id, int) or worker_id <= 0:
+                messagebox.showwarning("Проверка", f"Некорректный ID работника: {worker_id}")
+                return None
+        
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
         for i in self.item_rows:
@@ -772,36 +815,48 @@ class WorkOrdersForm(ctk.CTkFrame):
                 messagebox.showwarning("Проверка", "Выберите вид работ из подсказок для каждой строки")
                 return None
             items.append(WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity))
+        
         return WorkOrderInput(
             date=date_str,
             product_id=self.selected_product_id,
             contract_id=int(self.selected_contract_id),
             items=items,
-            worker_ids=worker_ids,
+            worker_ids=unique_worker_ids,  # Используем уникальные ID
         )
 
     def _save(self) -> None:
         if getattr(self, "_readonly", False):
             return
+        
         wo = self._build_input()
         if not wo:
             return
+        
+        # Логируем данные для диагностики
+        logger.info("Попытка сохранения наряда: работники=%s, контракт=%s, изделие=%s, строк=%d", 
+                   wo.worker_ids, wo.contract_id, wo.product_id, len(wo.items))
+        
         try:
             if self.editing_order_id:
                 from services.work_orders import update_work_order  # lazy import
                 with get_connection() as conn:
                     update_work_order(conn, self.editing_order_id, wo)
                 messagebox.showinfo("Сохранено", "Наряд обновлен")
+                logger.info("Наряд %s успешно обновлен", self.editing_order_id)
             else:
                 with get_connection() as conn:
                     _id = create_work_order(conn, wo)
                 messagebox.showinfo("Сохранено", "Наряд успешно сохранен")
+                logger.info("Наряд %s успешно создан", _id)
         except sqlite3.IntegrityError as exc:
+            logger.error("Ошибка целостности БД при сохранении наряда: %s", exc)
             messagebox.showerror("Ошибка", f"Ошибка сохранения: {exc}")
             return
         except Exception as exc:
+            logger.error("Неожиданная ошибка при сохранении наряда: %s", exc, exc_info=True)
             messagebox.showerror("Ошибка", f"Не удалось сохранить наряд: {exc}")
             return
+        
         self._reset_form()
         self._load_recent_orders()
 
@@ -833,6 +888,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_product_id = None
         self.selected_workers.clear()
         self.item_rows.clear()
+        self._refresh_workers_display()
         for w in self.workers_list.winfo_children():
             w.destroy()
         for w in self.suggest_contract_frame.winfo_children():
