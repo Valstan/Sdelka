@@ -20,12 +20,18 @@ class WorkOrderItemInput:
 
 
 @dataclass
+class WorkOrderWorkerInput:
+    worker_id: int
+    worker_name: str
+
+
+@dataclass
 class WorkOrderInput:
     date: str
     product_id: int | None
     contract_id: int
     items: Sequence[WorkOrderItemInput]
-    worker_ids: Sequence[int]
+    workers: Sequence[WorkOrderWorkerInput]  # Изменено с worker_ids на workers
 
 
 def _round_rub(value: Decimal) -> Decimal:
@@ -67,31 +73,70 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
 
     # Проверим работников
-    if not data.worker_ids:
+    if not data.workers:
         raise ValueError("Добавьте работников в бригаду")
     
     # Убираем дубликаты и проверяем корректность ID
-    unique_worker_ids = list(set(data.worker_ids))
-    if len(unique_worker_ids) != len(data.worker_ids):
-        logger.warning("Обнаружены дублирующиеся ID работников: %s -> %s", data.worker_ids, unique_worker_ids)
+    unique_workers = []
+    seen_ids = set()
+    for worker in data.workers:
+        if worker.worker_id not in seen_ids:
+            unique_workers.append(worker)
+            seen_ids.add(worker.worker_id)
     
-    # Проверяем, что все ID являются положительными числами
-    for worker_id in unique_worker_ids:
-        if not isinstance(worker_id, int) or worker_id <= 0:
-            raise ValueError(f"Некорректный ID работника: {worker_id}")
+    if len(unique_workers) != len(data.workers):
+        logger.warning("Обнаружены дублирующиеся ID работников: %s -> %s", 
+                      [w.worker_id for w in data.workers], [w.worker_id for w in unique_workers])
     
-    # Проверяем существование работников в базе
-    placeholders = ",".join(["?"] * len(unique_worker_ids))
-    found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(unique_worker_ids)).fetchall()
-    found_ids = [row["id"] for row in found]
+    # Разделяем работников на существующих (положительные ID) и ручно добавленных (отрицательные ID)
+    existing_workers = [w for w in unique_workers if w.worker_id > 0]
+    manual_workers = [w for w in unique_workers if w.worker_id < 0]
     
-    if len(found_ids) != len(unique_worker_ids):
-        missing_ids = set(unique_worker_ids) - set(found_ids)
-        logger.error("Работники не найдены в базе: %s", missing_ids)
-        raise ValueError(f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка.")
+    # Проверяем корректность ID
+    for worker in unique_workers:
+        if not isinstance(worker.worker_id, int):
+            raise ValueError(f"Некорректный ID работника: {worker.worker_id}")
     
-    # Используем уникальные ID для установки работников
-    q.set_work_order_workers(conn, work_order_id, unique_worker_ids)
+    # Проверяем существование работников в базе (только для положительных ID)
+    if existing_workers:
+        existing_ids = [w.worker_id for w in existing_workers]
+        placeholders = ",".join(["?"] * len(existing_ids))
+        found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(existing_ids)).fetchall()
+        found_ids = [row["id"] for row in found]
+        
+        if len(found_ids) != len(existing_ids):
+            missing_ids = set(existing_ids) - set(found_ids)
+            logger.error("Работники не найдены в базе: %s", missing_ids)
+            raise ValueError(f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка.")
+    
+    # Для ручно добавленных работников (отрицательные ID) создаем/находим записи в базе
+    final_worker_ids: list[int] = []
+
+    # Добавляем существующих работников
+    final_worker_ids.extend([w.worker_id for w in existing_workers])
+
+    # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
+    if manual_workers:
+        counter = 1
+        for worker in manual_workers:
+            # Сначала ищем существующего по ФИО (без учета регистра)
+            found = q.get_worker_by_full_name(conn, worker.worker_name)
+            if found:
+                final_worker_ids.append(int(found["id"]))
+                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, found["id"])
+                continue
+            # Создаем нового с уникальным табельным номером, привязанным к наряду
+            personnel_no = f"TEMP_{work_order_id}_{counter}"
+            counter += 1
+            temp_worker_id = q.insert_worker(conn, worker.worker_name, None, None, personnel_no)
+            final_worker_ids.append(int(temp_worker_id))
+            logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
+
+    # Исключаем возможные дубликаты id
+    final_worker_ids = list(dict.fromkeys(final_worker_ids))
+
+    # Используем финальные ID для установки работников
+    q.set_work_order_workers(conn, work_order_id, final_worker_ids)
 
     logger.info("Создан наряд #%s, сумма: %s", order_no, total)
     return work_order_id
@@ -158,7 +203,34 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     for (job_type_id, quantity, unit_price, line_amount) in line_values:
         q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
 
-    q.set_work_order_workers(conn, work_order_id, data.worker_ids)
+    # Обрабатываем работников аналогично create_work_order
+    # Разделяем на существующих и ручно добавленных
+    existing_workers = [w for w in data.workers if w.worker_id > 0]
+    manual_workers = [w for w in data.workers if w.worker_id < 0]
+
+    final_worker_ids: list[int] = []
+    final_worker_ids.extend([w.worker_id for w in existing_workers])
+
+    # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
+    if manual_workers:
+        # Привязываем счетчик к work_order_id, чтобы получить уникальные personnel_no
+        counter = 1
+        for worker in manual_workers:
+            found = q.get_worker_by_full_name(conn, worker.worker_name)
+            if found:
+                final_worker_ids.append(int(found["id"]))
+                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, found["id"]) 
+                continue
+            personnel_no = f"TEMP_{work_order_id}_{counter}"
+            counter += 1
+            temp_worker_id = q.insert_worker(conn, worker.worker_name, None, None, personnel_no)
+            final_worker_ids.append(int(temp_worker_id))
+            logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
+
+    # Исключаем возможные дубликаты id
+    final_worker_ids = list(dict.fromkeys(final_worker_ids))
+
+    q.set_work_order_workers(conn, work_order_id, final_worker_ids)
 
     logger.info("Обновлен наряд id=%s, сумма: %s", work_order_id, total)
 

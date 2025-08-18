@@ -13,7 +13,7 @@ import tkinter.font as tkfont
 from config.settings import CONFIG
 from db.sqlite import get_connection
 from services import suggestions
-from services.work_orders import WorkOrderInput, WorkOrderItemInput, create_work_order
+from services.work_orders import WorkOrderInput, WorkOrderItemInput, WorkOrderWorkerInput, create_work_order
 from services.validation import validate_date
 from db import queries as q
 from gui.widgets.date_picker import DatePicker
@@ -43,6 +43,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_workers: dict[int, str] = {}
         self.item_rows: list[ItemRow] = []
         self.editing_order_id: Optional[int] = None
+        self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
 
         self._build_ui()
         self._update_totals()
@@ -168,7 +169,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
         self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
         self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
-        ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker_from_entry).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         self.suggest_worker_frame = create_suggestions_frame(self)
         self.suggest_worker_frame.place_forget()
@@ -468,7 +469,42 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_entry.delete(0, "end")
         self.worker_entry.insert(0, label)
         record_use("work_orders.worker", label)
-        self._add_worker(worker_id, label)
+        # Исторические подсказки передают worker_id == 0. Считаем их ручными и
+        # создаем уникальный отрицательный ID, чтобы не конфликтовать и не терять при сохранении.
+        if worker_id == 0:
+            self._manual_worker_counter -= 1
+            manual_worker_id = self._manual_worker_counter
+            self.selected_workers[manual_worker_id] = label
+            self._refresh_workers_display()
+            self._update_totals()
+        else:
+            self._add_worker(worker_id, label)
+        self.suggest_worker_frame.place_forget()
+
+    def _add_worker_from_entry(self) -> None:
+        worker_name = self.worker_entry.get().strip()
+        if not worker_name:
+            messagebox.showwarning("Проверка", "Введите имя работника")
+            return
+        
+        # Проверяем, не добавлен ли уже этот работник
+        if worker_name in self.selected_workers.values():
+            messagebox.showwarning("Проверка", "Работник уже добавлен в бригаду")
+            return
+        
+        # Генерируем уникальный отрицательный ID для ручно добавленного работника
+        self._manual_worker_counter -= 1
+        manual_worker_id = self._manual_worker_counter
+        
+        # Добавляем работника
+        self.selected_workers[manual_worker_id] = worker_name
+        
+        # Обновляем отображение списка работников
+        self._refresh_workers_display()
+        self._update_totals()
+        
+        # Очищаем поле ввода
+        self.worker_entry.delete(0, "end")
         self.suggest_worker_frame.place_forget()
 
     def _on_global_click(self, event=None) -> None:
@@ -560,7 +596,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             return
         
         # Проверяем корректность ID
-        if not isinstance(worker_id, int) or worker_id <= 0:
+        if not isinstance(worker_id, int):
             logger.warning("Попытка добавить некорректный ID работника: %s", worker_id)
             return
         
@@ -604,7 +640,8 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _remove_worker(self, worker_id: int) -> None:
         if worker_id in self.selected_workers:
             del self.selected_workers[worker_id]
-            self._add_worker()
+            self._refresh_workers_display()
+            self._update_totals()
 
     def _update_totals(self) -> None:
         total = sum(i.line_amount for i in self.item_rows)
@@ -804,9 +841,17 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Проверяем корректность ID
         for worker_id in unique_worker_ids:
-            if not isinstance(worker_id, int) or worker_id <= 0:
+            if not isinstance(worker_id, int):
                 messagebox.showwarning("Проверка", f"Некорректный ID работника: {worker_id}")
                 return None
+            # Разрешаем отрицательные ID для ручно добавленных работников
+            if worker_id > 0:
+                # Для положительных ID проверяем существование в БД
+                with get_connection() as conn:
+                    exists = conn.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,)).fetchone()
+                    if not exists:
+                        messagebox.showwarning("Проверка", f"Работник с ID {worker_id} не найден в базе данных")
+                        return None
         
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
@@ -816,12 +861,17 @@ class WorkOrdersForm(ctk.CTkFrame):
                 return None
             items.append(WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity))
         
+        # Создаем список работников с именами
+        workers: list[WorkOrderWorkerInput] = []
+        for worker_id, worker_name in self.selected_workers.items():
+            workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name))
+        
         return WorkOrderInput(
             date=date_str,
             product_id=self.selected_product_id,
             contract_id=int(self.selected_contract_id),
             items=items,
-            worker_ids=unique_worker_ids,  # Используем уникальные ID
+            workers=workers,  # Передаем работников с именами
         )
 
     def _save(self) -> None:
@@ -834,7 +884,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Логируем данные для диагностики
         logger.info("Попытка сохранения наряда: работники=%s, контракт=%s, изделие=%s, строк=%d", 
-                   wo.worker_ids, wo.contract_id, wo.product_id, len(wo.items))
+                   [(w.worker_id, w.worker_name) for w in wo.workers], wo.contract_id, wo.product_id, len(wo.items))
         
         try:
             if self.editing_order_id:
@@ -888,15 +938,28 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_product_id = None
         self.selected_workers.clear()
         self.item_rows.clear()
+        self._manual_worker_counter = -1  # Сбрасываем счетчик ручных работников
         self._refresh_workers_display()
         for w in self.workers_list.winfo_children():
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         for w in self.suggest_contract_frame.winfo_children():
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         for w in self.suggest_product_frame.winfo_children():
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         for w in self.suggest_job_frame.winfo_children():
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         self.suggest_contract_frame.place_forget()
         self.suggest_product_frame.place_forget()
         self.suggest_job_frame.place_forget()
