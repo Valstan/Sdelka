@@ -655,7 +655,7 @@ class SettingsView(ctk.CTkFrame):
         content.append("")
         
         # Версия 2.9
-        content.append("ВЕРСИЯ 2.9 - 2024 год")
+        content.append("ВЕРСИЯ 2.9 - 2025 год")
         content.append("-" * 40)
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
         content.append("• Система ролей пользователей (Полный доступ / Только просмотр)")
@@ -692,7 +692,7 @@ class SettingsView(ctk.CTkFrame):
         content.append("")
         
         # Версия 2.0
-        content.append("ВЕРСИЯ 2.0 - 2024 год")
+        content.append("ВЕРСИЯ 2.0 - 2025 год")
         content.append("-" * 40)
         content.append("✨ БАЗОВАЯ ФУНКЦИОНАЛЬНОСТЬ:")
         content.append("• Учет сдельной работы бригад")
