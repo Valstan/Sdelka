@@ -374,7 +374,7 @@ def save_pdf(
         story.append(Spacer(1, 4 * mm))
         total = context.get("total_amount")
         if total is not None:
-            story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style)))
+            story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style))
             story.append(Spacer(1, 2 * mm))
         workers = context.get("worker_signatures") or []
         if workers:
