@@ -17,10 +17,10 @@ def work_orders_report_df(
     product_id: int | None = None,
     contract_id: int | None = None,
 ) -> pd.DataFrame:
-    """Собирает отчет по начислениям работникам.
+    """Отчет по начислениям работникам с детализацией по строкам наряда (видам работ).
 
-    Каждая строка — работник в рамках одного наряда, колонка "Начислено" берется из work_order_workers.amount.
-    Фильтр по виду работ (job_type_id) реализован через EXISTS, чтобы не дублировать строки.
+    Каждая строка — работник в рамках конкретной строки работ наряда. Сумма "Начислено" распределяется
+    пропорционально сумме строки работ от общего начисления работнику в наряде.
     """
     where = []
     params: list[Any] = []
@@ -44,37 +44,42 @@ def work_orders_report_df(
         where.append("wo.contract_id = ?")
         params.append(contract_id)
 
-    exists_job_filter = ""
+    job_filter = ""
     if job_type_id:
-        exists_job_filter = " AND EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)"
+        job_filter = " AND woi.job_type_id = ?"
         params.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
     sql = f"""
+    WITH totals AS (
+        SELECT work_order_id, SUM(line_amount) AS order_total
+        FROM work_order_items
+        GROUP BY work_order_id
+    )
     SELECT
         wo.order_no AS Номер,
         wo.date AS Дата,
         c.code AS Контракт,
         p.product_no AS Номер_изделия,
         p.name AS Изделие,
-        agg.job_types AS Вид_работ,
+        jt.name AS Вид_работ,
+        woi.quantity AS Количество,
+        woi.unit_price AS Цена,
+        woi.line_amount AS Сумма_строки,
         w.full_name AS Работник,
         w.dept AS Цех,
-        wow.amount AS Начислено
+        ROUND(CASE WHEN t.order_total > 0 THEN wow.amount * (woi.line_amount / t.order_total) ELSE 0 END, 2) AS Начислено
     FROM work_orders wo
+    JOIN totals t ON t.work_order_id = wo.id
     LEFT JOIN contracts c ON c.id = wo.contract_id
     LEFT JOIN products p ON p.id = wo.product_id
-    LEFT JOIN (
-        SELECT woi.work_order_id AS work_order_id, GROUP_CONCAT(jt.name, ', ') AS job_types
-        FROM work_order_items woi
-        JOIN job_types jt ON jt.id = woi.job_type_id
-        GROUP BY woi.work_order_id
-    ) agg ON agg.work_order_id = wo.id
+    JOIN work_order_items woi ON woi.work_order_id = wo.id{job_filter}
+    JOIN job_types jt ON jt.id = woi.job_type_id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
-    {where_sql}{exists_job_filter}
-    ORDER BY wo.date DESC, wo.order_no DESC, w.full_name
+    {where_sql}
+    ORDER BY wo.date DESC, wo.order_no DESC, w.full_name, jt.name
     """
 
     return pd.read_sql_query(sql, conn, params=params)
@@ -112,11 +117,22 @@ def work_orders_report_context(
 
     # Соберем уникальные работники и превратим в короткий формат
     worker_signatures: list[str] = []
+    worker_full: list[str] = []
+    worker_dept: str | None = None
     for cand in ("Работник", "ФИО", "full_name"):
         if cand in df.columns:
-            names = [short_fio(str(x)) for x in df[cand].dropna().unique().tolist()]
-            worker_signatures = sorted(names, key=lambda s: s.casefold())
+            raw = df[cand].dropna().unique().tolist()
+            worker_full = [str(x) for x in raw]
+            worker_signatures = sorted([short_fio(str(x)) for x in raw], key=lambda s: s.casefold())
             break
+    if dept:
+        worker_dept = dept
+    else:
+        if "Цех" in df.columns and not df.empty:
+            try:
+                worker_dept = str(df["Цех"].dropna().iloc[0]) if not df["Цех"].dropna().empty else None
+            except Exception:
+                worker_dept = None
 
     # Руководители — пока заглушки, можно позже брать из настроек/БД
     dept_head = None
@@ -135,4 +151,6 @@ def work_orders_report_context(
         "worker_signatures": worker_signatures,
         "dept_head": dept_head,
         "hr_head": hr_head,
+        "single_worker_full": worker_full[0] if len(set(worker_full)) == 1 and worker_full else None,
+        "single_worker_dept": worker_dept,
     }

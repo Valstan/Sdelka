@@ -417,6 +417,14 @@ class ReportsView(ctk.CTkFrame):
                 contract_id=self._selected_contract_id,
             )
         self._df = self._localize_df_columns(df)
+        # Если выбран конкретный работник — скрыть столбцы Работник и Цех (они будут в шапке)
+        if self._selected_worker_id:
+            for c in ("Работник", "Цех"):
+                if c in self._df.columns:
+                    try:
+                        self._df = self._df.drop(columns=[c])
+                    except Exception:
+                        pass
         # Применим локализацию заголовков в превью
         cols = list(self._df.columns)
         self.tree["columns"] = cols

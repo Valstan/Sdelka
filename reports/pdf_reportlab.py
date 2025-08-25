@@ -333,6 +333,12 @@ def save_pdf(
         dept = context.get("dept_name")
         if dept:
             header_lines.append(f"Цех: {dept}")
+        single_worker = context.get("single_worker_full")
+        single_worker_dept = context.get("single_worker_dept")
+        if single_worker:
+            header_lines.append(f"Работник: {single_worker}")
+            if single_worker_dept:
+                header_lines.append(f"Цех работника: {single_worker_dept}")
         if header_lines:
             story.append(Paragraph("<br/>".join(header_lines), body_style_nowrap))
             story.append(Spacer(1, 4 * mm))
@@ -377,7 +383,12 @@ def save_pdf(
             story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style))
             story.append(Spacer(1, 2 * mm))
         workers = context.get("worker_signatures") or []
-        if workers:
+        single_worker = context.get("single_worker_full")
+        if single_worker:
+            story.append(Paragraph("<b>Подпись работника:</b>", header_style))
+            story.append(Paragraph(f"{single_worker} _____________", body_style_nowrap))
+            story.append(Spacer(1, 2 * mm))
+        elif workers:
             story.append(Paragraph("<b>Подписи работников:</b>", header_style))
             story.append(Paragraph(", \u00A0".join(workers), body_style_nowrap))
             story.append(Spacer(1, 2 * mm))

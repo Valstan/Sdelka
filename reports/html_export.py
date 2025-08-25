@@ -41,6 +41,12 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
         dept = context.get("dept_name")
         if dept:
             header_lines.append(f"Цех: {dept}")
+        single_worker = context.get("single_worker_full")
+        single_worker_dept = context.get("single_worker_dept")
+        if single_worker:
+            header_lines.append(f"Работник: {single_worker}")
+            if single_worker_dept:
+                header_lines.append(f"Цех работника: {single_worker_dept}")
         if header_lines:
             parts.append("<p>" + "<br/>".join(header_lines) + "</p>")
     parts.append(html)
@@ -50,7 +56,11 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
         if total is not None:
             parts.append(f"<p><b>Итого по отчету: {float(total):.2f}</b></p>")
         workers = context.get("worker_signatures") or []
-        if workers:
+        single_worker = context.get("single_worker_full")
+        if single_worker:
+            parts.append("<p><b>Подпись работника:</b></p>")
+            parts.append(f"<p>{single_worker} _____________</p>")
+        elif workers:
             parts.append("<p><b>Подписи работников:</b></p>")
             parts.append("<p>" + ", &nbsp;".join(workers) + "</p>")
         dept_head = context.get("dept_head")
