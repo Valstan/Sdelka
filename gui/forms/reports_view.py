@@ -411,6 +411,7 @@ class ReportsView(ctk.CTkFrame):
                 date_from=self.date_from.get().strip() or None,
                 date_to=self.date_to.get().strip() or None,
                 worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
                 dept=self.dept_var.get().strip() or None,
                 job_type_id=self._selected_job_type_id,
                 product_id=self._selected_product_id,

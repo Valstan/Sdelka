@@ -4,7 +4,7 @@ import sqlite3
 from typing import Any, Sequence
 
 import pandas as pd
-from utils.text import short_fio
+from utils.text import short_fio, normalize_for_search
 
 
 def work_orders_report_df(
@@ -12,6 +12,7 @@ def work_orders_report_df(
     date_from: str | None = None,
     date_to: str | None = None,
     worker_id: int | None = None,
+    worker_name: str | None = None,
     dept: str | None = None,
     job_type_id: int | None = None,
     product_id: int | None = None,
@@ -22,33 +23,41 @@ def work_orders_report_df(
     Каждая строка — работник в рамках конкретной строки работ наряда. Сумма "Начислено" распределяется
     пропорционально сумме строки работ от общего начисления работнику в наряде.
     """
-    where = []
-    params: list[Any] = []
+    where: list[str] = []
+    params_where: list[Any] = []
+    params_join: list[Any] = []
 
     if date_from:
         where.append("wo.date >= ?")
-        params.append(date_from)
+        params_where.append(date_from)
     if date_to:
         where.append("wo.date <= ?")
-        params.append(date_to)
-    if worker_id:
-        # Фильтруем по ФИО (нормализованному), чтобы охватить возможные дубликаты записей работника с одинаковым именем
+        params_where.append(date_to)
+    # Фильтр по работнику: либо по id через сравнение нормализованного ФИО, либо по тексту
+    if worker_id and worker_name:
+        where.append("(w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?) OR w.full_name_norm = ?)")
+        params_where.append(worker_id)
+        params_where.append(normalize_for_search(worker_name) or "")
+    elif worker_id:
         where.append("w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?)")
-        params.append(worker_id)
+        params_where.append(worker_id)
+    elif worker_name:
+        where.append("w.full_name_norm = ?")
+        params_where.append(normalize_for_search(worker_name) or "")
     if dept:
         where.append("w.dept = ?")
-        params.append(dept)
+        params_where.append(dept)
     if product_id:
         where.append("wo.product_id = ?")
-        params.append(product_id)
+        params_where.append(product_id)
     if contract_id:
         where.append("wo.contract_id = ?")
-        params.append(contract_id)
+        params_where.append(contract_id)
 
     job_filter = ""
     if job_type_id:
         job_filter = " AND woi.job_type_id = ?"
-        params.append(job_type_id)
+        params_join.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -93,7 +102,7 @@ def work_orders_report_df(
     ORDER BY wo.date DESC, wo.order_no DESC, w.full_name, jt.name
     """
 
-    return pd.read_sql_query(sql, conn, params=params)
+    return pd.read_sql_query(sql, conn, params=(params_join + params_where))
 
 
 def work_orders_report_context(
