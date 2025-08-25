@@ -25,7 +25,7 @@ from utils.user_prefs import (
 )
 from utils.ui_theming import apply_user_fonts
 from db.sqlite import get_connection
-from utils.version import get_version
+from utils.versioning import get_version
 
 
 class SettingsView(ctk.CTkFrame):
