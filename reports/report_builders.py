@@ -32,7 +32,8 @@ def work_orders_report_df(
         where.append("wo.date <= ?")
         params.append(date_to)
     if worker_id:
-        where.append("wow.worker_id = ?")
+        # Фильтруем по ФИО (нормализованному), чтобы охватить возможные дубликаты записей работника с одинаковым именем
+        where.append("w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?)")
         params.append(worker_id)
     if dept:
         where.append("w.dept = ?")
