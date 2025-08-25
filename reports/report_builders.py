@@ -17,6 +17,11 @@ def work_orders_report_df(
     product_id: int | None = None,
     contract_id: int | None = None,
 ) -> pd.DataFrame:
+    """Собирает отчет по начислениям работникам.
+
+    Каждая строка — работник в рамках одного наряда, колонка "Начислено" берется из work_order_workers.amount.
+    Фильтр по виду работ (job_type_id) реализован через EXISTS, чтобы не дублировать строки.
+    """
     where = []
     params: list[Any] = []
 
@@ -32,15 +37,17 @@ def work_orders_report_df(
     if dept:
         where.append("w.dept = ?")
         params.append(dept)
-    if job_type_id:
-        where.append("woi.job_type_id = ?")
-        params.append(job_type_id)
     if product_id:
         where.append("wo.product_id = ?")
         params.append(product_id)
     if contract_id:
         where.append("wo.contract_id = ?")
         params.append(contract_id)
+
+    exists_job_filter = ""
+    if job_type_id:
+        exists_job_filter = " AND EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)"
+        params.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -51,21 +58,16 @@ def work_orders_report_df(
         c.code AS Контракт,
         p.product_no AS Номер_изделия,
         p.name AS Изделие,
-        jt.name AS Вид_работ,
-        woi.quantity AS Количество,
-        woi.unit_price AS Цена,
-        woi.line_amount AS Сумма,
         w.full_name AS Работник,
-        w.dept AS Цех
+        w.dept AS Цех,
+        wow.amount AS Начислено
     FROM work_orders wo
     LEFT JOIN contracts c ON c.id = wo.contract_id
     LEFT JOIN products p ON p.id = wo.product_id
-    JOIN work_order_items woi ON woi.work_order_id = wo.id
-    JOIN job_types jt ON jt.id = woi.job_type_id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
-    {where_sql}
-    ORDER BY wo.date DESC, wo.order_no DESC
+    {where_sql}{exists_job_filter}
+    ORDER BY wo.date DESC, wo.order_no DESC, w.full_name
     """
 
     return pd.read_sql_query(sql, conn, params=params)
@@ -93,7 +95,7 @@ def work_orders_report_context(
     total_amount = 0.0
     if not df.empty:
         # Пытаемся найти колонку суммы по названиям
-        for cand in ("Сумма", "line_amount", "Итог", "total", "Итого"):
+        for cand in ("Начислено", "Сумма", "line_amount", "Итог", "total", "Итого"):
             if cand in df.columns:
                 try:
                     total_amount = float(pd.to_numeric(df[cand], errors="coerce").fillna(0).sum())
