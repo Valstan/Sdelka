@@ -293,10 +293,26 @@ def insert_work_order_item(conn: sqlite3.Connection, work_order_id: int, job_typ
 
 
 def set_work_order_workers(conn: sqlite3.Connection, work_order_id: int, worker_ids: Sequence[int]) -> None:
+    """Backward-compatible setter without amounts: inserts with amount=0.
+
+    Use set_work_order_workers_with_amounts for precise allocation.
+    """
     conn.execute("DELETE FROM work_order_workers WHERE work_order_id = ?", (work_order_id,))
     conn.executemany(
-        "INSERT INTO work_order_workers(work_order_id, worker_id) VALUES (?, ?)",
+        "INSERT INTO work_order_workers(work_order_id, worker_id, amount) VALUES (?, ?, 0)",
         [(work_order_id, wid) for wid in worker_ids],
+    )
+
+
+def set_work_order_workers_with_amounts(conn: sqlite3.Connection, work_order_id: int, allocations: Sequence[tuple[int, float]]) -> None:
+    """Set workers with their allocated amounts.
+
+    allocations: sequence of (worker_id, amount)
+    """
+    conn.execute("DELETE FROM work_order_workers WHERE work_order_id = ?", (work_order_id,))
+    conn.executemany(
+        "INSERT INTO work_order_workers(work_order_id, worker_id, amount) VALUES (?, ?, ?)",
+        [(work_order_id, wid, float(amount)) for (wid, amount) in allocations],
     )
 
 
@@ -339,7 +355,7 @@ def get_work_order_items(conn: sqlite3.Connection, work_order_id: int) -> list[s
 def get_work_order_workers(conn: sqlite3.Connection, work_order_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT wow.worker_id, w.full_name
+        SELECT wow.worker_id, w.full_name, COALESCE(wow.amount, 0) AS amount
         FROM work_order_workers wow
         JOIN workers w ON w.id = wow.worker_id
         WHERE wow.work_order_id = ?

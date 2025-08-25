@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS work_order_items (
 CREATE TABLE IF NOT EXISTS work_order_workers (
     work_order_id INTEGER NOT NULL,
     worker_id INTEGER NOT NULL,
+    amount NUMERIC NOT NULL DEFAULT 0,
     PRIMARY KEY (work_order_id, worker_id),
     FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (worker_id) REFERENCES workers(id) ON UPDATE CASCADE ON DELETE RESTRICT
@@ -108,6 +109,9 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
 
     migrate_workers_if_needed(conn)
     add_norm_columns_and_backfill(conn)
+
+    # Ensure new columns for worker allocations are present and backfilled
+    ensure_work_order_workers_amounts(conn)
 
     create_indexes_if_possible(conn)
 
@@ -254,3 +258,42 @@ def create_indexes_if_possible(conn: sqlite3.Connection) -> None:
             conn.execute(create_sql)
         except sqlite3.OperationalError as exc:  # noqa: TRY003
             logger.warning("Не удалось создать индекс %s: %s", idx_name, exc)
+
+
+def ensure_work_order_workers_amounts(conn: sqlite3.Connection) -> None:
+    """Add amount column to work_order_workers and backfill equal shares if empty.
+
+    - Adds column if missing
+    - Backfills per worker amount = total_amount / count, rounding to 2 decimals and fixing remainder
+    """
+    try:
+        if not table_exists(conn, "work_order_workers"):
+            return
+        cols = set(get_table_columns(conn, "work_order_workers"))
+        if "amount" not in cols:
+            conn.execute("ALTER TABLE work_order_workers ADD COLUMN amount NUMERIC NOT NULL DEFAULT 0")
+        # For each work order, if all amounts are zero, distribute equally
+        orders = conn.execute("SELECT id, total_amount FROM work_orders").fetchall()
+        for o in orders:
+            rows = conn.execute(
+                "SELECT worker_id, amount FROM work_order_workers WHERE work_order_id=? ORDER BY worker_id",
+                (o["id"],),
+            ).fetchall()
+            if not rows:
+                continue
+            if all((r["amount"] is None or float(r["amount"]) == 0.0) for r in rows):
+                n = len(rows)
+                total = float(o["total_amount"]) if o["total_amount"] is not None else 0.0
+                per = round((total / n) if n else 0.0, 2)
+                amounts = [per] * n
+                # Adjust last to correct rounding diff
+                diff = round(total - round(per * n, 2), 2)
+                if n > 0 and abs(diff) >= 0.01:
+                    amounts[-1] = round(amounts[-1] + diff, 2)
+                for idx, r in enumerate(rows):
+                    conn.execute(
+                        "UPDATE work_order_workers SET amount=? WHERE work_order_id=? AND worker_id=?",
+                        (amounts[idx], o["id"], r["worker_id"]),
+                    )
+    except Exception as exc:  # safety: don't break startup
+        logger.warning("ensure_work_order_workers_amounts failed: %s", exc)

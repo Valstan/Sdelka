@@ -41,6 +41,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_contract_id: Optional[int] = None
         self.selected_product_id: Optional[int] = None
         self.selected_workers: dict[int, str] = {}
+        self.worker_amounts: dict[int, float] = {}
+        self._worker_amount_vars: dict[int, ctk.StringVar] = {}
+        self._manual_amount_ids: set[int] = set()
         self.item_rows: list[ItemRow] = []
         self.editing_order_id: Optional[int] = None
         self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
@@ -617,7 +620,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Очищаем текущий список
         for w in self.workers_list.winfo_children():
             w.destroy()
-        
+        self._worker_amount_vars.clear()
+
         # Создаем новые строки для каждого работника
         for wid, name in self.selected_workers.items():
             row = ctk.CTkFrame(self.workers_list)
@@ -625,6 +629,18 @@ class WorkOrdersForm(ctk.CTkFrame):
             
             # Имя работника
             ctk.CTkLabel(row, text=name).pack(side="left", padx=4)
+
+            # Поле суммы для работника
+            var = ctk.StringVar(value=f"{self.worker_amounts.get(wid, 0.0):.2f}")
+            self._worker_amount_vars[wid] = var
+            amount_entry = ctk.CTkEntry(row, textvariable=var, width=100)
+            amount_entry.pack(side="right", padx=4)
+            amount_entry.bind("<KeyRelease>", lambda _e=None, i=wid: self._on_worker_amount_change(i))
+            if self._readonly:
+                try:
+                    amount_entry.configure(state="disabled")
+                except Exception:
+                    pass
             
             # Кнопка удаления
             del_btn = ctk.CTkButton(
@@ -637,9 +653,17 @@ class WorkOrdersForm(ctk.CTkFrame):
             )
             del_btn.pack(side="right", padx=4)
 
+        # После перерисовки — пересчитать и обновить поля сумм
+        self._recalculate_worker_amounts()
+        self._update_worker_amount_entries()
+
     def _remove_worker(self, worker_id: int) -> None:
         if worker_id in self.selected_workers:
             del self.selected_workers[worker_id]
+            if worker_id in self.worker_amounts:
+                del self.worker_amounts[worker_id]
+            if worker_id in self._manual_amount_ids:
+                self._manual_amount_ids.discard(worker_id)
             self._refresh_workers_display()
             self._update_totals()
 
@@ -649,6 +673,86 @@ class WorkOrdersForm(ctk.CTkFrame):
         per_worker = total / num_workers if num_workers else 0.0
         self.total_var.set(f"{total:.2f}")
         self.per_worker_var.set(f"{per_worker:.2f}")
+        # Обновляем распределение по работникам
+        self._recalculate_worker_amounts()
+        self._update_worker_amount_entries()
+
+    def _update_worker_amount_entries(self) -> None:
+        for wid, var in self._worker_amount_vars.items():
+            try:
+                var.set(f"{float(self.worker_amounts.get(wid, 0.0)):.2f}")
+            except Exception:
+                pass
+
+    def _on_worker_amount_change(self, worker_id: int) -> None:
+        var = self._worker_amount_vars.get(worker_id)
+        if not var:
+            return
+        raw = (var.get() or "").strip().replace(",", ".")
+        try:
+            entered = round(float(raw), 2)
+        except Exception:
+            return
+        if entered < 0:
+            entered = 0.0
+        total = round(sum(i.line_amount for i in self.item_rows), 2)
+        # Сумма уже вручную заданных других работников
+        other_manual = 0.0
+        for wid in self._manual_amount_ids:
+            if wid == worker_id:
+                continue
+            other_manual += float(self.worker_amounts.get(wid, 0.0))
+        max_allowed = max(0.0, round(total - other_manual, 2))
+        if entered > max_allowed:
+            entered = max_allowed
+            try:
+                var.set(f"{entered:.2f}")
+            except Exception:
+                pass
+        self._manual_amount_ids.add(worker_id)
+        self.worker_amounts[worker_id] = float(entered)
+        self._recalculate_worker_amounts()
+        self._update_worker_amount_entries()
+
+    def _recalculate_worker_amounts(self) -> None:
+        """Распределяет суммы между работниками, учитывая вручную заданные значения."""
+        ids = list(self.selected_workers.keys())
+        if not ids:
+            return
+        total = round(sum(i.line_amount for i in self.item_rows), 2)
+        manual_ids = [i for i in ids if i in self._manual_amount_ids]
+        sum_manual = round(sum(float(self.worker_amounts.get(i, 0.0)) for i in manual_ids), 2)
+        remainder = round(max(0.0, total - sum_manual), 2)
+        unspecified = [i for i in ids if i not in manual_ids]
+        if not manual_ids:
+            # Равномерно по всем
+            n = len(ids)
+            if n <= 0:
+                return
+            per = round(total / n, 2)
+            amounts = [per] * n
+            diff = round(total - round(per * n, 2), 2)
+            if n > 0 and abs(diff) >= 0.01:
+                amounts[-1] = round(amounts[-1] + diff, 2)
+            for wid, amt in zip(ids, amounts):
+                self.worker_amounts[wid] = float(amt)
+            return
+        # Есть ручные значения
+        if not unspecified:
+            # Все суммы заданы вручную: поправим последний на разницу
+            diff = round(total - sum_manual, 2)
+            if abs(diff) >= 0.01 and manual_ids:
+                last = manual_ids[-1]
+                self.worker_amounts[last] = round(float(self.worker_amounts.get(last, 0.0)) + diff, 2)
+            return
+        n = len(unspecified)
+        per = round(remainder / n, 2)
+        amounts = [per] * n
+        diff = round(remainder - round(per * n, 2), 2)
+        if n > 0 and abs(diff) >= 0.01:
+            amounts[-1] = round(amounts[-1] + diff, 2)
+        for wid, amt in zip(unspecified, amounts):
+            self.worker_amounts[wid] = float(amt)
 
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
@@ -805,11 +909,19 @@ class WorkOrdersForm(ctk.CTkFrame):
             row._del_btn = del_btn
         # workers
         self.selected_workers.clear()
+        self.worker_amounts.clear()
         with get_connection() as conn:
-            for wid in data.worker_ids:
+            for wid, amount in data.workers:
                 r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
                 self.selected_workers[wid] = r["full_name"] if r else str(wid)
+                try:
+                    self.worker_amounts[wid] = float(amount)
+                except Exception:
+                    self.worker_amounts[wid] = 0.0
+        # Помечаем загруженные суммы как ручные, чтобы не перезаписывать
+        self._manual_amount_ids = set(self.selected_workers.keys())
         self._refresh_workers_display()
+        self._update_worker_amount_entries()
         self._update_totals()
 
     # ---- Save/Update/Delete ----
@@ -861,10 +973,11 @@ class WorkOrdersForm(ctk.CTkFrame):
                 return None
             items.append(WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity))
         
-        # Создаем список работников с именами
+        # Создаем список работников с именами и суммами
         workers: list[WorkOrderWorkerInput] = []
         for worker_id, worker_name in self.selected_workers.items():
-            workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name))
+            amount = self.worker_amounts.get(worker_id)
+            workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name, amount=amount))
         
         return WorkOrderInput(
             date=date_str,

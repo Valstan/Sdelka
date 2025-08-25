@@ -23,6 +23,7 @@ class WorkOrderItemInput:
 class WorkOrderWorkerInput:
     worker_id: int
     worker_name: str
+    amount: float | None = None
 
 
 @dataclass
@@ -111,32 +112,71 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     
     # Для ручно добавленных работников (отрицательные ID) создаем/находим записи в базе
     final_worker_ids: list[int] = []
+    # Сохраняем заданные суммы по исходному ID (положительному или отрицательному)
+    specified_by_orig: dict[int, Decimal] = {}
+    for w in unique_workers:
+        if w.amount is not None:
+            try:
+                val = _round_rub(Decimal(str(w.amount)))
+            except Exception:
+                raise ValueError("Некорректная сумма распределения для работника")
+            if val < 0:
+                raise ValueError("Сумма для работника не может быть отрицательной")
+            specified_by_orig[w.worker_id] = val
 
     # Добавляем существующих работников
     final_worker_ids.extend([w.worker_id for w in existing_workers])
 
     # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
+    orig_to_new: dict[int, int] = {}
     if manual_workers:
         counter = 1
         for worker in manual_workers:
             # Сначала ищем существующего по ФИО (без учета регистра)
             found = q.get_worker_by_full_name(conn, worker.worker_name)
             if found:
-                final_worker_ids.append(int(found["id"]))
-                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, found["id"])
+                wid = int(found["id"])
+                orig_to_new[worker.worker_id] = wid
+                final_worker_ids.append(wid)
+                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, wid)
                 continue
             # Создаем нового с уникальным табельным номером, привязанным к наряду
             personnel_no = f"TEMP_{work_order_id}_{counter}"
             counter += 1
-            temp_worker_id = q.insert_worker(conn, worker.worker_name, None, None, personnel_no)
-            final_worker_ids.append(int(temp_worker_id))
+            temp_worker_id = int(q.insert_worker(conn, worker.worker_name, None, None, personnel_no))
+            orig_to_new[worker.worker_id] = temp_worker_id
+            final_worker_ids.append(temp_worker_id)
             logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
 
     # Исключаем возможные дубликаты id
     final_worker_ids = list(dict.fromkeys(final_worker_ids))
 
-    # Используем финальные ID для установки работников
-    q.set_work_order_workers(conn, work_order_id, final_worker_ids)
+    # Построим итоговую карту заданных сумм по финальным ID
+    specified_by_final: dict[int, Decimal] = {}
+    for orig_id, amount in specified_by_orig.items():
+        final_id = orig_to_new.get(orig_id, orig_id)
+        specified_by_final[final_id] = amount
+
+    # Распределим суммы: заданные берем как есть, остаток равномерно по незаданным
+    sum_specified = sum(specified_by_final.values(), Decimal("0"))
+    if sum_specified > total:
+        raise ValueError("Сумма распределений превышает итоговую сумму наряда")
+    remainder = total - sum_specified
+    unspecified_ids = [wid for wid in final_worker_ids if wid not in specified_by_final]
+    allocations: list[tuple[int, float]] = []
+    if unspecified_ids:
+        per = _round_rub(remainder / Decimal(len(unspecified_ids))) if remainder > 0 else Decimal("0")
+        amounts = [per] * len(unspecified_ids)
+        diff = _round_rub(remainder - per * Decimal(len(unspecified_ids)))
+        if amounts and diff != Decimal("0"):
+            amounts[-1] = _round_rub(amounts[-1] + diff)
+        for wid, amt in zip(unspecified_ids, amounts):
+            allocations.append((wid, float(amt)))
+    for wid, amt in specified_by_final.items():
+        allocations.append((wid, float(amt)))
+
+    # Сохраняем работников с суммами
+    q.set_work_order_workers_with_amounts(conn, work_order_id, allocations)
 
     logger.info("Создан наряд #%s, сумма: %s", order_no, total)
     return work_order_id
@@ -150,7 +190,7 @@ class LoadedWorkOrder:
     product_id: int | None
     contract_id: int
     items: list[tuple[int, str, float, float, float]]  # job_type_id, name, qty, unit_price, line_amount
-    worker_ids: list[int]
+    workers: list[tuple[int, float]]  # (worker_id, amount)
     total_amount: float
 
 
@@ -164,7 +204,7 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
         (r["job_type_id"], r["job_name"], float(r["quantity"]), float(r["unit_price"]), float(r["line_amount"]))
         for r in items_rows
     ]
-    worker_ids = [int(r["worker_id"]) for r in workers_rows]
+    worker_allocs = [(int(r["worker_id"]), float(r["amount"]) if r["amount"] is not None else 0.0) for r in workers_rows]
     return LoadedWorkOrder(
         id=int(header["id"]),
         order_no=int(header["order_no"]),
@@ -172,7 +212,7 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
         product_id=int(header["product_id"]) if header["product_id"] is not None else None,
         contract_id=int(header["contract_id"]),
         items=items,
-        worker_ids=worker_ids,
+        workers=worker_allocs,
         total_amount=float(header["total_amount"]),
     )
 
@@ -212,25 +252,60 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     final_worker_ids.extend([w.worker_id for w in existing_workers])
 
     # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
+    orig_to_new: dict[int, int] = {}
     if manual_workers:
         # Привязываем счетчик к work_order_id, чтобы получить уникальные personnel_no
         counter = 1
         for worker in manual_workers:
             found = q.get_worker_by_full_name(conn, worker.worker_name)
             if found:
-                final_worker_ids.append(int(found["id"]))
-                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, found["id"]) 
+                wid = int(found["id"])
+                orig_to_new[worker.worker_id] = wid
+                final_worker_ids.append(wid)
+                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, wid) 
                 continue
             personnel_no = f"TEMP_{work_order_id}_{counter}"
             counter += 1
-            temp_worker_id = q.insert_worker(conn, worker.worker_name, None, None, personnel_no)
-            final_worker_ids.append(int(temp_worker_id))
+            temp_worker_id = int(q.insert_worker(conn, worker.worker_name, None, None, personnel_no))
+            orig_to_new[worker.worker_id] = temp_worker_id
+            final_worker_ids.append(temp_worker_id)
             logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
 
     # Исключаем возможные дубликаты id
     final_worker_ids = list(dict.fromkeys(final_worker_ids))
 
-    q.set_work_order_workers(conn, work_order_id, final_worker_ids)
+    # Сопоставим заданные суммы по финальным ID
+    specified_by_final: dict[int, Decimal] = {}
+    for w in data.workers:
+        if w.amount is None:
+            continue
+        try:
+            val = _round_rub(Decimal(str(w.amount)))
+        except Exception:
+            raise ValueError("Некорректная сумма распределения для работника")
+        if val < 0:
+            raise ValueError("Сумма для работника не может быть отрицательной")
+        final_id = orig_to_new.get(w.worker_id, w.worker_id)
+        specified_by_final[final_id] = val
+
+    sum_specified = sum(specified_by_final.values(), Decimal("0"))
+    if sum_specified > total:
+        raise ValueError("Сумма распределений превышает итоговую сумму наряда")
+    remainder = total - sum_specified
+    unspecified_ids = [wid for wid in final_worker_ids if wid not in specified_by_final]
+    allocations: list[tuple[int, float]] = []
+    if unspecified_ids:
+        per = _round_rub(remainder / Decimal(len(unspecified_ids))) if remainder > 0 else Decimal("0")
+        amounts = [per] * len(unspecified_ids)
+        diff = _round_rub(remainder - per * Decimal(len(unspecified_ids)))
+        if amounts and diff != Decimal("0"):
+            amounts[-1] = _round_rub(amounts[-1] + diff)
+        for wid, amt in zip(unspecified_ids, amounts):
+            allocations.append((wid, float(amt)))
+    for wid, amt in specified_by_final.items():
+        allocations.append((wid, float(amt)))
+
+    q.set_work_order_workers_with_amounts(conn, work_order_id, allocations)
 
     logger.info("Обновлен наряд id=%s, сумма: %s", work_order_id, total)
 
