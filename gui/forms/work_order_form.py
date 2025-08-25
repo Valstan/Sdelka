@@ -210,6 +210,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.delete_btn.pack(side="left", padx=4)
         self.cancel_btn = ctk.CTkButton(actions, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
         self.cancel_btn.pack(side="left", padx=4)
+        self.edit_btn = ctk.CTkButton(actions, text="Изменить наряд", command=self._enable_editing)
+        self.edit_btn.pack(side="left", padx=4)
         self.manual_btn = ctk.CTkButton(actions, text="Ручной ввод сумм: ВЫКЛ", command=self._toggle_manual_mode)
         self.manual_btn.pack(side="left", padx=4)
 
@@ -220,7 +222,7 @@ class WorkOrdersForm(ctk.CTkFrame):
                     w.configure(state="disabled")
                 except Exception:
                     pass
-            for b in (add_btn, self.save_btn, self.delete_btn, self.cancel_btn):
+            for b in (add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.edit_btn, self.manual_btn):
                 b.configure(state="disabled")
 
         # Right-side: existing orders list
@@ -736,6 +738,28 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Перерисовать строки работников с актуальной доступностью полей
         self._refresh_workers_display()
 
+    def _set_edit_locked(self, locked: bool) -> None:
+        """Включает/выключает режим просмотра (блокирует поля формы)."""
+        self._edit_locked = locked
+        widgets = [self.date_entry, self.contract_entry, self.product_entry, self.job_entry, self.qty_entry, self.worker_entry]
+        for w in widgets:
+            try:
+                w.configure(state=("disabled" if locked else "normal"))
+            except Exception:
+                pass
+        buttons = [self.add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.manual_btn]
+        for b in buttons:
+            try:
+                b.configure(state=("disabled" if locked else "normal"))
+            except Exception:
+                pass
+        # Перерисовать работников (включит/выключит поля сумм)
+        self._refresh_workers_display()
+
+    def _enable_editing(self) -> None:
+        # При включении редактирования не менять суммы автоматически: остаемся в ручном режиме
+        self._set_edit_locked(False)
+
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
         open_for_anchor(self, self.date_entry, self.date_var.get().strip(), lambda d: self.date_var.set(d))
@@ -900,10 +924,13 @@ class WorkOrdersForm(ctk.CTkFrame):
                     self.worker_amounts[wid] = float(amount)
                 except Exception:
                     self.worker_amounts[wid] = 0.0
-        # Помечаем загруженные суммы как ручные, чтобы не перезаписывать
+        # При загрузке: блокируем редактирование полей (режим просмотра). Включаем ручной режим, чтобы не было перерасчета.
+        self._manual_mode = True
         self._manual_amount_ids = set(self.selected_workers.keys())
+        self._set_edit_locked(True)
         self._refresh_workers_display()
         self._update_worker_amount_entries()
+        # Итоги пересчитаем только цифры, но распределение не меняем (ручной режим)
         self._update_totals()
 
     # ---- Save/Update/Delete ----
