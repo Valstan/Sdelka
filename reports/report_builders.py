@@ -54,55 +54,40 @@ def work_orders_report_df(
         where.append("wo.contract_id = ?")
         params_where.append(contract_id)
 
-    job_filter = ""
+    exists_job_filter = ""
     if job_type_id:
-        job_filter = " AND woi.job_type_id = ?"
-        params_join.append(job_type_id)
+        exists_job_filter = " AND EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)"
+        params_where.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
     sql = f"""
-    WITH totals AS (
-        SELECT work_order_id, SUM(line_amount) AS order_total
-        FROM work_order_items
-        GROUP BY work_order_id
-    ), workers_cnt AS (
-        SELECT work_order_id, COUNT(*) AS cnt
-        FROM work_order_workers
-        GROUP BY work_order_id
-    )
     SELECT
         wo.order_no AS Номер,
         wo.date AS Дата,
         c.code AS Контракт,
         p.product_no AS Номер_изделия,
         p.name AS Изделие,
-        jt.name AS Вид_работ,
+        agg.job_types AS Вид_работ,
         w.full_name AS Работник,
         w.dept AS Цех,
-        ROUND(
-            CASE 
-                WHEN COALESCE(wow.amount, 0) > 0 AND t.order_total > 0 
-                    THEN wow.amount * (woi.line_amount / t.order_total)
-                WHEN COALESCE(wow.amount, 0) <= 0 AND wc.cnt > 0
-                    THEN woi.line_amount * 1.0 / wc.cnt
-                ELSE 0
-            END, 2
-        ) AS Начислено
+        ROUND(COALESCE(wow.amount, 0), 2) AS Начислено
     FROM work_orders wo
-    JOIN totals t ON t.work_order_id = wo.id
     LEFT JOIN contracts c ON c.id = wo.contract_id
     LEFT JOIN products p ON p.id = wo.product_id
-    JOIN work_order_items woi ON woi.work_order_id = wo.id{job_filter}
-    JOIN job_types jt ON jt.id = woi.job_type_id
-    JOIN workers_cnt wc ON wc.work_order_id = wo.id
+    LEFT JOIN (
+        SELECT woi.work_order_id AS work_order_id, GROUP_CONCAT(jt.name, ', ') AS job_types
+        FROM work_order_items woi
+        JOIN job_types jt ON jt.id = woi.job_type_id
+        GROUP BY woi.work_order_id
+    ) agg ON agg.work_order_id = wo.id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
-    {where_sql}
-    ORDER BY wo.date DESC, wo.order_no DESC, w.full_name, jt.name
+    {where_sql}{exists_job_filter}
+    ORDER BY wo.date DESC, wo.order_no DESC, w.full_name
     """
 
-    return pd.read_sql_query(sql, conn, params=(params_join + params_where))
+    return pd.read_sql_query(sql, conn, params=params_where)
 
 
 def work_orders_report_context(
