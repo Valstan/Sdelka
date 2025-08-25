@@ -139,13 +139,25 @@ def work_orders_report_context(
             except Exception:
                 worker_dept = None
 
-    # Руководители — пока заглушки, можно позже брать из настроек/БД
+    # Руководители
     dept_head = None
     hr_head = None
-    if dept_name:
-        # Попытка найти начальника цеха по совпадению dept (требует отдельной таблицы в будущем)
-        # Пока оставим пустым
-        pass
+    # Определяем цех: либо из фильтра, либо из данных (если один работник выбран)
+    effective_dept = dept_name or context_like_dept(df)
+    if effective_dept:
+        try:
+            row = conn.execute("SELECT head_full_name FROM departments WHERE name = ?", (effective_dept,)).fetchone()
+            if row and row[0]:
+                dept_head = short_fio(str(row[0]))
+        except Exception:
+            dept_head = None
+    # HR head из таблицы settings или persons (если есть). Падаем в тихий режим если нет.
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key='hr_head' ").fetchone()
+        if row and row[0]:
+            hr_head = short_fio(str(row[0]))
+    except Exception:
+        hr_head = None
 
     return {
         "title": title,
@@ -159,3 +171,14 @@ def work_orders_report_context(
         "single_worker_full": worker_full[0] if len(set(worker_full)) == 1 and worker_full else None,
         "single_worker_dept": worker_dept,
     }
+
+
+def context_like_dept(df: pd.DataFrame) -> str | None:
+    try:
+        if "Цех" in df.columns and not df.empty:
+            vals = [str(x) for x in df["Цех"].dropna().unique().tolist()]
+            if len(vals) == 1:
+                return vals[0]
+    except Exception:
+        pass
+    return None
