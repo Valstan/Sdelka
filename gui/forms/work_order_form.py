@@ -45,6 +45,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._worker_amount_vars: dict[int, ctk.StringVar] = {}
         self._manual_amount_ids: set[int] = set()
         self._manual_mode: bool = False
+        self._edit_locked: bool = False
         self.item_rows: list[ItemRow] = []
         self.editing_order_id: Optional[int] = None
         self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
@@ -140,8 +141,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.qty_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.qty_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
-        add_btn = ctk.CTkButton(items_frame, text="Добавить", command=self._add_item)
-        add_btn.grid(row=1, column=4, sticky="e", padx=5, pady=(0, 6))
+        self.add_btn = ctk.CTkButton(items_frame, text="Добавить", command=self._add_item)
+        self.add_btn.grid(row=1, column=4, sticky="e", padx=5, pady=(0, 6))
 
         self.suggest_job_frame = create_suggestions_frame(self)
         self.suggest_job_frame.place_forget()
@@ -222,7 +223,7 @@ class WorkOrdersForm(ctk.CTkFrame):
                     w.configure(state="disabled")
                 except Exception:
                     pass
-            for b in (add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.edit_btn, self.manual_btn):
+            for b in (self.add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.edit_btn, self.manual_btn):
                 b.configure(state="disabled")
 
         # Right-side: existing orders list
@@ -725,6 +726,9 @@ class WorkOrdersForm(ctk.CTkFrame):
             self.worker_amounts[wid] = float(amt)
 
     def _toggle_manual_mode(self) -> None:
+        # Только если редактирование включено, разрешаем переключение режима
+        if getattr(self, "_edit_locked", False):
+            return
         self._manual_mode = not self._manual_mode
         try:
             self.manual_btn.configure(text=f"Ручной ввод сумм: {'ВКЛ' if self._manual_mode else 'ВЫКЛ'}")
@@ -913,7 +917,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             idx = len(self.item_rows) - 1
             del_btn.configure(command=lambda i=idx, rf=row: self._remove_item_row(i, rf))
             row._del_btn = del_btn
-        # workers
+        # workers — показываем в режиме просмотра, суммы не пересчитываем
         self.selected_workers.clear()
         self.worker_amounts.clear()
         with get_connection() as conn:
@@ -924,14 +928,19 @@ class WorkOrdersForm(ctk.CTkFrame):
                     self.worker_amounts[wid] = float(amount)
                 except Exception:
                     self.worker_amounts[wid] = 0.0
-        # При загрузке: блокируем редактирование полей (режим просмотра). Включаем ручной режим, чтобы не было перерасчета.
+        # Просмотр: ручной режим включен для предотвращения авто-расчета, редактирование заблокировано
         self._manual_mode = True
         self._manual_amount_ids = set(self.selected_workers.keys())
         self._set_edit_locked(True)
         self._refresh_workers_display()
-        self._update_worker_amount_entries()
-        # Итоги пересчитаем только цифры, но распределение не меняем (ручной режим)
-        self._update_totals()
+        # Обновим числа (без перерасчета распределения)
+        try:
+            total = sum(i.line_amount for i in self.item_rows)
+            self.total_var.set(f"{total:.2f}")
+            num = max(1, len(self.selected_workers))
+            self.per_worker_var.set(f"{(total/num if num else 0.0):.2f}")
+        except Exception:
+            pass
 
     # ---- Save/Update/Delete ----
     def _build_input(self) -> Optional[WorkOrderInput]:
