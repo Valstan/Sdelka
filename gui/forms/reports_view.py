@@ -417,6 +417,13 @@ class ReportsView(ctk.CTkFrame):
                 contract_id=self._selected_contract_id,
             )
         self._df = self._localize_df_columns(df)
+        # Уберем технические колонки из таблицы
+        for c in ("Сумма_строки", "Количество", "Кол-во", "Цена"):
+            if c in self._df.columns:
+                try:
+                    self._df = self._df.drop(columns=[c])
+                except Exception:
+                    pass
         # Если выбран конкретный работник — скрыть столбцы Работник и Цех (они будут в шапке)
         if self._selected_worker_id:
             for c in ("Работник", "Цех"):
@@ -484,13 +491,15 @@ class ReportsView(ctk.CTkFrame):
         for c in cols:
             self.tree.heading(c, text=str(c), command=lambda cc=c: sort_by(cc))
 
-        # Auto-size columns to fit content (header + visible rows)
+        # Auto-size columns to fit content (header + visible rows) and fit into window width
         try:
             font = tkfont.nametofont("TkDefaultFont")
         except Exception:
             font = tkfont.Font()
         pad = 24
         min_w = 60
+        # First pass: measure desired widths
+        desired = []
         for j, c in enumerate(cols):
             header_w = font.measure(str(c))
             max_w = header_w
@@ -498,7 +507,19 @@ class ReportsView(ctk.CTkFrame):
                 w = font.measure(str(r[j]))
                 if w > max_w:
                     max_w = w
-            self.tree.column(c, width=max(min_w, max_w + pad))
+            desired.append(max(min_w, max_w + pad))
+        # Compute available width of tree widget
+        try:
+            avail = max(200, int(self.tree.winfo_width()) - 32)
+        except Exception:
+            avail = sum(desired)
+        total_desired = sum(desired)
+        # Scale down if overflow, but not below min_w
+        if total_desired > 0 and avail < total_desired:
+            scale = avail / total_desired
+            desired = [max(min_w, int(w * scale)) for w in desired]
+        for c, w in zip(cols, desired):
+            self.tree.column(c, width=int(w))
 
     def _build_filename_suffix(self) -> str:
         from datetime import datetime

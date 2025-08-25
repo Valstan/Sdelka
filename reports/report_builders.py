@@ -56,6 +56,10 @@ def work_orders_report_df(
         SELECT work_order_id, SUM(line_amount) AS order_total
         FROM work_order_items
         GROUP BY work_order_id
+    ), workers_cnt AS (
+        SELECT work_order_id, COUNT(*) AS cnt
+        FROM work_order_workers
+        GROUP BY work_order_id
     )
     SELECT
         wo.order_no AS Номер,
@@ -64,18 +68,24 @@ def work_orders_report_df(
         p.product_no AS Номер_изделия,
         p.name AS Изделие,
         jt.name AS Вид_работ,
-        woi.quantity AS Количество,
-        woi.unit_price AS Цена,
-        woi.line_amount AS Сумма_строки,
         w.full_name AS Работник,
         w.dept AS Цех,
-        ROUND(CASE WHEN t.order_total > 0 THEN wow.amount * (woi.line_amount / t.order_total) ELSE 0 END, 2) AS Начислено
+        ROUND(
+            CASE 
+                WHEN COALESCE(wow.amount, 0) > 0 AND t.order_total > 0 
+                    THEN wow.amount * (woi.line_amount / t.order_total)
+                WHEN COALESCE(wow.amount, 0) <= 0 AND wc.cnt > 0 AND t.order_total > 0
+                    THEN (wo.total_amount / wc.cnt) * (woi.line_amount / t.order_total)
+                ELSE 0
+            END, 2
+        ) AS Начислено
     FROM work_orders wo
     JOIN totals t ON t.work_order_id = wo.id
     LEFT JOIN contracts c ON c.id = wo.contract_id
     LEFT JOIN products p ON p.id = wo.product_id
     JOIN work_order_items woi ON woi.work_order_id = wo.id{job_filter}
     JOIN job_types jt ON jt.id = woi.job_type_id
+    JOIN workers_cnt wc ON wc.work_order_id = wo.id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
     {where_sql}
