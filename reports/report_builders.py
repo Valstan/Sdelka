@@ -58,12 +58,19 @@ def work_orders_report_df(
         c.code AS Контракт,
         p.product_no AS Номер_изделия,
         p.name AS Изделие,
+        agg.job_types AS Вид_работ,
         w.full_name AS Работник,
         w.dept AS Цех,
         wow.amount AS Начислено
     FROM work_orders wo
     LEFT JOIN contracts c ON c.id = wo.contract_id
     LEFT JOIN products p ON p.id = wo.product_id
+    LEFT JOIN (
+        SELECT woi.work_order_id AS work_order_id, GROUP_CONCAT(jt.name, ', ') AS job_types
+        FROM work_order_items woi
+        JOIN job_types jt ON jt.id = woi.job_type_id
+        GROUP BY woi.work_order_id
+    ) agg ON agg.work_order_id = wo.id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
     {where_sql}{exists_job_filter}

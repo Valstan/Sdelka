@@ -430,25 +430,27 @@ class ReportsView(ctk.CTkFrame):
 
     def _render_preview(self, df: pd.DataFrame) -> None:
         # Clear previous
-        for col in self.tree.get_children():
-            self.tree.delete(col)
-        self.tree["columns"] = []
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        # Reset columns
         for c in self.tree["columns"]:
             self.tree.heading(c, text="")
+            self.tree.column(c, width=50)
+        self.tree["columns"] = []
 
         if df is None or df.empty:
             self.tree["columns"] = ["msg"]
             self.tree.heading("msg", text="Нет данных")
+            self.tree.column("msg", width=200)
             return
 
         cols = list(df.columns)
         self.tree["columns"] = cols
+
         # сортировка по заголовкам
         def sort_by(col: str):
-            # toggle dir
             d = getattr(self, "_report_sort_dir", {})
             new_dir = "desc" if d.get(col) == "asc" else "asc"
-            # собрать текущие значения в список и отсортировать
             rows = []
             for iid in self.tree.get_children(""):
                 vals = self.tree.item(iid, "values")
@@ -456,7 +458,6 @@ class ReportsView(ctk.CTkFrame):
             idx = cols.index(col)
             def key_func(item):
                 v = item[1][idx]
-                # попытка числовой сортировки
                 try:
                     return float(str(v).replace(" ", "").replace(",", "."))
                 except Exception:
@@ -467,14 +468,29 @@ class ReportsView(ctk.CTkFrame):
             if not hasattr(self, "_report_sort_dir"):
                 self._report_sort_dir = {}
             self._report_sort_dir[col] = new_dir
+
+        # Fill data
+        vals_cache = df.astype(str).values.tolist()
+        for r in vals_cache[:200]:
+            self.tree.insert("", "end", values=r)
         for c in cols:
             self.tree.heading(c, text=str(c), command=lambda cc=c: sort_by(cc))
-            self.tree.column(c, width=120)
 
-        # Limit rows in preview
-        for _, row in df.head(200).iterrows():
-            values = [row[c] for c in cols]
-            self.tree.insert("", "end", values=values)
+        # Auto-size columns to fit content (header + visible rows)
+        try:
+            font = tkfont.nametofont("TkDefaultFont")
+        except Exception:
+            font = tkfont.Font()
+        pad = 24
+        min_w = 60
+        for j, c in enumerate(cols):
+            header_w = font.measure(str(c))
+            max_w = header_w
+            for r in vals_cache[:200]:
+                w = font.measure(str(r[j]))
+                if w > max_w:
+                    max_w = w
+            self.tree.column(c, width=max(min_w, max_w + pad))
 
     def _build_filename_suffix(self) -> str:
         from datetime import datetime
