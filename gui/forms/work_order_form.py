@@ -44,6 +44,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_amounts: dict[int, float] = {}
         self._worker_amount_vars: dict[int, ctk.StringVar] = {}
         self._manual_amount_ids: set[int] = set()
+        self._manual_mode: bool = False
         self.item_rows: list[ItemRow] = []
         self.editing_order_id: Optional[int] = None
         self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
@@ -209,6 +210,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.delete_btn.pack(side="left", padx=4)
         self.cancel_btn = ctk.CTkButton(actions, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
         self.cancel_btn.pack(side="left", padx=4)
+        self.manual_btn = ctk.CTkButton(actions, text="Ручной ввод сумм: ВЫКЛ", command=self._toggle_manual_mode)
+        self.manual_btn.pack(side="left", padx=4)
 
         if self._readonly:
             # Заблокировать ввод и действия редактирования
@@ -636,7 +639,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             amount_entry = ctk.CTkEntry(row, textvariable=var, width=100)
             amount_entry.pack(side="right", padx=4)
             amount_entry.bind("<KeyRelease>", lambda _e=None, i=wid: self._on_worker_amount_change(i))
-            if self._readonly:
+            if self._readonly or not self._manual_mode:
                 try:
                     amount_entry.configure(state="disabled")
                 except Exception:
@@ -688,6 +691,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         var = self._worker_amount_vars.get(worker_id)
         if not var:
             return
+        if self._readonly or not getattr(self, "_manual_mode", False):
+            return
         raw = (var.get() or "").strip().replace(",", ".")
         try:
             entered = round(float(raw), 2)
@@ -695,63 +700,41 @@ class WorkOrdersForm(ctk.CTkFrame):
             return
         if entered < 0:
             entered = 0.0
-        total = round(sum(i.line_amount for i in self.item_rows), 2)
-        # Обновляем значение вручную и перераспределяем остаток
+        # Фиксируем ручное значение; перераспределения в ручном режиме не выполняем
         self._manual_amount_ids.add(worker_id)
         self.worker_amounts[worker_id] = float(entered)
-        # Перерасчет: если все вручную — равномерно по всем добавляем разницу; иначе — по остальным
-        self._recalculate_worker_amounts()
         self._update_worker_amount_entries()
 
     def _recalculate_worker_amounts(self) -> None:
-        """Распределяет суммы между работниками, учитывая вручную заданные значения."""
+        """Автоматическое равномерное распределение между всеми работниками (если режим авто)."""
+        if getattr(self, "_manual_mode", False):
+            return
         ids = list(self.selected_workers.keys())
         if not ids:
             return
         total = round(sum(i.line_amount for i in self.item_rows), 2)
-        manual_ids = [i for i in ids if i in self._manual_amount_ids]
-        sum_manual = round(sum(float(self.worker_amounts.get(i, 0.0)) for i in manual_ids), 2)
-        remainder = round(max(0.0, total - sum_manual), 2)
-        unspecified = [i for i in ids if i not in manual_ids]
-        if not manual_ids:
-            # Равномерно по всем
-            n = len(ids)
-            if n <= 0:
-                return
-            per = round(total / n, 2)
-            amounts = [per] * n
-            diff = round(total - round(per * n, 2), 2)
-            if n > 0 and abs(diff) >= 0.01:
-                amounts[-1] = round(amounts[-1] + diff, 2)
-            for wid, amt in zip(ids, amounts):
-                self.worker_amounts[wid] = float(amt)
-            return
-        # Есть ручные значения
-        if not unspecified:
-            # Все суммы заданы вручную: распределяем разницу равномерно между всеми
-            n = len(manual_ids)
-            if n <= 0:
-                return
-            diff_total = round(total - sum_manual, 2)
-            if abs(diff_total) < 0.01:
-                return
-            step = round(diff_total / n, 2)
-            increments = [step] * n
-            # Корректируем из-за округления на последнем
-            corr = round(diff_total - round(step * n, 2), 2)
-            if abs(corr) >= 0.01:
-                increments[-1] = round(increments[-1] + corr, 2)
-            for wid, inc in zip(manual_ids, increments):
-                self.worker_amounts[wid] = round(float(self.worker_amounts.get(wid, 0.0)) + inc, 2)
-            return
-        n = len(unspecified)
-        per = round(remainder / n, 2)
+        n = len(ids)
+        per = round(total / n, 2) if n else 0.0
         amounts = [per] * n
-        diff = round(remainder - round(per * n, 2), 2)
+        diff = round(total - round(per * n, 2), 2)
         if n > 0 and abs(diff) >= 0.01:
             amounts[-1] = round(amounts[-1] + diff, 2)
-        for wid, amt in zip(unspecified, amounts):
+        for wid, amt in zip(ids, amounts):
             self.worker_amounts[wid] = float(amt)
+
+    def _toggle_manual_mode(self) -> None:
+        self._manual_mode = not self._manual_mode
+        try:
+            self.manual_btn.configure(text=f"Ручной ввод сумм: {'ВКЛ' if self._manual_mode else 'ВЫКЛ'}")
+        except Exception:
+            pass
+        if not self._manual_mode:
+            # Выходим из ручного режима: очищаем ручные отметки и равномерно распределяем
+            self._manual_amount_ids.clear()
+            self._recalculate_worker_amounts()
+            self._update_worker_amount_entries()
+        # Перерисовать строки работников с актуальной доступностью полей
+        self._refresh_workers_display()
 
     def _open_date_picker(self) -> None:
         self._hide_all_suggests()
