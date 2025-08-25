@@ -25,6 +25,7 @@ from utils.user_prefs import (
 )
 from utils.ui_theming import apply_user_fonts
 from db.sqlite import get_connection
+from utils.version import get_version
 
 
 class SettingsView(ctk.CTkFrame):
@@ -598,7 +599,11 @@ class SettingsView(ctk.CTkFrame):
         header = ctk.CTkFrame(win)
         header.pack(fill="x", padx=10, pady=(10, 5))
         ctk.CTkLabel(header, text="История изменений программы", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=5)
-        ctk.CTkLabel(header, text="Версия 3 сетевая - список изменений, исправлений и улучшений", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
+        try:
+            cur_ver = get_version()
+        except Exception:
+            cur_ver = "3.1"
+        ctk.CTkLabel(header, text=f"СДЕЛКА РМЗ {cur_ver} — список изменений, исправлений и улучшений", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
         
         # Основной контент с прокруткой
         content_frame = ctk.CTkFrame(win)
@@ -634,6 +639,22 @@ class SettingsView(ctk.CTkFrame):
         content = []
         content.append("ИСТОРИЯ ИЗМЕНЕНИЙ ПРОГРАММЫ")
         content.append("=" * 50)
+        content.append("")
+        
+        # Версия 3.1 (текущая)
+        content.append("ВЕРСИЯ 3.1")
+        content.append("-" * 40)
+        content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
+        content.append("• Статус работника: Работает / Уволен")
+        content.append("• Подсветка уволенных работников красным в списке")
+        content.append("• Запрет добавления уволенных работников в новые наряды")
+        content.append("• Импорт из Excel с колонкой ‘Статус’")
+        content.append("• Экспорт работников с ‘Статусом’ и сортировкой: статус → цех → должность (начальники первыми) → ФИО")
+        content.append("• Отчеты: режим ‘один работник’ — шапка с ФИО (Фамилия И.О.) и цехом; скрытие колонок ‘Работник’ и ‘Цех’")
+        content.append("")
+        content.append("🔧 ИСПРАВЛЕНИЯ:")
+        content.append("• PDF-экспорт: исправлена ошибка вычисления ширин (контекст)")
+        content.append("• Отчеты: корректное определение работника и цеха для шапок и подписей")
         content.append("")
         
         # Версия 3.0
