@@ -74,8 +74,8 @@ def work_orders_report_df(
             CASE 
                 WHEN COALESCE(wow.amount, 0) > 0 AND t.order_total > 0 
                     THEN wow.amount * (woi.line_amount / t.order_total)
-                WHEN COALESCE(wow.amount, 0) <= 0 AND wc.cnt > 0 AND t.order_total > 0
-                    THEN (wo.total_amount / wc.cnt) * (woi.line_amount / t.order_total)
+                WHEN COALESCE(wow.amount, 0) <= 0 AND wc.cnt > 0
+                    THEN woi.line_amount * 1.0 / wc.cnt
                 ELSE 0
             END, 2
         ) AS Начислено
