@@ -83,47 +83,5 @@ def _get_month_name(month: int) -> str:
 
 
 def get_version() -> str:
-	"""Возвращает строку версии вида "3 сетевая от [дата]", где
-	дата — дата последнего изменения исходников в формате "18 августа 2025 года"
-	"""
-	now = dt.datetime.now()
-	fp = _compute_sources_fingerprint()
-
-	state = _load_state()
-	st_fp = str(state.get("fingerprint", "") or "")
-	st_last_change = state.get("last_change_date", "")
-
-	# Если отпечаток изменился — это новое изменение
-	if fp != st_fp:
-		# Форматируем дату в нужном формате
-		day = now.day
-		month_name = _get_month_name(now.month)
-		year = now.year
-		formatted_date = f"{day} {month_name} {year} года"
-		
-		# Сохраняем новое состояние
-		state.update({
-			"fingerprint": fp,
-			"last_change_date": formatted_date,
-		})
-		_save_state(state)
-		
-		return f"3 сетевая от {formatted_date}"
-	
-	# Если изменений не было, возвращаем последнюю сохраненную дату
-	if st_last_change:
-		return f"3 сетевая от {st_last_change}"
-	
-	# Если это первый запуск, создаем текущую дату
-	day = now.day
-	month_name = _get_month_name(now.month)
-	year = now.year
-	formatted_date = f"{day} {month_name} {year} года"
-	
-	state.update({
-		"fingerprint": fp,
-		"last_change_date": formatted_date,
-	})
-	_save_state(state)
-	
-	return f"3 сетевая от {formatted_date}"
+	"""Фиксированная версия приложения."""
+	return "3.1"

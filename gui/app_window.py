@@ -22,7 +22,7 @@ class AppWindow(ctk.CTk):
         try:
             ver = get_version()
         except Exception:
-            ver = "2.0.0.1"
+            ver = "3.1"
         self._version = ver
         self._app_title = f"СДЕЛКА РМЗ {ver}"
         self.title(self._app_title)
@@ -109,7 +109,7 @@ class AppWindow(ctk.CTk):
         line_h = 12  # px
 
         # Строки названия без межстрочных отступов
-        short = ctk.CTkLabel(inner, text=f"СДЕЛКА РМЗ v{self._version}", font=fixed_font_small_bold, anchor="w", justify="left", height=line_h)
+        short = ctk.CTkLabel(inner, text=f"СДЕЛКА РМЗ {self._version}", font=fixed_font_small_bold, anchor="w", justify="left", height=line_h)
         short.pack(anchor="w", pady=0)
         line2 = ctk.CTkLabel(inner, text="Программа учёта нарядов и контрактов", font=fixed_font_small, anchor="w", justify="left", height=line_h)
         line2.pack(anchor="w", pady=0)
