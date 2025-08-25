@@ -696,21 +696,10 @@ class WorkOrdersForm(ctk.CTkFrame):
         if entered < 0:
             entered = 0.0
         total = round(sum(i.line_amount for i in self.item_rows), 2)
-        # Сумма уже вручную заданных других работников
-        other_manual = 0.0
-        for wid in self._manual_amount_ids:
-            if wid == worker_id:
-                continue
-            other_manual += float(self.worker_amounts.get(wid, 0.0))
-        max_allowed = max(0.0, round(total - other_manual, 2))
-        if entered > max_allowed:
-            entered = max_allowed
-            try:
-                var.set(f"{entered:.2f}")
-            except Exception:
-                pass
+        # Обновляем значение вручную и перераспределяем остаток
         self._manual_amount_ids.add(worker_id)
         self.worker_amounts[worker_id] = float(entered)
+        # Перерасчет: если все вручную — равномерно по всем добавляем разницу; иначе — по остальным
         self._recalculate_worker_amounts()
         self._update_worker_amount_entries()
 
@@ -739,11 +728,21 @@ class WorkOrdersForm(ctk.CTkFrame):
             return
         # Есть ручные значения
         if not unspecified:
-            # Все суммы заданы вручную: поправим последний на разницу
-            diff = round(total - sum_manual, 2)
-            if abs(diff) >= 0.01 and manual_ids:
-                last = manual_ids[-1]
-                self.worker_amounts[last] = round(float(self.worker_amounts.get(last, 0.0)) + diff, 2)
+            # Все суммы заданы вручную: распределяем разницу равномерно между всеми
+            n = len(manual_ids)
+            if n <= 0:
+                return
+            diff_total = round(total - sum_manual, 2)
+            if abs(diff_total) < 0.01:
+                return
+            step = round(diff_total / n, 2)
+            increments = [step] * n
+            # Корректируем из-за округления на последнем
+            corr = round(diff_total - round(step * n, 2), 2)
+            if abs(corr) >= 0.01:
+                increments[-1] = round(increments[-1] + corr, 2)
+            for wid, inc in zip(manual_ids, increments):
+                self.worker_amounts[wid] = round(float(self.worker_amounts.get(wid, 0.0)) + inc, 2)
             return
         n = len(unspecified)
         per = round(remainder / n, 2)
