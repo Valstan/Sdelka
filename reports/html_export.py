@@ -26,6 +26,14 @@ def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[str, Any] | None = None) -> str:
     df2 = normalize_headers(df)
+    # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы
+    if context and context.get("single_worker_short"):
+        for c in ("Работник", "Цех"):
+            if c in df2.columns:
+                try:
+                    df2 = df2.drop(columns=[c])
+                except Exception:
+                    pass
     html = df2.to_html(index=False)
     parts: list[str] = []
     if title:
@@ -38,15 +46,17 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
         period = context.get("period")
         if period:
             header_lines.append(period)
-        dept = context.get("dept_name")
-        if dept:
-            header_lines.append(f"Цех: {dept}")
         single_worker = context.get("single_worker_short")
-        single_worker_dept = context.get("single_worker_dept")
+        dept = context.get("dept_name")
+        # Если один работник — показываем только его цех, иначе общий цех фильтра
         if single_worker:
+            single_worker_dept = context.get("single_worker_dept")
             header_lines.append(f"Работник: {single_worker}")
             if single_worker_dept:
-                header_lines.append(f"Цех: {single_worker_dept}")
+                header_lines.append(f"Цех работника: {single_worker_dept}")
+        else:
+            if dept:
+                header_lines.append(f"Цех: {dept}")
         if header_lines:
             parts.append("<p>" + "<br/>".join(header_lines) + "</p>")
     parts.append(html)

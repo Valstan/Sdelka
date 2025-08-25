@@ -115,6 +115,15 @@ def _ensure_font_registered(prefer_family: str | None = None) -> tuple[str, str]
 
 def _measure_col_widths(df: pd.DataFrame, font_name: str, font_size: int, padding: float = 8.0, sample_rows: int = 200) -> List[float]:
     cols = list(df.columns)
+    # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы
+    if context and context.get("single_worker_short"):
+        try:
+            for c in ("Работник", "Цех"):
+                if c in df.columns:
+                    df = df.drop(columns=[c])
+        except Exception:
+            pass
+        cols = list(df.columns)
     values = df.head(sample_rows).astype(str).values.tolist()
     widths: List[float] = []
     for j, col in enumerate(cols):
@@ -330,15 +339,16 @@ def save_pdf(
         period = context.get("period")
         if period:
             header_lines.append(period)
+        single_worker = context.get("single_worker_short")
         dept = context.get("dept_name")
-        if dept:
-            header_lines.append(f"Цех: {dept}")
-        single_worker = context.get("single_worker_full")
-        single_worker_dept = context.get("single_worker_dept")
         if single_worker:
-            header_lines.append(f"Рабочий: {single_worker}")
+            single_worker_dept = context.get("single_worker_dept")
+            header_lines.append(f"Работник: {single_worker}")
             if single_worker_dept:
-                header_lines.append(f"Цех: {single_worker_dept}")
+                header_lines.append(f"Цех работника: {single_worker_dept}")
+        else:
+            if dept:
+                header_lines.append(f"Цех: {dept}")
         if header_lines:
             story.append(Paragraph("<br/>".join(header_lines), body_style_nowrap))
             story.append(Spacer(1, 4 * mm))
@@ -383,7 +393,7 @@ def save_pdf(
             story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style))
             story.append(Spacer(1, 2 * mm))
         workers = context.get("worker_signatures") or []
-        single_worker = context.get("single_worker_full")
+        single_worker = context.get("single_worker_short")
         if single_worker:
             story.append(Paragraph("<b>Подпись работника:</b>", header_style))
             story.append(Paragraph(f"{single_worker} _____________", body_style_nowrap))

@@ -425,14 +425,19 @@ class ReportsView(ctk.CTkFrame):
                     self._df = self._df.drop(columns=[c])
                 except Exception:
                     pass
-        # Если выбран конкретный работник — скрыть столбцы Работник и Цех (они будут в шапке)
-        if self._selected_worker_id:
-            for c in ("Работник", "Цех"):
-                if c in self._df.columns:
-                    try:
-                        self._df = self._df.drop(columns=[c])
-                    except Exception:
-                        pass
+        # Если отчет фактически по одному работнику — скрыть столбцы Работник и Цех (они будут в шапке)
+        try:
+            if "Работник" in self._df.columns:
+                unique_workers = [str(x) for x in self._df["Работник"].dropna().unique().tolist()]
+                if len(unique_workers) == 1:
+                    for c in ("Работник", "Цех"):
+                        if c in self._df.columns:
+                            try:
+                                self._df = self._df.drop(columns=[c])
+                            except Exception:
+                                pass
+        except Exception:
+            pass
         # Применим локализацию заголовков в превью
         cols = list(self._df.columns)
         self.tree["columns"] = cols
