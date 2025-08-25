@@ -87,10 +87,32 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
 
 def import_workers_from_excel(conn: sqlite3.Connection, file_path: str | Path) -> int:
     df = pd.read_excel(file_path)
+    # Разрешаем русские заголовки колонок при импорте
+    ru_to_en = {
+        "фио": "full_name",
+        "цех": "dept",
+        "должность": "position",
+        "таб. номер": "personnel_no",
+        "табельный номер": "personnel_no",
+    }
+    # Построим карту переименования текущих колонок в ожидаемые внутренние имена
+    rename_map: dict[str, str] = {}
+    for col in list(df.columns):
+        key = str(col).strip().lower()
+        if key in ru_to_en:
+            rename_map[col] = ru_to_en[key]
+        # если уже внутренние имена — оставляем как есть
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
     required = {"full_name", "dept", "position", "personnel_no"}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
-        raise ValueError(f"Отсутствуют колонки: {', '.join(missing)}")
+        raise ValueError(
+            "Отсутствуют колонки: "
+            + ", ".join(missing)
+            + ". Ожидаются заголовки: ФИО, Цех, Должность, Таб. номер (или full_name, dept, position, personnel_no)."
+        )
 
     count = 0
     for row in df.itertuples(index=False):
@@ -101,10 +123,30 @@ def import_workers_from_excel(conn: sqlite3.Connection, file_path: str | Path) -
 
 def import_job_types_from_excel(conn: sqlite3.Connection, file_path: str | Path) -> int:
     df = pd.read_excel(file_path)
+    ru_to_en = {
+        "вид работ": "name",
+        "виды работ": "name",
+        "наименование": "name",
+        "ед. изм.": "unit",
+        "единица измерения": "unit",
+        "цена": "price",
+    }
+    rename_map: dict[str, str] = {}
+    for col in list(df.columns):
+        key = str(col).strip().lower()
+        if key in ru_to_en:
+            rename_map[col] = ru_to_en[key]
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
     required = {"name", "unit", "price"}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
-        raise ValueError(f"Отсутствуют колонки: {', '.join(missing)}")
+        raise ValueError(
+            "Отсутствуют колонки: "
+            + ", ".join(missing)
+            + ". Ожидаются заголовки: Вид работ, Ед. изм., Цена (или name, unit, price)."
+        )
 
     count = 0
     for row in df.itertuples(index=False):
@@ -115,10 +157,28 @@ def import_job_types_from_excel(conn: sqlite3.Connection, file_path: str | Path)
 
 def import_products_from_excel(conn: sqlite3.Connection, file_path: str | Path) -> int:
     df = pd.read_excel(file_path)
+    ru_to_en = {
+        "наименование": "name",
+        "изделие": "name",
+        "№ изд.": "product_no",
+        "номер изделия": "product_no",
+    }
+    rename_map: dict[str, str] = {}
+    for col in list(df.columns):
+        key = str(col).strip().lower()
+        if key in ru_to_en:
+            rename_map[col] = ru_to_en[key]
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
     required = {"name", "product_no"}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
-        raise ValueError(f"Отсутствуют колонки: {', '.join(missing)}")
+        raise ValueError(
+            "Отсутствуют колонки: "
+            + ", ".join(missing)
+            + ". Ожидаются заголовки: Наименование, № изд. (или name, product_no)."
+        )
 
     count = 0
     for row in df.itertuples(index=False):
@@ -129,10 +189,29 @@ def import_products_from_excel(conn: sqlite3.Connection, file_path: str | Path) 
 
 def import_contracts_from_excel(conn: sqlite3.Connection, file_path: str | Path) -> int:
     df = pd.read_excel(file_path)
+    ru_to_en = {
+        "шифр контракта": "code",
+        "шифр": "code",
+        "дата начала": "start_date",
+        "дата окончания": "end_date",
+        "описание": "description",
+    }
+    rename_map: dict[str, str] = {}
+    for col in list(df.columns):
+        key = str(col).strip().lower()
+        if key in ru_to_en:
+            rename_map[col] = ru_to_en[key]
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
     required = {"code", "start_date", "end_date", "description"}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
-        raise ValueError(f"Отсутствуют колонки: {', '.join(missing)}")
+        raise ValueError(
+            "Отсутствуют колонки: "
+            + ", ".join(missing)
+            + ". Ожидаются заголовки: Шифр контракта, Дата начала, Дата окончания, Описание (или code, start_date, end_date, description)."
+        )
 
     count = 0
     for row in df.itertuples(index=False):
@@ -170,28 +249,29 @@ def export_all_tables_to_excel(conn: sqlite3.Connection, dir_path: str | Path) -
 # Templates
 
 def generate_workers_template(file_path: str | Path) -> Path:
-    df = pd.DataFrame({"full_name": [], "dept": [], "position": [], "personnel_no": []})
+    # Генерируем шаблон с русскими заголовками для удобства ввода
+    df = pd.DataFrame({"ФИО": [], "Цех": [], "Должность": [], "Таб. номер": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path
 
 
 def generate_job_types_template(file_path: str | Path) -> Path:
-    df = pd.DataFrame({"name": [], "unit": [], "price": []})
+    df = pd.DataFrame({"Вид работ": [], "Ед. изм.": [], "Цена": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path
 
 
 def generate_products_template(file_path: str | Path) -> Path:
-    df = pd.DataFrame({"name": [], "product_no": []})
+    df = pd.DataFrame({"Наименование": [], "№ изд.": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path
 
 
 def generate_contracts_template(file_path: str | Path) -> Path:
-    df = pd.DataFrame({"code": [], "start_date": [], "end_date": [], "description": []})
+    df = pd.DataFrame({"Шифр контракта": [], "Дата начала": [], "Дата окончания": [], "Описание": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path
