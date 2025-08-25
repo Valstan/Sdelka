@@ -565,6 +565,8 @@ class ReportsView(ctk.CTkFrame):
                 date_from=self.date_from.get().strip() or None,
                 date_to=self.date_to.get().strip() or None,
                 dept=self.dept_var.get().strip() or None,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
             )
         save_html(self._df, title="Отчет", path=path, context=ctx)
         self._open_file(path)
@@ -584,6 +586,8 @@ class ReportsView(ctk.CTkFrame):
                 date_from=self.date_from.get().strip() or None,
                 date_to=self.date_to.get().strip() or None,
                 dept=self.dept_var.get().strip() or None,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
             )
         save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None, context=ctx)
         self._open_file(path)

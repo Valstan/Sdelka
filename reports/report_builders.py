@@ -96,6 +96,8 @@ def work_orders_report_context(
     date_from: str | None = None,
     date_to: str | None = None,
     dept: str | None = None,
+    worker_id: int | None = None,
+    worker_name: str | None = None,
 ) -> dict[str, Any]:
     """Compute header and footer info for the report.
 
@@ -120,24 +122,47 @@ def work_orders_report_context(
                 except Exception:
                     pass
 
-    # Соберем уникальные работники и превратим в короткий формат
+    # Определяем работника для шапки: по id/name если заданы, иначе из df
     worker_signatures: list[str] = []
-    worker_full: list[str] = []
+    single_worker_short: str | None = None
     worker_dept: str | None = None
-    for cand in ("Работник", "ФИО", "full_name"):
-        if cand in df.columns:
-            raw = df[cand].dropna().unique().tolist()
-            worker_full = [str(x) for x in raw]
-            worker_signatures = sorted([short_fio(str(x)) for x in raw], key=lambda s: s.casefold())
-            break
-    if dept:
-        worker_dept = dept
-    else:
-        if "Цех" in df.columns and not df.empty:
-            try:
-                worker_dept = str(df["Цех"].dropna().iloc[0]) if not df["Цех"].dropna().empty else None
-            except Exception:
-                worker_dept = None
+    if worker_id:
+        try:
+            row = conn.execute("SELECT full_name, dept FROM workers WHERE id=?", (worker_id,)).fetchone()
+            if row:
+                single_worker_short = short_fio(str(row[0]))
+                worker_dept = row[1]
+        except Exception:
+            pass
+    if not single_worker_short and worker_name:
+        try:
+            row = conn.execute("SELECT full_name, dept FROM workers WHERE full_name_norm=?", (normalize_for_search(worker_name),)).fetchone()
+            if row:
+                single_worker_short = short_fio(str(row[0]))
+                worker_dept = row[1]
+        except Exception:
+            pass
+    # Если не удалось — попробуем из df
+    if not single_worker_short:
+        for cand in ("Работник", "ФИО", "full_name"):
+            if cand in df.columns and not df.empty:
+                try:
+                    vals = [str(x) for x in df[cand].dropna().unique().tolist()]
+                    if len(vals) == 1:
+                        single_worker_short = short_fio(vals[0])
+                except Exception:
+                    pass
+                break
+    if not worker_dept:
+        if dept:
+            worker_dept = dept
+        else:
+            if "Цех" in df.columns and not df.empty:
+                try:
+                    v = df["Цех"].dropna().unique().tolist()
+                    worker_dept = str(v[0]) if v else None
+                except Exception:
+                    worker_dept = None
 
     # Руководители
     dept_head = None
@@ -168,7 +193,7 @@ def work_orders_report_context(
         "worker_signatures": worker_signatures,
         "dept_head": dept_head,
         "hr_head": hr_head,
-        "single_worker_full": worker_full[0] if len(set(worker_full)) == 1 and worker_full else None,
+        "single_worker_short": single_worker_short,
         "single_worker_dept": worker_dept,
     }
 
