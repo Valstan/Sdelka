@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 # Настройки экспорта человеческих заголовков и набора колонок
 TABLE_EXPORT_CONFIG: dict[str, dict] = {
     "workers": {
-        "columns": ["id", "full_name", "dept", "position", "personnel_no"],
+        "columns": ["id", "full_name", "dept", "position", "personnel_no", "status"],
         "headers": {
             "id": "Идентификатор",
             "full_name": "ФИО",
             "dept": "Цех",
             "position": "Должность",
             "personnel_no": "Таб. номер",
+            "status": "Статус",
         },
     },
     "job_types": {
@@ -105,6 +106,15 @@ def import_workers_from_excel(conn: sqlite3.Connection, file_path: str | Path) -
     if rename_map:
         df.rename(columns=rename_map, inplace=True)
 
+    # Дополнительно поддержим статус (необязателен): Работает / Уволен
+    ru_to_en_status = {"статус": "status", "состояние": "status"}
+    for col in list(df.columns):
+        key = str(col).strip().lower()
+        if key in ru_to_en_status:
+            rename_map[col] = ru_to_en_status[key]
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
     required = {"full_name", "dept", "position", "personnel_no"}
     if not required.issubset(df.columns):
         missing = required - set(df.columns)
@@ -116,7 +126,13 @@ def import_workers_from_excel(conn: sqlite3.Connection, file_path: str | Path) -
 
     count = 0
     for row in df.itertuples(index=False):
-        count += q.insert_worker(conn, str(row.full_name), _opt_str(row.dept), _opt_str(row.position), str(row.personnel_no)) or 0
+        status = getattr(row, "status", None)
+        status_val = None
+        if status is not None:
+            s = str(status).strip()
+            if s:
+                status_val = s
+        count += q.upsert_worker(conn, str(row.full_name), _opt_str(row.dept), _opt_str(row.position), str(row.personnel_no), status=status_val) or 0
     logger.info("Импортировано работников: %s", count)
     return count
 
@@ -224,12 +240,38 @@ def import_contracts_from_excel(conn: sqlite3.Connection, file_path: str | Path)
 
 def export_table_to_excel(conn: sqlite3.Connection, table: str, file_path: str | Path) -> Path:
     cfg = TABLE_EXPORT_CONFIG.get(table)
-    if cfg and cfg.get("columns"):
-        cols = ", ".join(cfg["columns"])
-        df = pd.read_sql_query(f"SELECT {cols} FROM {table}", conn)
-        df.rename(columns=cfg.get("headers", {}), inplace=True)
+    if table == "workers":
+        # Пользовательская сортировка: статус (Работает сначала), затем цех, должность (начальники первыми), ФИО
+        sql = (
+            "SELECT id, full_name, dept, position, personnel_no, COALESCE(status, 'Работает') AS status "
+            "FROM workers"
+        )
+        df = pd.read_sql_query(sql, conn)
+        # Ключи сортировки
+        def status_key(s: str) -> int:
+            return 0 if str(s).strip() == "Работает" else 1
+        def position_key(p: str) -> tuple[int, str]:
+            txt = (p or "").strip()
+            is_head = 0 if "начальник" in txt.casefold() else 1
+            return (is_head, txt.casefold())
+        df["_status_key"] = df["status"].map(status_key)
+        df["_dept_key"] = df["dept"].astype(str).str.casefold()
+        df["_pos_key_tuple"] = df["position"].apply(position_key)
+        # pandas не сортирует напрямую по tuple-колонке стабильно между версиями, развернем на два столбца
+        df["_pos_is_head"] = df["_pos_key_tuple"].apply(lambda t: t[0])
+        df["_pos_name"] = df["_pos_key_tuple"].apply(lambda t: t[1])
+        df.sort_values(by=["_status_key", "_dept_key", "_pos_is_head", "_pos_name", "full_name"], inplace=True, kind="mergesort")
+        df.drop(columns=["_status_key", "_dept_key", "_pos_key_tuple", "_pos_is_head", "_pos_name"], inplace=True)
+        # Переименуем заголовки по конфигу
+        headers = TABLE_EXPORT_CONFIG["workers"]["headers"]
+        df.rename(columns=headers, inplace=True)
     else:
-        df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+        if cfg and cfg.get("columns"):
+            cols = ", ".join(cfg["columns"])
+            df = pd.read_sql_query(f"SELECT {cols} FROM {table}", conn)
+            df.rename(columns=cfg.get("headers", {}), inplace=True)
+        else:
+            df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path

@@ -9,7 +9,13 @@ from db import queries as q
 
 def suggest_workers(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[tuple[int, str]]:
     rows = q.search_workers_by_prefix(conn, prefix, limit or CONFIG.autocomplete_limit)
-    return [(r["id"], r["full_name"]) for r in rows]
+    result: list[tuple[int, str]] = []
+    for r in rows:
+        label = r["full_name"]
+        if (r["status"] if "status" in r.keys() else None) not in (None, "", "Работает"):
+            label = f"{label} (Уволен)"
+        result.append((r["id"], label))
+    return result
 
 
 def suggest_job_types(conn: sqlite3.Connection, prefix: str, limit: int | None = None) -> list[tuple[int, str]]:

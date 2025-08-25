@@ -8,12 +8,13 @@ from db import queries as q
 
 # Workers
 
-def add_or_update_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> int:
+def add_or_update_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> int:
+    # create new as active by default
     return q.insert_worker(conn, full_name, dept, position, personnel_no)
 
 
-def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> None:
-    q.update_worker(conn, worker_id, full_name, dept, position, personnel_no)
+def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> None:
+    q.update_worker(conn, worker_id, full_name, dept, position, personnel_no, status)
 
 
 def delete_worker(conn: sqlite3.Connection, worker_id: int) -> None:

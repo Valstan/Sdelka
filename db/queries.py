@@ -8,10 +8,11 @@ from utils.text import normalize_for_search
 # Workers
 
 
-def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> int:
+def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> int:
+    status_val = status or "Работает"
     sql = """
-    INSERT INTO workers(full_name, full_name_norm, dept, dept_norm, position, position_norm, personnel_no, personnel_no_norm)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO workers(full_name, full_name_norm, dept, dept_norm, position, position_norm, personnel_no, personnel_no_norm, status, status_norm)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     cur = conn.execute(sql, (
         full_name,
@@ -22,13 +23,48 @@ def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, po
         normalize_for_search(position),
         personnel_no,
         normalize_for_search(personnel_no),
+        status_val,
+        normalize_for_search(status_val),
     ))
     return cur.lastrowid or cur.rowcount
 
 
-def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> None:
+def upsert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> int:
+    """Insert worker or update existing one to avoid import crashes.
+
+    Prefers matching by personnel number. If insert conflicts, updates the existing row.
+    Tries to update full_name as well; on unique-name conflict, falls back to keeping old name.
+    Returns 1 on insert/update success, 0 otherwise.
+    """
+    try:
+        return insert_worker(conn, full_name, dept, position, personnel_no, status) or 0
+    except sqlite3.IntegrityError:
+        # Try by personnel_no first
+        existing = get_worker_by_personnel_no(conn, personnel_no)
+        if existing:
+            try:
+                update_worker(conn, existing["id"], full_name, dept, position, personnel_no, status)
+            except sqlite3.IntegrityError:
+                # Keep existing name if new name collides
+                update_worker(conn, existing["id"], existing["full_name"], dept, position, personnel_no, status)
+            return 1
+        # Fallback: match by full_name
+        existing = get_worker_by_full_name(conn, full_name)
+        if existing:
+            try:
+                update_worker(conn, existing["id"], full_name, dept, position, personnel_no, status)
+            except sqlite3.IntegrityError:
+                # Keep existing personnel_no if new one collides
+                update_worker(conn, existing["id"], full_name, dept, position, existing["personnel_no"], status)  # type: ignore[index]
+            return 1
+        return 0
+
+def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> None:
+    if status is None:
+        row = conn.execute("SELECT status FROM workers WHERE id=?", (worker_id,)).fetchone()
+        status = (row["status"] if row and row["status"] else "Работает") if row is not None else "Работает"
     conn.execute(
-        "UPDATE workers SET full_name = ?, full_name_norm=?, dept = ?, dept_norm=?, position = ?, position_norm=?, personnel_no = ?, personnel_no_norm=? WHERE id = ?",
+        "UPDATE workers SET full_name = ?, full_name_norm=?, dept = ?, dept_norm=?, position = ?, position_norm=?, personnel_no = ?, personnel_no_norm=?, status = ?, status_norm=? WHERE id = ?",
         (
             full_name,
             normalize_for_search(full_name),
@@ -38,6 +74,8 @@ def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept
             normalize_for_search(position),
             personnel_no,
             normalize_for_search(personnel_no),
+            status,
+            normalize_for_search(status),
             worker_id,
         ),
     )

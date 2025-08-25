@@ -102,13 +102,20 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     if existing_workers:
         existing_ids = [w.worker_id for w in existing_workers]
         placeholders = ",".join(["?"] * len(existing_ids))
-        found = conn.execute(f"SELECT id FROM workers WHERE id IN ({placeholders})", tuple(existing_ids)).fetchall()
-        found_ids = [row["id"] for row in found]
-        
-        if len(found_ids) != len(existing_ids):
-            missing_ids = set(existing_ids) - set(found_ids)
+        found = conn.execute(
+            f"SELECT id, status FROM workers WHERE id IN ({placeholders})",
+            tuple(existing_ids),
+        ).fetchall()
+        found_map = {int(row["id"]): (row["status"] or "Работает") for row in found}
+        # Проверка наличия
+        if len(found_map) != len(existing_ids):
+            missing_ids = set(existing_ids) - set(found_map.keys())
             logger.error("Работники не найдены в базе: %s", missing_ids)
             raise ValueError(f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка.")
+        # Блокировать уволенных
+        fired_ids = [wid for wid in existing_ids if found_map.get(wid, "Работает") != "Работает"]
+        if fired_ids:
+            raise ValueError(f"Нельзя добавить уволенных работников в наряд: {fired_ids}")
     
     # Для ручно добавленных работников (отрицательные ID) создаем/находим записи в базе
     final_worker_ids: list[int] = []

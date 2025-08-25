@@ -115,15 +115,6 @@ def _ensure_font_registered(prefer_family: str | None = None) -> tuple[str, str]
 
 def _measure_col_widths(df: pd.DataFrame, font_name: str, font_size: int, padding: float = 8.0, sample_rows: int = 200) -> List[float]:
     cols = list(df.columns)
-    # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы
-    if context and context.get("single_worker_short"):
-        try:
-            for c in ("Работник", "Цех"):
-                if c in df.columns:
-                    df = df.drop(columns=[c])
-        except Exception:
-            pass
-        cols = list(df.columns)
     values = df.head(sample_rows).astype(str).values.tolist()
     widths: List[float] = []
     for j, col in enumerate(cols):
@@ -205,6 +196,14 @@ def save_pdf(
     fallback_overflow = None
     fallback_candidate: Tuple | None = None
 
+    # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы до расчетов ширин
+    if context and context.get("single_worker_short"):
+        try:
+            for c in ("Работник", "Цех"):
+                if c in df.columns:
+                    df = df.drop(columns=[c])
+        except Exception:
+            pass
     cols = list(df.columns)
     # Применяем нормализацию заголовков
     cols = [_normalize_header(c) for c in cols]
@@ -345,7 +344,7 @@ def save_pdf(
             single_worker_dept = context.get("single_worker_dept")
             header_lines.append(f"Работник: {single_worker}")
             if single_worker_dept:
-                header_lines.append(f"Цех работника: {single_worker_dept}")
+                header_lines.append(f"Цех: {single_worker_dept}")
         else:
             if dept:
                 header_lines.append(f"Цех: {dept}")
@@ -395,7 +394,7 @@ def save_pdf(
         workers = context.get("worker_signatures") or []
         single_worker = context.get("single_worker_short")
         if single_worker:
-            story.append(Paragraph("<b>Подпись работника:</b>", header_style))
+            story.append(Paragraph("<b>Подписи:</b>", header_style))
             story.append(Paragraph(f"{single_worker} _____________", body_style_nowrap))
             story.append(Spacer(1, 2 * mm))
         elif workers:

@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS workers (
     position TEXT,
     position_norm TEXT,
     personnel_no TEXT NOT NULL UNIQUE,
-    personnel_no_norm TEXT
+    personnel_no_norm TEXT,
+    status TEXT NOT NULL DEFAULT 'Работает',
+    status_norm TEXT
 );
 
 CREATE TABLE IF NOT EXISTS job_types (
@@ -185,7 +187,7 @@ def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
 
     # Ensure columns
     for table, cols in (
-        ("workers", ("full_name_norm", "dept_norm", "position_norm", "personnel_no_norm")),
+        ("workers", ("full_name_norm", "dept_norm", "position_norm", "personnel_no_norm", "status", "status_norm")),
         ("job_types", ("name_norm", "unit_norm")),
         ("products", ("name_norm", "product_no_norm")),
         ("contracts", ("code_norm",)),
@@ -197,15 +199,18 @@ def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
     # Backfill with Python casefold for Unicode
     # Workers
     if table_exists(conn, "workers"):
-        rows = conn.execute("SELECT id, full_name, dept, position, personnel_no FROM workers").fetchall()
+        rows = conn.execute("SELECT id, full_name, dept, position, personnel_no, status FROM workers").fetchall()
         for r in rows:
+            status_val = r["status"] if r["status"] else "Работает"
             conn.execute(
-                "UPDATE workers SET full_name_norm=?, dept_norm=?, position_norm=?, personnel_no_norm=? WHERE id=?",
+                "UPDATE workers SET full_name_norm=?, dept_norm=?, position_norm=?, personnel_no_norm=?, status=?, status_norm=? WHERE id=?",
                 (
                     normalize_for_search(r["full_name"]),
                     normalize_for_search(r["dept"]),
                     normalize_for_search(r["position"]),
                     normalize_for_search(r["personnel_no"]),
+                    status_val,
+                    normalize_for_search(status_val),
                     r["id"],
                 ),
             )

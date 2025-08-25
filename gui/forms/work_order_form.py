@@ -456,7 +456,17 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         shown = 0
         for _id, label in rows:
-            create_suggestion_button(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+            btn = create_suggestion_button(self.suggest_worker_frame, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l))
+            # Если уволен — покрасим и заблокируем
+            if "(Уволен)" in label:
+                try:
+                    btn.configure(fg_color="#b91c1c", hover_color="#7f1d1d", state="disabled")
+                except Exception:
+                    try:
+                        btn.configure(state="disabled")
+                    except Exception:
+                        pass
+            btn.pack(fill="x", padx=2, pady=1)
             shown += 1
         
         for label in get_recent("work_orders.worker", self.worker_entry.get().strip(), CONFIG.autocomplete_limit):
