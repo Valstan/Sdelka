@@ -10,7 +10,7 @@ import subprocess
 from config.settings import CONFIG
 from db.sqlite import get_connection
 from services import suggestions
-from reports.report_builders import work_orders_report_df
+from reports.report_builders import work_orders_report_df, work_orders_report_context
 from reports.html_export import save_html
 from reports.pdf_reportlab import save_pdf
 from utils.usage_history import record_use, get_recent
@@ -512,7 +512,15 @@ class ReportsView(ctk.CTkFrame):
         path = self._ask_save_path("Сохранить HTML", ".html", [("HTML", "*.html")])
         if not path:
             return
-        save_html(self._df, title="Отчет", path=path)
+        with get_connection() as conn:
+            ctx = work_orders_report_context(
+                conn,
+                self._df,
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+            )
+        save_html(self._df, title="Отчет", path=path, context=ctx)
         self._open_file(path)
 
     def _export_pdf(self) -> None:
@@ -523,7 +531,15 @@ class ReportsView(ctk.CTkFrame):
         if not path:
             return
         # Портрет по умолчанию, но авто-подбор в save_pdf переключит, если не влезает
-        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None)
+        with get_connection() as conn:
+            ctx = work_orders_report_context(
+                conn,
+                self._df,
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+            )
+        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None, context=ctx)
         self._open_file(path)
 
     def _export_excel(self) -> None:
@@ -534,7 +550,45 @@ class ReportsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            self._df.to_excel(path, index=False)
+            # Сохранение с шапкой/футером: простой вариант — отдельные листы
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                with get_connection() as conn:
+                    ctx = work_orders_report_context(
+                        conn,
+                        self._df,
+                        date_from=self.date_from.get().strip() or None,
+                        date_to=self.date_to.get().strip() or None,
+                        dept=self.dept_var.get().strip() or None,
+                    )
+                # Лист с данными
+                self._df.to_excel(writer, sheet_name="Данные", index=False)
+                # Лист с итогами и подписями
+                summary_rows = []
+                summary_rows.append(["Отчет по нарядам"])    
+                if ctx.get("created_at"):
+                    summary_rows.append([f"Дата составления: {ctx['created_at']}"])
+                if ctx.get("period"):
+                    summary_rows.append([ctx["period"]])
+                if ctx.get("dept_name"):
+                    summary_rows.append([f"Цех: {ctx['dept_name']}"])
+                summary_rows.append([""])
+                summary_rows.append([f"Итого по отчету: {ctx.get('total_amount', 0.0):.2f}"])
+                workers = ctx.get("worker_signatures") or []
+                if workers:
+                    summary_rows.append(["Подписи работников:"])
+                    # по 3 в ряд
+                    row = []
+                    for i, w in enumerate(workers, 1):
+                        row.append(w)
+                        if i % 3 == 0:
+                            summary_rows.append(row); row = []
+                    if row:
+                        summary_rows.append(row)
+                if ctx.get("dept_head"):
+                    summary_rows.append([f"Начальник цеха: {ctx['dept_head']} _____________"]) 
+                if ctx.get("hr_head"):
+                    summary_rows.append([f"Начальник отдела кадров: {ctx['hr_head']} _____________"]) 
+                pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Итоги", index=False, header=False)
         except Exception as e:
             messagebox.showerror("Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}")
             return

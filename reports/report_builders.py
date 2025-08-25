@@ -4,6 +4,7 @@ import sqlite3
 from typing import Any, Sequence
 
 import pandas as pd
+from utils.text import short_fio
 
 
 def work_orders_report_df(
@@ -68,3 +69,61 @@ def work_orders_report_df(
     """
 
     return pd.read_sql_query(sql, conn, params=params)
+
+
+def work_orders_report_context(
+    conn: sqlite3.Connection,
+    df: pd.DataFrame,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    dept: str | None = None,
+) -> dict[str, Any]:
+    """Compute header and footer info for the report.
+
+    Returns keys: title, period, dept_name, created_at, total_amount, worker_signatures, dept_head, hr_head
+    """
+    from datetime import datetime
+    title = "Отчет по нарядам"
+    created_at = datetime.now().strftime("%d.%m.%Y")
+    period = None
+    if date_from or date_to:
+        period = f"Период: {date_from or '...'} — {date_to or '...'}"
+    dept_name = dept or None
+
+    total_amount = 0.0
+    if not df.empty:
+        # Пытаемся найти колонку суммы по названиям
+        for cand in ("Сумма", "line_amount", "Итог", "total", "Итого"):
+            if cand in df.columns:
+                try:
+                    total_amount = float(pd.to_numeric(df[cand], errors="coerce").fillna(0).sum())
+                    break
+                except Exception:
+                    pass
+
+    # Соберем уникальные работники и превратим в короткий формат
+    worker_signatures: list[str] = []
+    for cand in ("Работник", "ФИО", "full_name"):
+        if cand in df.columns:
+            names = [short_fio(str(x)) for x in df[cand].dropna().unique().tolist()]
+            worker_signatures = sorted(names, key=lambda s: s.casefold())
+            break
+
+    # Руководители — пока заглушки, можно позже брать из настроек/БД
+    dept_head = None
+    hr_head = None
+    if dept_name:
+        # Попытка найти начальника цеха по совпадению dept (требует отдельной таблицы в будущем)
+        # Пока оставим пустым
+        pass
+
+    return {
+        "title": title,
+        "period": period,
+        "dept_name": dept_name,
+        "created_at": created_at,
+        "total_amount": round(float(total_amount), 2),
+        "worker_signatures": worker_signatures,
+        "dept_head": dept_head,
+        "hr_head": hr_head,
+    }

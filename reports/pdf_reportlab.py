@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence, List, Tuple, Optional
+from typing import Sequence, List, Tuple, Optional, Any
 import os
 
 import pandas as pd
@@ -160,6 +160,7 @@ def save_pdf(
     font_size: int | None = None,
     font_family: str | None = None,
     margins_mm: Tuple[float, float, float, float] | None = None,
+    context: dict[str, Any] | None = None,
 ) -> Path:
     """Сохраняет DataFrame в PDF с управлением ориентацией/шрифтом/полями.
 
@@ -320,7 +321,21 @@ def save_pdf(
 
     story: list = []
     story.append(Paragraph(f"<b>{title}</b>", title_style))
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
+    if context:
+        header_lines: List[str] = []
+        created = context.get("created_at")
+        if created:
+            header_lines.append(f"Дата составления: {created}")
+        period = context.get("period")
+        if period:
+            header_lines.append(period)
+        dept = context.get("dept_name")
+        if dept:
+            header_lines.append(f"Цех: {dept}")
+        if header_lines:
+            story.append(Paragraph("<br/>".join(header_lines), body_style_nowrap))
+            story.append(Spacer(1, 4 * mm))
 
     # Данные: разрешаем перенос только в длинных текстовых колонках; в остальных заменяем пробелы на неразрывные
     header_row = [Paragraph(str(c), header_style) for c in cols]
@@ -353,5 +368,30 @@ def save_pdf(
     )
 
     story.append(table)
+
+    # Footer: totals and signatures
+    if context:
+        story.append(Spacer(1, 4 * mm))
+        total = context.get("total_amount")
+        if total is not None:
+            story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style)))
+            story.append(Spacer(1, 2 * mm))
+        workers = context.get("worker_signatures") or []
+        if workers:
+            story.append(Paragraph("<b>Подписи работников:</b>", header_style))
+            story.append(Paragraph(", \u00A0".join(workers), body_style_nowrap))
+            story.append(Spacer(1, 2 * mm))
+        dept_head = context.get("dept_head")
+        hr_head = context.get("hr_head")
+        if dept_head or hr_head:
+            lines: List[List] = []
+            if dept_head:
+                lines.append([Paragraph(f"Начальник цеха: {dept_head} _____________", body_style_nowrap)])
+            if hr_head:
+                lines.append([Paragraph(f"Начальник отдела кадров: {hr_head} _____________", body_style_nowrap)])
+            if lines:
+                sign_table = Table(lines, colWidths=[sum(best_widths)])
+                sign_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "LEFT")]))
+                story.append(sign_table)
     doc.build(story)
     return file_path
