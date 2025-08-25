@@ -336,9 +336,9 @@ def save_pdf(
         single_worker = context.get("single_worker_full")
         single_worker_dept = context.get("single_worker_dept")
         if single_worker:
-            header_lines.append(f"Работник: {single_worker}")
+            header_lines.append(f"Рабочий: {single_worker}")
             if single_worker_dept:
-                header_lines.append(f"Цех работника: {single_worker_dept}")
+                header_lines.append(f"Цех: {single_worker_dept}")
         if header_lines:
             story.append(Paragraph("<br/>".join(header_lines), body_style_nowrap))
             story.append(Spacer(1, 4 * mm))
@@ -394,15 +394,11 @@ def save_pdf(
             story.append(Spacer(1, 2 * mm))
         dept_head = context.get("dept_head")
         hr_head = context.get("hr_head")
-        if dept_head or hr_head:
-            lines: List[List] = []
-            if dept_head:
-                lines.append([Paragraph(f"Начальник цеха: {dept_head} _____________", body_style_nowrap)])
-            if hr_head:
-                lines.append([Paragraph(f"Начальник отдела кадров: {hr_head} _____________", body_style_nowrap)])
-            if lines:
-                sign_table = Table(lines, colWidths=[sum(best_widths)])
-                sign_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "LEFT")]))
-                story.append(sign_table)
+        lines: List[List] = []
+        lines.append([Paragraph(f"Начальник цеха: {dept_head or ''} _____________", body_style_nowrap)])
+        lines.append([Paragraph(f"Начальник отдела кадров: {hr_head or ''} _____________", body_style_nowrap)])
+        sign_table = Table(lines, colWidths=[sum(best_widths)])
+        sign_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "LEFT")]))
+        story.append(sign_table)
     doc.build(story)
     return file_path

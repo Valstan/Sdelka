@@ -44,9 +44,9 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
         single_worker = context.get("single_worker_full")
         single_worker_dept = context.get("single_worker_dept")
         if single_worker:
-            header_lines.append(f"Работник: {single_worker}")
+            header_lines.append(f"Рабочий: {single_worker}")
             if single_worker_dept:
-                header_lines.append(f"Цех работника: {single_worker_dept}")
+                header_lines.append(f"Цех: {single_worker_dept}")
         if header_lines:
             parts.append("<p>" + "<br/>".join(header_lines) + "</p>")
     parts.append(html)
@@ -64,11 +64,9 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
             parts.append("<p><b>Подписи работников:</b></p>")
             parts.append("<p>" + ", &nbsp;".join(workers) + "</p>")
         dept_head = context.get("dept_head")
-        if dept_head:
-            parts.append(f"<p>Начальник цеха: {dept_head} _____________</p>")
         hr_head = context.get("hr_head")
-        if hr_head:
-            parts.append(f"<p>Начальник отдела кадров: {hr_head} _____________</p>")
+        parts.append(f"<p>Начальник цеха: {dept_head or ''} _____________</p>")
+        parts.append(f"<p>Начальник отдела кадров: {hr_head or ''} _____________</p>")
     return "\n".join(parts)
 
 
