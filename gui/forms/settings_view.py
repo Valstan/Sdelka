@@ -642,7 +642,16 @@ class SettingsView(ctk.CTkFrame):
         content.append("")
         
         # Версия 3.1 (текущая)
-        content.append("ВЕРСИЯ 3.1")
+        # Текущая дата в формате "25 августа 2025 года"
+        import datetime as _dt
+        _months = {
+            1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+            5: "мая", 6: "июня", 7: "июля", 8: "августа",
+            9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+        }
+        _today = _dt.date.today()
+        _date_ru = f"{_today.day} {_months.get(_today.month, '')} {_today.year} года"
+        content.append(f"ВЕРСИЯ 3.1 от {_date_ru}")
         content.append("-" * 40)
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
         content.append("• Статус работника: Работает / Уволен")
@@ -658,7 +667,7 @@ class SettingsView(ctk.CTkFrame):
         content.append("")
         
         # Версия 3.0
-        content.append("ВЕРСИЯ 3.0 - 18 августа 2025 года")
+        content.append("ВЕРСИЯ 3.0 от 18 августа 2025 года")
         content.append("-" * 40)
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
         content.append("• Новый формат версионирования '3 сетевая от [дата]'")
