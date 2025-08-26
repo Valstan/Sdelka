@@ -8,6 +8,7 @@ import sys
 import subprocess
 
 from config.settings import CONFIG
+from utils.text import normalize_for_search
 from db.sqlite import get_connection
 from services import suggestions
 from reports.report_builders import work_orders_report_df, work_orders_report_context
@@ -27,6 +28,7 @@ class ReportsView(ctk.CTkFrame):
         self._selected_worker_id: int | None = None
         self._selected_job_type_id: int | None = None
         self._selected_product_id: int | None = None
+        self.product_entry_text: ctk.StringVar | None = None
         self._selected_contract_id: int | None = None
         self._df: pd.DataFrame | None = None
 
@@ -280,7 +282,11 @@ class ReportsView(ctk.CTkFrame):
         self._schedule_auto_hide(self.sg_job, [self.job_entry])
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
-        self._selected_job_type_id = job_type_id if job_type_id else self._selected_job_type_id
+        # Если выбран конкретный id — запоминаем, иначе сбрасываем id и используем текстовый фильтр по названию
+        if job_type_id:
+            self._selected_job_type_id = job_type_id
+        else:
+            self._selected_job_type_id = None
         self.job_entry.delete(0, "end")
         self.job_entry.insert(0, label)
         record_use("reports.job_type", label)
@@ -321,7 +327,11 @@ class ReportsView(ctk.CTkFrame):
         self._schedule_auto_hide(self.sg_product, [self.product_entry])
 
     def _pick_product(self, product_id: int, label: str) -> None:
-        self._selected_product_id = product_id if product_id else self._selected_product_id
+        # Если нет id (выбор из истории/текста) — сбросить id и использовать текстовый фильтр
+        if product_id:
+            self._selected_product_id = product_id
+        else:
+            self._selected_product_id = None
         self.product_entry.delete(0, "end")
         self.product_entry.insert(0, label)
         record_use("reports.product", label)
@@ -406,6 +416,26 @@ class ReportsView(ctk.CTkFrame):
 
     def _build_report(self) -> None:
         with get_connection() as conn:
+            # Определим product_id для фильтра: либо выбранный id, либо по тексту из поля
+            p_id = self._selected_product_id
+            prod_text = self.product_entry.get().strip() or None
+            if (not p_id) and prod_text:
+                try:
+                    row = conn.execute("SELECT id FROM products WHERE product_no = ? OR name = ?", (prod_text, prod_text)).fetchone()
+                    if not row:
+                        norm = normalize_for_search(prod_text)
+                        row = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (norm, norm)).fetchone()
+                    if not row:
+                        like = f"%{prod_text}%"
+                        row = conn.execute("SELECT id FROM products WHERE product_no LIKE ? OR name LIKE ? LIMIT 1", (like, like)).fetchone()
+                    if row:
+                        p_id = int(row[0])
+                except Exception:
+                    p_id = self._selected_product_id
+            # Если поле очищено — сбрасываем id
+            if not (prod_text):
+                p_id = None
+                self._selected_product_id = None
             df = work_orders_report_df(
                 conn,
                 date_from=self.date_from.get().strip() or None,
@@ -414,7 +444,7 @@ class ReportsView(ctk.CTkFrame):
                 worker_name=self.worker_entry.get().strip() or None,
                 dept=self.dept_var.get().strip() or None,
                 job_type_id=self._selected_job_type_id,
-                product_id=self._selected_product_id,
+                product_id=p_id,
                 contract_id=self._selected_contract_id,
             )
         self._df = self._localize_df_columns(df)

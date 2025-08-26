@@ -53,6 +53,8 @@ def work_orders_report_df(
     if contract_id:
         where.append("wo.contract_id = ?")
         params_where.append(contract_id)
+    # Текстовый фильтр по изделию: если id не задан, но текст присутствует (в GUI), фильтруем по имени/номеру
+    # Для этого ожидается, что GUI передает текст в product_name через worker_name или иной параметр.
 
     exists_job_filter = ""
     if job_type_id:

@@ -53,7 +53,7 @@ class SettingsView(ctk.CTkFrame):
         self._btn_merge_db.pack(side="left", padx=6)
         self._btn_build_exe = ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe)
         self._btn_build_exe.pack(side="left", padx=6)
-        self._btn_changelog = ctk.CTkButton(btns, text="Просмотр изменений", command=self._show_changelog)
+        self._btn_changelog = ctk.CTkButton(btns, text="Версии программы", command=self._show_changelog)
         self._btn_changelog.pack(side="left", padx=6)
 
         # ---- Настройки базы данных и совместной работы ----
@@ -120,6 +120,8 @@ class SettingsView(ctk.CTkFrame):
         self._btn_imp_products.pack(side="left", padx=5)
         self._btn_imp_contracts = ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts)
         self._btn_imp_contracts.pack(side="left", padx=5)
+        self._btn_imp_full = ctk.CTkButton(row1, text="Импорт XLSX (справочник + наряды)", command=self._import_full_xlsx)
+        self._btn_imp_full.pack(side="left", padx=5)
 
         ctk.CTkLabel(io_box, text="Экспорт таблиц").pack(anchor="w")
         row2 = ctk.CTkFrame(io_box)
@@ -316,8 +318,15 @@ class SettingsView(ctk.CTkFrame):
         messagebox.showinfo("Слияние", f"Готово. Обновлено справочников: {refs}, добавлено нарядов: {orders}")
 
     # ---- Import/Export/Template handlers ----
-    def _ask_open(self) -> str | None:
-        return filedialog.askopenfilename(title="Выберите файл Excel", filetypes=[("Excel", "*.xlsx;*.xls")])
+    def _ask_open(self, title: str | None = None, default_ext: str | None = None, filter_name: str | None = None, patterns: str | None = None) -> str | None:
+        title = title or "Выберите файл"
+        filetypes = []
+        if filter_name:
+            pat = patterns or (f"*{default_ext}" if default_ext else "*.xlsx;*.xls")
+            filetypes = [(filter_name, pat)]
+        else:
+            filetypes = [("Excel", "*.xlsx;*.xls"), ("Все файлы", "*.*")]
+        return filedialog.askopenfilename(title=title, filetypes=filetypes)
 
     def _ask_save(self, title: str, default_ext: str, filter_name: str, initialfile: str | None = None) -> str | None:
         return filedialog.asksaveasfilename(title=title, defaultextension=default_ext, initialfile=initialfile or "", filetypes=[(filter_name, f"*{default_ext}")])
@@ -369,6 +378,44 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showinfo("Импорт", f"Импортировано контрактов: {n}")
         except Exception as exc:
             messagebox.showerror("Импорт", str(exc))
+
+    def _import_full_xlsx(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Импорт", "Режим только для чтения — импорт недоступен")
+            return
+        from import_export.excel_io import import_xlsx_full
+        path = self._ask_open(title="Выберите XLSX с несколькими листами", default_ext=".xlsx", filter_name="Excel (*.xlsx)")
+        if not path:
+            return
+        # Progress window
+        win = ctk.CTkToplevel(self)
+        win.title("Импорт XLSX")
+        win.geometry("420x140")
+        ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
+        pb = ctk.CTkProgressBar(win)
+        pb.pack(fill="x", padx=10)
+        pb.set(0)
+        note_var = tk.StringVar(value="")
+        ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
+
+        def progress_cb(step: int, total: int, note: str):
+            pb.set(step / max(total, 1))
+            note_var.set(note)
+            win.update_idletasks()
+
+        def run():
+            try:
+                jt, pr, orders = import_xlsx_full(path, progress_cb)
+                messagebox.showinfo("Импорт", f"Импорт завершен.\nВиды работ: {jt}\nИзделия: {pr}\nНаряды: {orders}")
+            except Exception as e:
+                messagebox.showerror("Импорт", str(e))
+            finally:
+                try:
+                    win.destroy()
+                except Exception:
+                    pass
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _export_table(self, table: str) -> None:
         from import_export.excel_io import export_table_to_excel
@@ -602,7 +649,7 @@ class SettingsView(ctk.CTkFrame):
         try:
             cur_ver = get_version()
         except Exception:
-            cur_ver = "3.1"
+            cur_ver = "3.2"
         ctk.CTkLabel(header, text=f"СДЕЛКА РМЗ {cur_ver} — список изменений, исправлений и улучшений", font=ctk.CTkFont(size=12)).pack(pady=(0, 5))
         
         # Основной контент с прокруткой
@@ -641,7 +688,7 @@ class SettingsView(ctk.CTkFrame):
         content.append("=" * 50)
         content.append("")
         
-        # Версия 3.1 (текущая)
+        # Версия 3.2 (текущая)
         # Текущая дата в формате "25 августа 2025 года"
         import datetime as _dt
         _months = {
@@ -651,19 +698,18 @@ class SettingsView(ctk.CTkFrame):
         }
         _today = _dt.date.today()
         _date_ru = f"{_today.day} {_months.get(_today.month, '')} {_today.year} года"
-        content.append(f"ВЕРСИЯ 3.1 от {_date_ru}")
+        content.append(f"ВЕРСИЯ 3.2 от {_date_ru}")
         content.append("-" * 40)
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
-        content.append("• Статус работника: Работает / Уволен")
-        content.append("• Подсветка уволенных работников красным в списке")
-        content.append("• Запрет добавления уволенных работников в новые наряды")
-        content.append("• Импорт из Excel с колонкой ‘Статус’")
-        content.append("• Экспорт работников с ‘Статусом’ и сортировкой: статус → цех → должность (начальники первыми) → ФИО")
-        content.append("• Отчеты: режим ‘один работник’ — шапка с ФИО (Фамилия И.О.) и цехом; скрытие колонок ‘Работник’ и ‘Цех’")
+        content.append("• Список нарядов: постраничная подгрузка (100 за шаг)")
+        content.append("• Виды работ в наряде: табличная сетка, обрезка с многоточием")
+        content.append("• Импорт XLSX многолистовых файлов (справочники+наряды) с прогрессом")
         content.append("")
         content.append("🔧 ИСПРАВЛЕНИЯ:")
-        content.append("• PDF-экспорт: исправлена ошибка вычисления ширин (контекст)")
-        content.append("• Отчеты: корректное определение работника и цеха для шапок и подписей")
+        content.append("• Прокрутка списков (виды работ, работники) и ускорение колеса")
+        content.append("• ‘Отмена’ всегда активна; очистка формы возвращает режим ввода")
+        content.append("• Фильтры ‘Вид работ’ и ‘Изделие’ не ломают генерацию отчётов")
+        content.append("• PDF: перенос длинных текстов, сжатие ‘Вид работ’, разбиение больших таблиц")
         content.append("")
         
         # Версия 3.0

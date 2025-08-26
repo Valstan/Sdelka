@@ -22,7 +22,7 @@ class AppWindow(ctk.CTk):
         try:
             ver = get_version()
         except Exception:
-            ver = "3.1"
+            ver = get_version()
         self._version = ver
         self._app_title = f"СДЕЛКА РМЗ {ver}"
         self.title(self._app_title)

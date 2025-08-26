@@ -50,6 +50,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.editing_order_id: Optional[int] = None
         self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
 
+        # Ширины столбцов для списка работ (в пикселях)
+        self._col_pad_px: int = 8
+        self._col_qty_w: int = 80
+        self._col_price_w: int = 90
+        self._col_amount_w: int = 110
+        self._col_delete_w: int = 90
+        self._item_row_widgets: list[ctk.CTkLabel] = []  # ссылки на label названий работ для обрезки
+        self._item_widgets: list[dict] = []  # все виджеты строк (грид в общем контейнере)
+
+        # Пагинация списка нарядов
+        self._orders_page_size: int = 100
+        self._orders_offset: int = 0
+        self._orders_loading: bool = False
+        self._orders_can_load_more: bool = True
+        self._orders_vsb: ttk.Scrollbar | None = None
+
         self._build_ui()
         self._update_totals()
         self._load_recent_orders()
@@ -153,16 +169,83 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Header row
         hdr = ctk.CTkFrame(items_list_frame)
         hdr.grid(row=0, column=0, sticky="ew")
-        for i, txt in enumerate(["Вид работ", "Кол-во", "Цена", "Сумма", " "]):
-            c = ctk.CTkLabel(hdr, text=txt)
-            c.grid(row=0, column=i, sticky="w", padx=4)
-        for i, w in enumerate([6, 2, 2, 2, 1]):
-            hdr.grid_columnconfigure(i, weight=w)
+        # Use two containers to avoid pushing right columns: left flexible, right fixed
+        hdr_right = ctk.CTkFrame(hdr)
+        hdr_right.pack(side="right")
+        # Right headers
+        ctk.CTkLabel(hdr_right, text="Кол-во", anchor="e", width=self._col_qty_w).pack(side="left", padx=4)
+        ctk.CTkLabel(hdr_right, text="Цена", anchor="e", width=self._col_price_w).pack(side="left", padx=4)
+        ctk.CTkLabel(hdr_right, text="Сумма", anchor="e", width=self._col_amount_w).pack(side="left", padx=4)
+        ctk.CTkLabel(hdr_right, text=" ", anchor="e", width=self._col_delete_w).pack(side="left", padx=4)
+        # Left flexible header
+        self._name_header_label = ctk.CTkLabel(hdr, text="Вид работ", anchor="w")
+        self._name_header_label.pack(side="left", fill="x", expand=True, padx=4)
         # Scrollable rows
         items_list_frame.grid_rowconfigure(1, weight=1)
         items_list_frame.grid_columnconfigure(0, weight=1)
         self.items_list = ctk.CTkScrollableFrame(items_list_frame)
         self.items_list.grid(row=1, column=0, sticky="nsew")
+        # Прокрутка колесом и перетягиванием ползунка
+        try:
+            can_items = self.items_list._parent_canvas
+            sb_items = self.items_list._scrollbar
+            can_items.configure(yscrollcommand=sb_items.set)
+            sb_items.configure(command=lambda *args: (can_items.yview(*args), "break"))
+            # Обновлять scrollregion по мере добавления/удаления строк
+            def _refresh_items_scrollregion(_e=None):
+                try:
+                    can_items.configure(scrollregion=can_items.bbox("all"))
+                except Exception:
+                    pass
+            self.items_table.bind("<Configure>", _refresh_items_scrollregion, add="+")
+            # Явные бинды колеса мыши для Windows/Linux/macOS (ускорение x3)
+            def _on_mousewheel_items(event):
+                try:
+                    step = 3
+                    delta = 0
+                    if hasattr(event, 'delta') and event.delta:
+                        delta = int(-1 * (event.delta / 120) * step)
+                    elif getattr(event, 'num', None) == 4:
+                        delta = -step
+                    elif getattr(event, 'num', None) == 5:
+                        delta = step
+                    if delta:
+                        can_items.yview_scroll(delta, "units")
+                        return "break"
+                except Exception:
+                    return None
+            # Биндим на контейнер scrollable-frame, чтобы события точно доходили
+            for widget in (self.items_list, can_items, self.items_table):
+                widget.bind("<MouseWheel>", _on_mousewheel_items, add="+")
+                widget.bind("<Button-4>", _on_mousewheel_items, add="+")
+                widget.bind("<Button-5>", _on_mousewheel_items, add="+")
+        except Exception:
+            pass
+        # Табличный контейнер для строк
+        self.items_table = ctk.CTkFrame(self.items_list)
+        # Не расширяем таблицу по высоте, чтобы scrollregion рос от содержимого
+        self.items_table.pack(side="top", fill="x", expand=False, anchor="n")
+        # Общая сетка: колонка 0 тянется, остальные фиксированные
+        self.items_table.grid_columnconfigure(0, weight=1)
+        self.items_table.grid_columnconfigure(1, weight=0, minsize=self._col_qty_w)
+        self.items_table.grid_columnconfigure(2, weight=0, minsize=self._col_price_w)
+        self.items_table.grid_columnconfigure(3, weight=0, minsize=self._col_amount_w)
+        self.items_table.grid_columnconfigure(4, weight=0, minsize=self._col_delete_w)
+        # При изменении размеров контента — обновить ширины столбца и скролл
+        self.items_table.bind("<Configure>", lambda e: (self._update_items_columns_widths(), self._toggle_items_scroll()))
+        
+        # Показать скролл только при переполнении
+        def _toggle_items_scroll_internal():
+            try:
+                can = self.items_list._parent_canvas
+                bbox = can.bbox("all")
+                need = False
+                if bbox is not None:
+                    need = bbox[3] > can.winfo_height()
+                self.items_list._scrollbar.configure(width=(14 if need else 0))
+            except Exception:
+                pass
+        self._toggle_items_scroll = _toggle_items_scroll_internal
 
         # Workers section
         workers_frame = ctk.CTkFrame(left)
@@ -184,6 +267,50 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         self.workers_list = ctk.CTkScrollableFrame(left)
         self.workers_list.grid(row=4, column=0, sticky="nsew", padx=10, pady=(0, 8))
+        try:
+            can_workers = self.workers_list._parent_canvas
+            sb_workers = self.workers_list._scrollbar
+            can_workers.configure(yscrollcommand=sb_workers.set)
+            sb_workers.configure(command=lambda *args: (can_workers.yview(*args), "break"))
+            def _refresh_workers_scrollregion(_e=None):
+                try:
+                    can_workers.configure(scrollregion=can_workers.bbox("all"))
+                except Exception:
+                    pass
+            self.workers_list.bind("<Configure>", _refresh_workers_scrollregion, add="+")
+            def _on_mousewheel_workers(event):
+                try:
+                    step = 3
+                    delta = 0
+                    if hasattr(event, 'delta') and event.delta:
+                        delta = int(-1 * (event.delta / 120) * step)
+                    elif getattr(event, 'num', None) == 4:
+                        delta = -step
+                    elif getattr(event, 'num', None) == 5:
+                        delta = step
+                    if delta:
+                        can_workers.yview_scroll(delta, "units")
+                        return "break"
+                except Exception:
+                    return None
+            for widget in (can_workers, self.workers_list):
+                widget.bind("<MouseWheel>", _on_mousewheel_workers, add="+")
+                widget.bind("<Button-4>", _on_mousewheel_workers, add="+")
+                widget.bind("<Button-5>", _on_mousewheel_workers, add="+")
+        except Exception:
+            pass
+        
+        def _toggle_workers_scroll(_e=None):
+            try:
+                can = self.workers_list._parent_canvas
+                bbox = can.bbox("all")
+                need = False
+                if bbox is not None:
+                    need = bbox[3] > can.winfo_height()
+                self.workers_list._scrollbar.configure(width=(14 if need else 0))
+            except Exception:
+                pass
+        self.workers_list.bind("<Configure>", _toggle_workers_scroll)
 
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
@@ -223,8 +350,13 @@ class WorkOrdersForm(ctk.CTkFrame):
                     w.configure(state="disabled")
                 except Exception:
                     pass
-            for b in (self.add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.edit_btn, self.manual_btn):
+            for b in (self.add_btn, self.save_btn, self.delete_btn, self.edit_btn, self.manual_btn):
                 b.configure(state="disabled")
+            # Кнопка Отмена всегда активна
+            try:
+                self.cancel_btn.configure(state="normal")
+            except Exception:
+                pass
 
         # Right-side: existing orders list
         ctk.CTkLabel(right, text="Список нарядов").pack(padx=10, pady=(10, 0), anchor="w")
@@ -251,14 +383,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.orders_tree.heading("contract", text="Контракт")
         self.orders_tree.heading("product", text="Изделие")
         self.orders_tree.heading("total", text="Сумма")
-        self.orders_tree.column("no", width=60, anchor="center")
-        self.orders_tree.column("date", width=100, anchor="center")
-        self.orders_tree.column("contract", width=140)
-        self.orders_tree.column("product", width=200)
-        self.orders_tree.column("total", width=110, anchor="e")
+        # Фиксированные столбцы не тянутся, "Изделие" тянется на остаток
+        self.orders_tree.column("no", width=60, anchor="center", stretch=False)
+        self.orders_tree.column("date", width=100, anchor="center", stretch=False)
+        self.orders_tree.column("contract", width=140, stretch=False)
+        self.orders_tree.column("product", width=200, stretch=True)
+        self.orders_tree.column("total", width=110, anchor="e", stretch=False)
         vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.orders_tree.yview)
         hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.orders_tree.xview)
-        self.orders_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self._orders_vsb = vsb
+        self.orders_tree.configure(yscrollcommand=self._on_orders_scroll, xscrollcommand=hsb.set)
         self.orders_tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
@@ -277,7 +411,10 @@ class WorkOrdersForm(ctk.CTkFrame):
             font = tkfont.Font()
         pad = 24
         min_widths = {"no": 50, "date": 90, "contract": 80, "product": 120, "total": 90}
-        for col in self.orders_tree["columns"]:
+        # 1) посчитать целевые ширины для фиксированных столбцов по содержимому
+        fixed_cols = ("no", "date", "contract", "total")
+        widths: dict[str, int] = {}
+        for col in fixed_cols:
             header = self.orders_tree.heading(col).get("text", "")
             max_w = font.measure(str(header))
             for iid in self.orders_tree.get_children(""):
@@ -285,7 +422,74 @@ class WorkOrdersForm(ctk.CTkFrame):
                 w = font.measure(text)
                 if w > max_w:
                     max_w = w
-            self.orders_tree.column(col, width=max(max_w + pad, min_widths.get(col, 60)))
+            widths[col] = max(max_w + pad, min_widths.get(col, 60))
+        # 2) применить фиксированные
+        for col in fixed_cols:
+            self.orders_tree.column(col, width=widths[col])
+        # 3) вычислить ширину для гибкого столбца "product" как остаток
+        try:
+            tree_w = int(self.orders_tree.winfo_width() or 0)
+            if tree_w <= 1:
+                # отложить, если дерево еще не измерено
+                self.after(50, self._autosize_orders_columns)
+                return
+        except Exception:
+            tree_w = sum(widths.values()) + 200
+        other = sum(widths.values())
+        # учесть вертикальный скроллбар и небольшой запас
+        scrollbar_w = 18
+        leftover = tree_w - other - scrollbar_w
+        product_w = max(min_widths.get("product", 120), leftover)
+        self.orders_tree.column("product", width=product_w)
+
+    # --- Truncate job name column with ellipsis and keep numeric columns visible ---
+    def _update_items_columns_widths(self) -> None:
+        try:
+            total_w = int(self.items_list.winfo_width() or 0)
+            fixed = self._col_qty_w + self._col_price_w + self._col_amount_w + self._col_delete_w + (5 * self._col_pad_px)
+            name_w = max(120, total_w - fixed)
+            # update header width for name
+            try:
+                if getattr(self, "_name_header_label", None) is not None:
+                    self._name_header_label.configure(width=name_w)
+            except Exception:
+                pass
+
+            # font for measuring
+            try:
+                fnt = tkfont.nametofont("TkDefaultFont")
+            except Exception:
+                fnt = tkfont.Font()
+
+            target = max(60, name_w - 12)
+            for item in list(self._item_row_widgets):
+                try:
+                    # item may be (label, container)
+                    lbl = item[0] if isinstance(item, tuple) else item
+                    full = getattr(lbl, "_full_text", None) or str(lbl.cget("text") or "")
+                    setattr(lbl, "_full_text", full)
+                    # already fits
+                    if fnt.measure(full) <= target:
+                        if str(lbl.cget("text")) != full:
+                            lbl.configure(text=full)
+                        continue
+                    # binary search shrink with ellipsis
+                    ell = "…"
+                    lo, hi = 0, len(full)
+                    res = ell
+                    while lo <= hi:
+                        mid = (lo + hi) // 2
+                        cand = full[:mid] + ell
+                        if fnt.measure(cand) <= target:
+                            res = cand
+                            lo = mid + 1
+                        else:
+                            hi = mid - 1
+                    lbl.configure(text=res)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _get_orders_content_width(self) -> int:
         total = 0
@@ -566,20 +770,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         item = ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=amount)
         self.item_rows.append(item)
         # UI row
-        row = ctk.CTkFrame(self.items_list)
-        row.pack(fill="x", pady=2)
-        # grid columns
-        for i, w in enumerate([6, 2, 2, 2, 1]):
-            row.grid_columnconfigure(i, weight=w)
-        ctk.CTkLabel(row, text=name, anchor="w").grid(row=0, column=0, sticky="ew", padx=4)
-        ctk.CTkLabel(row, text=str(qty)).grid(row=0, column=1, sticky="w", padx=4)
-        ctk.CTkLabel(row, text=f"{unit_price:.2f}").grid(row=0, column=2, sticky="w", padx=4)
-        ctk.CTkLabel(row, text=f"{amount:.2f}").grid(row=0, column=3, sticky="w", padx=4)
-        del_btn = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d")
-        del_btn.grid(row=0, column=4, sticky="e", padx=4)
+        # Создаем строку в общей сетке
+        row_index = len(self._item_widgets)
+        name_label = ctk.CTkLabel(self.items_table, text=name, anchor="w")
+        name_label.grid(row=row_index, column=0, sticky="ew", padx=4, pady=2)
+        qty_label = ctk.CTkLabel(self.items_table, text=str(qty), anchor="e")
+        qty_label.grid(row=row_index, column=1, sticky="e", padx=4, pady=2)
+        price_label = ctk.CTkLabel(self.items_table, text=f"{unit_price:.2f}", anchor="e")
+        price_label.grid(row=row_index, column=2, sticky="e", padx=4, pady=2)
+        amount_label = ctk.CTkLabel(self.items_table, text=f"{amount:.2f}", anchor="e")
+        amount_label.grid(row=row_index, column=3, sticky="e", padx=4, pady=2)
+        del_btn = ctk.CTkButton(self.items_table, text="Удалить", width=self._col_delete_w - self._col_pad_px, fg_color="#b91c1c", hover_color="#7f1d1d")
+        del_btn.grid(row=row_index, column=4, sticky="e", padx=4, pady=2)
+        self._item_row_widgets.append(name_label)
+        widgets = {"name": name_label, "qty": qty_label, "price": price_label, "amount": amount_label, "btn": del_btn}
         idx = len(self.item_rows) - 1
-        del_btn.configure(command=lambda i=idx, rf=row: self._remove_item_row(i, rf))
-        row._del_btn = del_btn
+        del_btn.configure(command=lambda i=idx: self._remove_item_row(i))
 
         self.job_entry.delete(0, "end")
         if hasattr(self.job_entry, "_selected_job_id"):
@@ -587,26 +793,51 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.qty_var.set("1")
 
         self._update_totals()
+        # Обновим обрезку текста
+        self._update_items_columns_widths()
 
-    def _remove_item_row(self, idx: int, row_frame: ctk.CTkFrame) -> None:
+    def _remove_item_row(self, idx: int, row_frame: ctk.CTkFrame | None = None) -> None:
         if 0 <= idx < len(self.item_rows):
             self.item_rows.pop(idx)
+        # Удалить виджеты из табличного контейнера и сдвинуть остальные вверх
         try:
-            row_frame.destroy()
+            row_widgets = self._item_widgets[idx]
         except Exception:
-            pass
-        # Перенумеровать callbacks
-        for new_idx, child in enumerate(self.items_list.winfo_children()):
-            if hasattr(child, "_del_btn"):
-                child._del_btn.configure(command=lambda i=new_idx, rf=child: self._remove_item_row(i, rf))
-        self._update_totals()
-
-    def _clear_items(self) -> None:
-        for child in self.items_list.winfo_children():
+            row_widgets = None
+        if row_widgets:
+            for key in ("name", "qty", "price", "amount", "btn"):
+                try:
+                    row_widgets[key].grid_forget()
+                    row_widgets[key].destroy()
+                except Exception:
+                    pass
             try:
-                child.destroy()
+                self._item_widgets.pop(idx)
             except Exception:
                 pass
+        # Переназначить grid-позиции и команды кнопок
+        for new_idx, wmap in enumerate(self._item_widgets):
+            try:
+                wmap["name"].grid_configure(row=new_idx)
+                wmap["qty"].grid_configure(row=new_idx)
+                wmap["price"].grid_configure(row=new_idx)
+                wmap["amount"].grid_configure(row=new_idx)
+                wmap["btn"].grid_configure(row=new_idx)
+                wmap["btn"].configure(command=lambda i=new_idx: self._remove_item_row(i))
+            except Exception:
+                pass
+        self._update_totals()
+        self._update_items_columns_widths()
+
+    def _clear_items(self) -> None:
+        # Очистить табличный контейнер
+        try:
+            for child in self.items_table.winfo_children():
+                child.destroy()
+            self._item_widgets.clear()
+            self._item_row_widgets.clear()
+        except Exception:
+            pass
         self.item_rows.clear()
         self._update_totals()
 
@@ -761,12 +992,17 @@ class WorkOrdersForm(ctk.CTkFrame):
                 w.configure(state=("disabled" if locked else "normal"))
             except Exception:
                 pass
-        buttons = [self.add_btn, self.save_btn, self.delete_btn, self.cancel_btn, self.manual_btn]
+        buttons = [self.add_btn, self.save_btn, self.delete_btn, self.manual_btn]
         for b in buttons:
             try:
                 b.configure(state=("disabled" if locked else "normal"))
             except Exception:
                 pass
+        # Кнопка Отмена всегда активна
+        try:
+            self.cancel_btn.configure(state="normal")
+        except Exception:
+            pass
         # Перерисовать работников (включит/выключит поля сумм)
         self._refresh_workers_display()
 
@@ -786,50 +1022,81 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     # ---- Orders list ----
     def _load_recent_orders(self) -> None:
+        # Сбросить и загрузить первую страницу
+        self._reset_orders_list()
+        self._load_more_orders()
+
+    def _reset_orders_list(self) -> None:
         for iid in getattr(self, "_order_rows", []):
             try:
                 self.orders_tree.delete(iid)
             except Exception:
                 pass
         self._order_rows = []
-        with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, p.name AS product_name, wo.total_amount
-                FROM work_orders wo
-                LEFT JOIN contracts c ON c.id = wo.contract_id
-                LEFT JOIN products p ON p.id = wo.product_id
-                ORDER BY date DESC, order_no DESC
-                LIMIT 200
-                """
-            ).fetchall()
-        for r in rows:
-            iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
-            self._order_rows.append(iid)
-        self._autosize_orders_columns()
+        self._orders_offset = 0
+        self._orders_can_load_more = True
+        self._orders_loading = False
 
-    def _apply_filter(self) -> None:
-        date_from = (self.filter_from.get().strip() or None)
-        date_to = (self.filter_to.get().strip() or None)
+    def _fetch_orders_page(self, limit: int, offset: int) -> list:
+        date_from = (self.filter_from.get().strip() or None) if hasattr(self, "filter_from") else None
+        date_to = (self.filter_to.get().strip() or None) if hasattr(self, "filter_to") else None
         where = []
-        params: list[str] = []
+        params: list = []
         if date_from:
-            where.append("date >= ?")
+            where.append("wo.date >= ?")
             params.append(date_from)
         if date_to:
-            where.append("date <= ?")
+            where.append("wo.date <= ?")
             params.append(date_to)
-        sql = "SELECT wo.id, wo.order_no, wo.date, c.code, p.name, wo.total_amount FROM work_orders wo LEFT JOIN contracts c ON c.id=wo.contract_id LEFT JOIN products p ON p.id=wo.product_id"
+        sql = (
+            "SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, p.name AS product_name, wo.total_amount "
+            "FROM work_orders wo "
+            "LEFT JOIN contracts c ON c.id = wo.contract_id "
+            "LEFT JOIN products p ON p.id = wo.product_id "
+        )
         if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY date DESC, order_no DESC LIMIT 500"
-        for iid in self.orders_tree.get_children():
-            self.orders_tree.delete(iid)
+            sql += "WHERE " + " AND ".join(where) + " "
+        sql += "ORDER BY wo.date DESC, wo.order_no DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         with get_connection() as conn:
-            rows = conn.execute(sql, params).fetchall()
-        for r in rows:
-            self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["code"] or "", r["name"] or "", f"{r['total_amount']:.2f}"))
-        self._autosize_orders_columns()
+            return conn.execute(sql, params).fetchall()
+
+    def _load_more_orders(self) -> None:
+        if self._orders_loading or not self._orders_can_load_more:
+            return
+        self._orders_loading = True
+        try:
+            rows = self._fetch_orders_page(self._orders_page_size, self._orders_offset)
+            for r in rows:
+                iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
+                self._order_rows.append(iid)
+            self._orders_offset += len(rows)
+            if len(rows) < self._orders_page_size:
+                self._orders_can_load_more = False
+            self._autosize_orders_columns()
+        finally:
+            self._orders_loading = False
+
+    def _on_orders_scroll(self, first: str, last: str) -> None:
+        # Прокрутка: передать в реальный скроллбар
+        try:
+            if self._orders_vsb is not None:
+                self._orders_vsb.set(first, last)
+        except Exception:
+            pass
+        # Динамическая подгрузка при достижении низа списка
+        try:
+            f = float(first)
+            l = float(last)
+            if l > 0.98:
+                self.after(1, self._load_more_orders)
+        except Exception:
+            pass
+
+    def _apply_filter(self) -> None:
+        # Применяем фильтр дат и перезагружаем первую страницу
+        self._reset_orders_list()
+        self._load_more_orders()
 
     def _sort_orders_by(self, col: str) -> None:
         # Текущее направление
@@ -912,21 +1179,24 @@ class WorkOrdersForm(ctk.CTkFrame):
         # items
         self._clear_items()
         for (job_type_id, name, qty, unit_price, line_amount) in data.items:
+            # модель
             self.item_rows.append(ItemRow(job_type_id=job_type_id, job_type_name=name, quantity=qty, unit_price=unit_price, line_amount=line_amount))
-            # Render UI row
-            row = ctk.CTkFrame(self.items_list)
-            row.pack(fill="x", pady=2)
-            for i, w in enumerate([6, 2, 2, 2, 1]):
-                row.grid_columnconfigure(i, weight=w)
-            ctk.CTkLabel(row, text=name, anchor="w").grid(row=0, column=0, sticky="ew", padx=4)
-            ctk.CTkLabel(row, text=str(qty)).grid(row=0, column=1, sticky="w", padx=4)
-            ctk.CTkLabel(row, text=f"{unit_price:.2f}").grid(row=0, column=2, sticky="w", padx=4)
-            ctk.CTkLabel(row, text=f"{line_amount:.2f}").grid(row=0, column=3, sticky="w", padx=4)
-            del_btn = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d")
-            del_btn.grid(row=0, column=4, sticky="e", padx=4)
+            # строка в общей таблице
+            row_index = len(self._item_widgets)
+            name_label = ctk.CTkLabel(self.items_table, text=name, anchor="w")
+            name_label.grid(row=row_index, column=0, sticky="ew", padx=4, pady=2)
+            qty_label = ctk.CTkLabel(self.items_table, text=str(qty), anchor="e")
+            qty_label.grid(row=row_index, column=1, sticky="e", padx=4, pady=2)
+            price_label = ctk.CTkLabel(self.items_table, text=f"{unit_price:.2f}", anchor="e")
+            price_label.grid(row=row_index, column=2, sticky="e", padx=4, pady=2)
+            amount_label = ctk.CTkLabel(self.items_table, text=f"{line_amount:.2f}", anchor="e")
+            amount_label.grid(row=row_index, column=3, sticky="e", padx=4, pady=2)
+            del_btn = ctk.CTkButton(self.items_table, text="Удалить", width=self._col_delete_w - self._col_pad_px, fg_color="#b91c1c", hover_color="#7f1d1d")
+            del_btn.grid(row=row_index, column=4, sticky="e", padx=4, pady=2)
             idx = len(self.item_rows) - 1
-            del_btn.configure(command=lambda i=idx, rf=row: self._remove_item_row(i, rf))
-            row._del_btn = del_btn
+            del_btn.configure(command=lambda i=idx: self._remove_item_row(i))
+            self._item_row_widgets.append(name_label)
+            self._item_widgets.append({"name": name_label, "qty": qty_label, "price": price_label, "amount": amount_label, "btn": del_btn})
         # workers — показываем в режиме просмотра, суммы не пересчитываем
         self.selected_workers.clear()
         self.worker_amounts.clear()
@@ -1108,14 +1378,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
         self.qty_var.set("1")
-        for child in self.items_list.winfo_children():
-            try:
+        # Очистить табличный контейнер (если уже создан)
+        try:
+            for child in self.items_table.winfo_children():
                 child.destroy()
-            except Exception:
-                pass
+            self._item_widgets.clear()
+            self._item_row_widgets.clear()
+        except Exception:
+            pass
         self._update_totals()
         # вернуть кнопку в обычный режим
         try:
             self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])  # стандартный цвет темы
         except Exception:
             self.save_btn.configure(text="Сохранить")
+        # Снять режим просмотра: разблокировать поля ввода и необходимые кнопки
+        try:
+            self._set_edit_locked(False)
+        except Exception:
+            pass
