@@ -785,7 +785,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._refresh_workers_display()
             self._update_totals()
         else:
-        self._add_worker(worker_id, label)
+            self._add_worker(worker_id, label)
         self.suggest_worker_frame.place_forget()
 
     def _add_worker_from_entry(self) -> None:
