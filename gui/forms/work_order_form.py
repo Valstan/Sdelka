@@ -893,8 +893,8 @@ class WorkOrdersForm(ctk.CTkFrame):
                 try:
                     row_widgets[key].grid_forget()
                     row_widgets[key].destroy()
-        except Exception:
-            pass
+                except Exception:
+                    pass
             try:
                 self._item_widgets.pop(idx)
             except Exception:
@@ -915,13 +915,13 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _clear_items(self) -> None:
         # Очистить табличный контейнер
-            try:
+        try:
             for child in self.items_table.winfo_children():
                 child.destroy()
             self._item_widgets.clear()
             self._item_row_widgets.clear()
-            except Exception:
-                pass
+        except Exception:
+            pass
         self.item_rows.clear()
         self._update_totals()
 
