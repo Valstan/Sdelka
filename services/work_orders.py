@@ -28,12 +28,12 @@ class WorkOrderWorkerInput:
 
 @dataclass
 class WorkOrderInput:
-    order_no: int | None = None
     date: str
     product_id: int | None
     contract_id: int
     items: Sequence[WorkOrderItemInput]
     workers: Sequence[WorkOrderWorkerInput]  # Изменено с worker_ids на workers
+    order_no: int | None = None
 
 
 def _round_rub(value: Decimal) -> Decimal:

@@ -112,6 +112,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Order No (авто подставляется, можно менять)
         ctk.CTkLabel(header, text="№ наряда").grid(row=0, column=0, sticky="w", padx=5)
+        # Оставляем пустым — при сохранении подставится автоматически, если не задан
         self.order_no_var = ctk.StringVar(value="")
         self.order_no_entry = ctk.CTkEntry(header, textvariable=self.order_no_var, width=100)
         self.order_no_entry.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 6))
