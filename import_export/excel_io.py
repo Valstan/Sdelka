@@ -119,13 +119,31 @@ def _norm_str(val: object) -> str:
     return str(val).strip()
 
 
+def _open_workbook(file_path: str | Path) -> pd.ExcelFile:
+    """Open workbook supporting both .xlsx/.xls and .ods (if odfpy is installed)."""
+    file_path = str(file_path)
+    try:
+        # Let pandas auto-detect engine for Excel formats (.xlsx/.xls)
+        return pd.ExcelFile(file_path)
+    except Exception as exc:
+        # Try ODS explicitly if extension suggests so
+        if file_path.lower().endswith(".ods"):
+            try:
+                return pd.ExcelFile(file_path, engine="odf")
+            except Exception as exc2:
+                raise RuntimeError(
+                    "Не удалось открыть .ods. Установите пакет 'odfpy' (pip install odfpy)."
+                ) from exc2
+        raise
+
+
 def _parse_orders_sheet(df: pd.DataFrame) -> list[dict]:
     """
-    Parse a work-orders-like sheet similar to samples 4-10.
-    Returns list of dicts: { worker_names: [..], personnel_nos: [..], rows: [ {date, job_name, unit, unit_price, qty, amount, note} ], total }
+    Парсинг листа нарядов с группировкой по датам вида "16.06." и привязкой к ближайшему
+    выше идущему заголовку "Изделие № ...". Возвращает список групп:
+      { date: "ДД.ММ.ГГГГ", products: ["К01АТ0317/84", ...], items: [{job_name, unit, unit_price, qty, amount}], workers: [...] }
     """
-    cols = [str(c).strip().lower() for c in df.columns]
-    # Try to align headers
+    # 1) Стандартизируем заголовки столбцов для чтения строк таблицы
     rename = {}
     mapping = {
         "дата": "date",
@@ -151,21 +169,19 @@ def _parse_orders_sheet(df: pd.DataFrame) -> list[dict]:
     if rename:
         df = df.rename(columns=rename)
 
+    # 2) Соберем работников в верхней части листа
     workers: list[dict] = []
     seen_pairs: set[tuple[str, str]] = set()
-    # Scan header area for worker blocks (multiple workers per лист возможны)
     max_rows_scan = min(40, len(df))
     for i in range(max_rows_scan):
         row_vals = [ _norm_str(v) for v in df.iloc[i, :].tolist() ]
-        # Find name
+        # Ищем "ФИО сотрудника"
         name: str | None = None
         for j, s in enumerate(row_vals):
             s_low = s.casefold()
             if s_low.startswith("фио сотрудника"):
-                # Try to parse after ':' in the same cell
                 if ":" in s:
                     name = s.split(":", 1)[1].strip(" ;")
-                # else take next non-empty cell to the right
                 if not name:
                     for k in range(j + 1, min(j + 4, len(row_vals))):
                         if row_vals[k]:
@@ -174,14 +190,12 @@ def _parse_orders_sheet(df: pd.DataFrame) -> list[dict]:
                 break
         if not name:
             continue
-        # Find personnel number on the same row (or next 1-2 rows), pattern: "Таб №" then next cell value
         pers: str | None = None
         for ii in range(i, min(i + 3, max_rows_scan)):
             vals = [ _norm_str(v) for v in df.iloc[ii, :].tolist() ]
             for j, s in enumerate(vals):
                 s_low = s.casefold().replace(" ", "")
                 if s_low.startswith("таб№") or s_low == "таб№" or s_low.startswith("таб#"):
-                    # next non-empty cell
                     for k in range(j + 1, min(j + 3, len(vals))):
                         v = _norm_str(vals[k])
                         if v:
@@ -189,7 +203,6 @@ def _parse_orders_sheet(df: pd.DataFrame) -> list[dict]:
                             break
                     if pers:
                         break
-                # inline like "Таб №;00377" in one cell
                 m = re.search(r"таб\s*№\s*([0-9]+)", s_low)
                 if m:
                     pers = m.group(1)
@@ -201,47 +214,94 @@ def _parse_orders_sheet(df: pd.DataFrame) -> list[dict]:
             seen_pairs.add(pair)
             workers.append({"full_name": name, "personnel_no": pers or None})
 
-    # Extract table rows starting at the header line with 'Дата;Наименование выполненых работ;...'
-    # Find header index
+    # 3) Год из шапки (например "2025г.")
+    header_text = "\n".join([";".join([_norm_str(v) for v in df.iloc[i, :].tolist()[:8]]) for i in range(min(20, len(df)))])
+    year = None
+    m_year = re.search(r"(20\d{2})\s*г", header_text)
+    if m_year:
+        try:
+            year = int(m_year.group(1))
+        except Exception:
+            year = None
+    if year is None:
+        from datetime import datetime as _dt
+        year = _dt.now().year
+
+    # 4) Идём по строкам ниже заголовка таблицы и группируем по датам вида "ДД.ММ."
+    # Найти начало табличной части (строка с колонкой "Дата")
     header_idx = None
     for i, r in df.iterrows():
         row_lower = [ _norm_str(v).lower() for v in r.tolist()[:6] ]
         if "дата" in row_lower and any("наименование" in x for x in row_lower):
             header_idx = i
             break
-    items: list[dict] = []
-    total_amount = 0.0
+    groups: list[dict] = []
+    current_products: list[str] = []
+    current_group: dict | None = None
     if header_idx is not None:
         data = df.iloc[header_idx + 1 :]
         for _, r in data.iterrows():
-            # stop at ИТОГО row
-            first_cell = _norm_str(r.iloc[0]).lower()
-            if first_cell.startswith("итого"):
-                # total in last numeric column
-                nums = [ _to_float_price(v) for v in r.tolist() ]
-                total_amount = max(nums) if nums else total_amount
-                break
-            job_name = _norm_str(r.get("job_name", r.iloc[1] if len(r) > 1 else ""))
-            if not job_name:
+            cells = [ _norm_str(v) for v in r.tolist() ]
+            first_cell = (cells[0] if cells else "").strip()
+            low_first = first_cell.lower()
+            if not first_cell and any("изделие №" in _norm_str(c).lower() for c in cells[:3]):
+                # Иногда заголовок изделия лежит не в первом столбце
+                low_first = next(( _norm_str(c).lower() for c in cells if "изделие №" in _norm_str(c).lower()), low_first)
+                first_cell = next(( c for c in cells if "изделие №" in _norm_str(c).lower()), first_cell)
+            # Обновление списка изделий
+            if low_first.startswith("изделие №"):
+                try:
+                    prod_str = first_cell.split("№", 1)[1]
+                except Exception:
+                    prod_str = first_cell
+                # удалить пометки типа "повтор" в любой позиции
+                prod_str = re.sub(r"(?i)\bповтор\b", "", prod_str)
+                prod_str = re.sub(r"\s{2,}", " ", prod_str)
+                prods = [ p.strip() for p in prod_str.split(",") if p.strip() ]
+                current_products = prods
                 continue
-            unit = _norm_str(r.get("unit"))
-            unit_price = _to_float_price(r.get("unit_price"))
-            qty = _to_float_price(r.get("qty"))
-            amount = _to_float_price(r.get("amount")) or (unit_price * qty)
-            items.append({
-                "job_name": job_name,
-                "unit": unit or "шт.",
-                "unit_price": unit_price,
-                "qty": qty if qty > 0 else 1.0,
-                "amount": amount,
-            })
+            # Новая дата группы вида ДД.ММ. (может быть с годом)
+            m = re.match(r"^(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?", first_cell)
+            if m:
+                d, mth, yr = m.groups()
+                yy = int(year) if yr is None else int( ("20"+yr) if len(yr)==2 else yr )
+                from datetime import datetime as _dt
+                try:
+                    date_str = _dt(int(yy), int(mth), int(d)).strftime(CONFIG.date_format)
+                except Exception:
+                    date_str = _dt(year, 1, 1).strftime(CONFIG.date_format)
+                # Закрыть предыдущую группу
+                if current_group and current_group.get("items"):
+                    groups.append(current_group)
+                current_group = {"date": date_str, "products": list(current_products), "items": [], "workers": workers}
+                continue
+            # Стоп-строка ИТОГО
+            if low_first.startswith("итого"):
+                if current_group:
+                    groups.append(current_group)
+                    current_group = None
+                continue
+            # Строка работы — парсим, если есть активная группа
+            if current_group:
+                job_name = _norm_str(r.get("job_name", r.iloc[1] if len(r) > 1 else ""))
+                if not job_name:
+                    continue
+                unit = _norm_str(r.get("unit")) or "шт."
+                unit_price = _to_float_price(r.get("unit_price"))
+                qty = _to_float_price(r.get("qty")) or 1.0
+                amount = _to_float_price(r.get("amount")) or (unit_price * qty)
+                current_group["items"].append({
+                    "job_name": job_name,
+                    "unit": unit,
+                    "unit_price": unit_price,
+                    "qty": qty,
+                    "amount": amount,
+                })
+        # финализировать последнюю группу
+        if current_group and current_group.get("items"):
+            groups.append(current_group)
 
-    # If multiple workers appear on the sheet (brigade), split total evenly between them
-    return [{
-        "workers": workers,
-        "rows": items,
-        "total": total_amount or sum(x["amount"] for x in items),
-    }]
+    return groups
 
 
 def _parse_jobtypes_sheet(df: pd.DataFrame) -> list[dict]:
@@ -278,8 +338,8 @@ def import_xlsx_full(file_path: str | Path, progress_cb: callable | None = None)
     - detect and create work orders with workers and items
     Returns: (num_jobtypes, num_products, num_orders)
     """
-    import openpyxl  # ensure engine
-    xls = pd.ExcelFile(file_path)
+    import openpyxl  # ensure engine for .xlsx
+    xls = _open_workbook(file_path)
 
     def report(step: int, total: int, note: str):
         if progress_cb:
@@ -316,94 +376,76 @@ def import_xlsx_full(file_path: str | Path, progress_cb: callable | None = None)
             if is_orders:
                 groups = _parse_orders_sheet(df)
                 for g in groups:
-                    # Ensure product if present in sheet (look for lines like 'Изделие № ...' on first rows)
-                    product_id = None
+                    products: list[str] = g.get("products") or []
+                    items = g.get("items") or []
+                    workers = g.get("workers") or []
+                    date_str = g.get("date") or datetime.now().strftime(CONFIG.date_format)
+                    if not products:
+                        products = [""]
+                    # Подготовка job types
+                    for it in items:
+                        q.upsert_job_type(conn, it["job_name"], it["unit"], float(it["unit_price"]))
+                    # Контракт из шапки или ИМПОРТ_ГОД
                     header_text = "\n".join([";".join([_norm_str(v) for v in df.iloc[i, :].tolist()[:8]]) for i in range(min(15, len(df)))])
-                    m = re.search(r"Изделие\s*№\s*([^;\n]+)", header_text)
-                    if m:
-                        prod_no = _norm_str(m.group(1))
-                        if prod_no:
-                            prod_name = prod_no
-                            q.upsert_product(conn, prod_name, prod_no)
-                            products_count += 1
-                            row = conn.execute("SELECT id FROM products WHERE product_no = ?", (prod_no,)).fetchone()
-                            if row:
-                                product_id = int(row[0])
-
-                    # Resolve contract: try to detect code in header, fallback to import code
-                    contract_id = None
                     mcode = re.search(r"(контракт|шифр)[:\s]*([\w\-/.]+)", header_text, flags=re.IGNORECASE)
                     if mcode:
                         code = _norm_str(mcode.group(2))
-                        if code:
-                            q.upsert_contract(conn, code, None, None, "Импорт из XLSX")
-                            c_row = conn.execute("SELECT id FROM contracts WHERE code=?", (code,)).fetchone()
-                            if c_row:
-                                contract_id = int(c_row[0])
-                    if contract_id is None:
+                    else:
                         code = f"ИМПОРТ_{datetime.now().year}"
-                        q.upsert_contract(conn, code, None, None, "Импорт из XLSX")
-                        c_row = conn.execute("SELECT id FROM contracts WHERE code=?", (code,)).fetchone()
-                        contract_id = int(c_row[0]) if c_row else 1
+                    q.upsert_contract(conn, code, None, None, "Импорт из XLSX")
+                    c_row = conn.execute("SELECT id FROM contracts WHERE code=?", (code,)).fetchone()
+                    contract_id = int(c_row[0]) if c_row else 1
 
-                    # Upsert job types referenced in rows and build WorkOrderInput
-                    items: list[tuple[int, float]] = []
-                    for it in g["rows"]:
-                        q.upsert_job_type(conn, it["job_name"], it["unit"], float(it["unit_price"]))
-                        jt = q.get_job_type_by_name(conn, it["job_name"]) or conn.execute("SELECT id FROM job_types WHERE name=?", (it["job_name"],)).fetchone()
-                        if jt:
-                            jt_id = int(jt[0] if not isinstance(jt, dict) else jt["id"])  # tolerate row/dict
-                            qty = float(it.get("qty", 1.0) or 1.0)
-                            items.append((jt_id, qty))
-
-                    # Resolve workers (do not pre-insert to avoid UNIQUE conflicts). Use negative IDs for manual workers.
-                    worker_inputs = []
+                    # Шаблон работников
+                    worker_inputs_template = []
                     manual_id_counter = -1
-                    for w in (g["workers"] or []):
+                    for w in (workers or []):
                         nm = _norm_str(w.get("full_name"))
                         pn = _norm_str(w.get("personnel_no"))
                         if not nm:
                             continue
-                        row = None
-                        if pn:
-                            row = q.get_worker_by_personnel_no(conn, pn)
-                        if not row:
-                            row = q.get_worker_by_full_name(conn, nm)
-                        if row:
-                            worker_inputs.append({"worker_id": int(row["id"]), "worker_name": nm, "amount": None})
+                        roww = q.get_worker_by_personnel_no(conn, pn) if pn else None
+                        if not roww:
+                            roww = q.get_worker_by_full_name(conn, nm)
+                        if roww:
+                            worker_inputs_template.append({"worker_id": int(roww["id"]), "worker_name": nm, "amount": None})
                         else:
-                            worker_inputs.append({"worker_id": manual_id_counter, "worker_name": nm, "amount": None})
+                            worker_inputs_template.append({"worker_id": manual_id_counter, "worker_name": nm, "amount": None})
                             manual_id_counter -= 1
-
-                    # Create work order via service to compute totals and allocations
-                    from services.work_orders import WorkOrderInput, WorkOrderItemInput, WorkOrderWorkerInput, create_work_order
-                    wo_items = [WorkOrderItemInput(job_type_id=i[0], quantity=i[1]) for i in items if i]
-                    if not wo_items:
-                        continue
-                    if not worker_inputs:
+                    if not worker_inputs_template:
                         nm = "Неизвестный работник"
                         pn = f"TEMP_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                         wid = q.insert_worker(conn, nm, None, None, pn)
-                        worker_inputs = [{"worker_id": int(wid), "worker_name": nm, "amount": None}]
-                    wo_workers = [WorkOrderWorkerInput(worker_id=w["worker_id"], worker_name=w["worker_name"], amount=w.get("amount")) for w in worker_inputs]
-                    # Determine date
-                    title = header_text
-                    date_str = datetime.now().strftime(CONFIG.date_format)
-                    mdate = re.search(r"(\d{1,2})[.\-](\d{1,2})[.\-](\d{2,4})", title)
-                    if mdate:
-                        d, m, y = mdate.groups()
-                        if len(y) == 2:
-                            y = "20" + y
+                        worker_inputs_template = [{"worker_id": int(wid), "worker_name": nm, "amount": None}]
+
+                    # Создаём по наряду на каждое изделие, деля qty поровну по изделиям
+                    k = max(1, len(products))
+                    from services.work_orders import WorkOrderInput, WorkOrderItemInput, WorkOrderWorkerInput, create_work_order
+                    for prod_no in products:
+                        product_id = None
+                        prod_no_clean = _norm_str(prod_no)
+                        if prod_no_clean:
+                            # name = "Изделие", product_no = код
+                            q.upsert_product(conn, "Изделие", prod_no_clean)
+                            products_count += 1
+                            rowp = conn.execute("SELECT id FROM products WHERE product_no = ?", (prod_no_clean,)).fetchone()
+                            if rowp:
+                                product_id = int(rowp[0])
+                        wo_items_inputs = []
+                        for it in items:
+                            jt = q.get_job_type_by_name(conn, it["job_name"]) or conn.execute("SELECT id FROM job_types WHERE name=?", (it["job_name"],)).fetchone()
+                            if jt:
+                                jt_id = int(jt[0] if not isinstance(jt, dict) else jt["id"])  # tolerate row/dict
+                                # всем изделиям ставим по максимальному количеству работ (из условия)
+                                max_qty = float(it.get("qty", 1.0) or 1.0)
+                                wo_items_inputs.append(WorkOrderItemInput(job_type_id=jt_id, quantity=max_qty))
+                        wo_workers = [WorkOrderWorkerInput(worker_id=w["worker_id"], worker_name=w["worker_name"], amount=w.get("amount")) for w in worker_inputs_template]
+                        data = WorkOrderInput(date=date_str, product_id=product_id, contract_id=contract_id, items=wo_items_inputs, workers=wo_workers)
                         try:
-                            date_str = datetime(int(y), int(m), int(d)).strftime(CONFIG.date_format)
-                        except Exception:
-                            pass
-                    data = WorkOrderInput(date=date_str, product_id=product_id, contract_id=contract_id, items=wo_items, workers=wo_workers)
-                    try:
-                        create_work_order(conn, data)
-                        orders_count += 1
-                    except Exception as e:
-                        logger.exception("Не удалось создать наряд с листа %s: %s", sheet, e)
+                            create_work_order(conn, data)
+                            orders_count += 1
+                        except Exception as e:
+                            logger.exception("Не удалось создать наряд с листа %s: %s", sheet, e)
                 continue
 
             # Unknown sheet - skip
@@ -614,6 +656,49 @@ def export_all_tables_to_excel(conn: sqlite3.Connection, dir_path: str | Path) -
         export_table_to_excel(conn, table, path)
         outputs.append(path)
     return outputs
+
+
+def analyze_orders_workbook(file_path: str | Path) -> list[dict]:
+    """
+    Dry-run analyzer: parse workbook (xlsx/ods), detect order groups and return
+    a summary list of dicts without writing to DB.
+    Each entry: {sheet, date, products, workers, items}
+    """
+    xls = _open_workbook(file_path)
+    summary: list[dict] = []
+    for sheet in xls.sheet_names:
+        try:
+            df = xls.parse(sheet)
+        except Exception:
+            continue
+        lower_cols = [str(c).strip().lower() for c in df.columns]
+        is_jobtypes = any("наименование" in c for c in lower_cols) and any("ед" in c for c in lower_cols) and any("цена" in c or "расценка" in c for c in lower_cols)
+        is_orders = any("фио" in _norm_str(v).lower() for v in df.head(5).iloc[:, 0].tolist()) or any("дата" in c for c in lower_cols)
+        if is_orders:
+            groups = _parse_orders_sheet(df)
+            for g in groups:
+                entry = {
+                    "sheet": sheet,
+                    "date": g.get("date"),
+                    "products": list(g.get("products") or []),
+                    "workers": [w.get("full_name") for w in (g.get("workers") or [])],
+                    "items": [
+                        {
+                            "job_name": it.get("job_name"),
+                            "qty": it.get("qty"),
+                            "unit_price": it.get("unit_price"),
+                        }
+                        for it in (g.get("items") or [])
+                    ],
+                }
+                summary.append(entry)
+        elif is_jobtypes:
+            # include short note for jobtypes sheet
+            jobs = _parse_jobtypes_sheet(df)
+            summary.append({"sheet": sheet, "jobtypes_count": len(jobs)})
+        else:
+            summary.append({"sheet": sheet, "note": "Пропущен"})
+    return summary
 
 
 # Templates

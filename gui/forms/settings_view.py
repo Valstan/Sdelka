@@ -120,7 +120,7 @@ class SettingsView(ctk.CTkFrame):
         self._btn_imp_products.pack(side="left", padx=5)
         self._btn_imp_contracts = ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts)
         self._btn_imp_contracts.pack(side="left", padx=5)
-        self._btn_imp_full = ctk.CTkButton(row1, text="Импорт XLSX (справочник + наряды)", command=self._import_full_xlsx)
+        self._btn_imp_full = ctk.CTkButton(row1, text="Импорт нарядов", command=self._import_full_xlsx)
         self._btn_imp_full.pack(side="left", padx=5)
 
         ctk.CTkLabel(io_box, text="Экспорт таблиц").pack(anchor="w")
@@ -322,10 +322,10 @@ class SettingsView(ctk.CTkFrame):
         title = title or "Выберите файл"
         filetypes = []
         if filter_name:
-            pat = patterns or (f"*{default_ext}" if default_ext else "*.xlsx;*.xls")
+            pat = patterns or (f"*{default_ext}" if default_ext else "*.xlsx;*.xls;*.ods")
             filetypes = [(filter_name, pat)]
         else:
-            filetypes = [("Excel", "*.xlsx;*.xls"), ("Все файлы", "*.*")]
+            filetypes = [("Книги", "*.xlsx;*.xls;*.ods"), ("Все файлы", "*.*")]
         return filedialog.askopenfilename(title=title, filetypes=filetypes)
 
     def _ask_save(self, title: str, default_ext: str, filter_name: str, initialfile: str | None = None) -> str | None:
@@ -384,12 +384,12 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showwarning("Импорт", "Режим только для чтения — импорт недоступен")
             return
         from import_export.excel_io import import_xlsx_full
-        path = self._ask_open(title="Выберите XLSX с несколькими листами", default_ext=".xlsx", filter_name="Excel (*.xlsx)")
+        path = self._ask_open(title="Выберите файл с нарядами", default_ext=".xlsx", filter_name="Книги (*.xlsx;*.xls;*.ods)", patterns="*.xlsx;*.xls;*.ods")
         if not path:
             return
         # Progress window
         win = ctk.CTkToplevel(self)
-        win.title("Импорт XLSX")
+        win.title("Импорт нарядов")
         win.geometry("420x140")
         ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
         pb = ctk.CTkProgressBar(win)
@@ -703,13 +703,17 @@ class SettingsView(ctk.CTkFrame):
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
         content.append("• Список нарядов: постраничная подгрузка (100 за шаг)")
         content.append("• Виды работ в наряде: табличная сетка, обрезка с многоточием")
-        content.append("• Импорт XLSX многолистовых файлов (справочники+наряды) с прогрессом")
+        content.append("• Импорт XLSX/ODS многолистовых файлов (справочники+наряды) с прогрессом")
+        content.append("• Сухой анализ книги импорта (без записи в БД) для проверки структур")
         content.append("")
         content.append("🔧 ИСПРАВЛЕНИЯ:")
         content.append("• Прокрутка списков (виды работ, работники) и ускорение колеса")
         content.append("• ‘Отмена’ всегда активна; очистка формы возвращает режим ввода")
         content.append("• Фильтры ‘Вид работ’ и ‘Изделие’ не ломают генерацию отчётов")
         content.append("• PDF: перенос длинных текстов, сжатие ‘Вид работ’, разбиение больших таблиц")
+        content.append("")
+        content.append("🔁 ИЗМЕНЕНО:")
+        content.append("• Диалог выбора файла для импорта принимает форматы: .xlsx, .xls, .ods")
         content.append("")
         
         # Версия 3.0
