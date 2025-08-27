@@ -124,13 +124,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
-        # Contract (первый) + кнопка добавления
+        # Contract (один, без добавления)
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=2, sticky="w", padx=5)
         self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр")
         self.contract_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         self.contract_entry.bind("<KeyRelease>", lambda e: self._on_contract_key_for(self.contract_entry))
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key_for(self.contract_entry))
-        ctk.CTkButton(header, text="+", width=32, command=self._add_contract_row).grid(row=1, column=3, sticky="w", padx=2, pady=(0, 6))
 
         # Product (первый) + кнопка добавления
         ctk.CTkLabel(header, text="Изделие").grid(row=0, column=4, sticky="w", padx=5)
@@ -146,13 +145,11 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_product_frame = create_suggestions_frame(self)
         self.suggest_product_frame.place_forget()
 
-        # Дополнительные строки для контрактов/изделий
+        # Дополнительные строки только для изделий
         extras = ctk.CTkFrame(left)
         extras.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
-        self.contracts_extra_frame = ctk.CTkFrame(extras)
-        self.contracts_extra_frame.pack(fill="x")
         self.products_extra_frame = ctk.CTkFrame(extras)
-        self.products_extra_frame.pack(fill="x", pady=(6, 0))
+        self.products_extra_frame.pack(fill="x", pady=(0, 0))
 
         # Items section (инлайновые строки + плюсик)
         items_frame = ctk.CTkFrame(left)
@@ -644,27 +641,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         record_use("work_orders.product", label)
         self.suggest_product_frame.place_forget()
 
-    def _add_contract_row(self) -> None:
-        try:
-            row = ctk.CTkFrame(self.contracts_extra_frame)
-            row.pack(fill="x", pady=2)
-            e = ctk.CTkEntry(row, placeholder_text="Контракт")
-            e.pack(side="left", fill="x", expand=True, padx=(0, 6))
-            e.bind("<KeyRelease>", lambda _e=None, ent=e: self._on_contract_key_for(ent))
-            e.bind("<FocusIn>", lambda _e=None, ent=e: self._on_contract_key_for(ent))
-            btn_del = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda fr=row, ent=e: self._remove_contract_row(fr, ent))
-            btn_del.pack(side="right")
-            self._extra_contract_entries.append(e)
-        except Exception:
-            pass
-
-    def _remove_contract_row(self, frame: ctk.CTkFrame, entry: ctk.CTkEntry) -> None:
-        try:
-            if entry in self._extra_contract_entries:
-                self._extra_contract_entries.remove(entry)
-            frame.destroy()
-        except Exception:
-            pass
+    # Убраны добавления дополнительных контрактов (разрешён только один)
 
     def _add_product_row(self) -> None:
         try:

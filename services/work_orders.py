@@ -34,8 +34,6 @@ class WorkOrderInput:
     items: Sequence[WorkOrderItemInput]
     workers: Sequence[WorkOrderWorkerInput]  # Изменено с worker_ids на workers
     order_no: int | None = None
-    # Дополнительно: списки связей (опционально). Если заданы, используем их вместо одиночных
-    extra_contract_ids: Sequence[int] | None = None
     extra_product_ids: Sequence[int] | None = None
 
 
@@ -48,18 +46,12 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
     # Провалидируем наличие контракта и изделия, чтобы не ловить FK ошибку
-    # Валидация контрактов/изделий (одиночные или списки)
-    contract_ids: list[int] = []
-    if data.extra_contract_ids:
-        contract_ids = [int(x) for x in data.extra_contract_ids if x is not None]
-    else:
-        contract_ids = [int(data.contract_id)] if data.contract_id is not None else []
-    if not contract_ids:
+    # Валидация контракта (только один)
+    if data.contract_id is None:
         raise ValueError("Выберите контракт из списка")
-    for cid in contract_ids:
-        c_row = conn.execute("SELECT id FROM contracts WHERE id = ?", (cid,)).fetchone()
-        if not c_row:
-            raise ValueError("Выбранный контракт не найден. Выберите контракт из списка.")
+    c_row = conn.execute("SELECT id FROM contracts WHERE id = ?", (data.contract_id,)).fetchone()
+    if not c_row:
+        raise ValueError("Выбранный контракт не найден. Выберите контракт из списка.")
 
     product_ids: list[int] = []
     if data.extra_product_ids:
@@ -92,17 +84,15 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     # Проверим уникальность, чтобы не уткнуться в UNIQUE
     if q.order_no_in_use(conn, order_no):
         raise ValueError(f"Номер наряда {order_no} уже используется. Укажите другой номер.")
-    # Сохраним заголовок, для совместимости оставим первые значения product/contract
+    # Сохраним заголовок, контракт один, изделие из первой позиции при наличии
     head_product = (product_ids[0] if product_ids else None)
-    head_contract = contract_ids[0]
-    work_order_id = q.insert_work_order(conn, order_no, data.date, head_product, head_contract, float(total))
-    # Сохраняем множественные связи
+    work_order_id = q.insert_work_order(conn, order_no, data.date, head_product, data.contract_id, float(total))
+    # Сохраним множественные изделия (контракты — только один, не сохраняем связи)
     try:
-        q.set_work_order_contracts(conn, work_order_id, contract_ids)
         if product_ids:
             q.set_work_order_products(conn, work_order_id, product_ids)
     except Exception:
-        logger.warning("Не удалось сохранить дополнительные контракты/изделия для наряда %s", work_order_id)
+        logger.warning("Не удалось сохранить дополнительные изделия для наряда %s", work_order_id)
 
     for (job_type_id, quantity, unit_price, line_amount) in line_values:
         q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
@@ -285,15 +275,6 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     if new_no != cur_no:
         if q.order_no_in_use(conn, new_no, exclude_id=work_order_id):
             raise ValueError(f"Номер наряда {new_no} уже используется. Укажите другой номер.")
-    # Определим списки связей
-    contract_ids: list[int] = []
-    if data.extra_contract_ids:
-        contract_ids = [int(x) for x in data.extra_contract_ids if x is not None]
-    else:
-        contract_ids = [int(data.contract_id)] if data.contract_id is not None else []
-    if not contract_ids:
-        raise ValueError("Выберите контракт из списка")
-
     product_ids: list[int] = []
     if data.extra_product_ids:
         product_ids = [int(x) for x in data.extra_product_ids if x is not None]
@@ -302,10 +283,8 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
             product_ids = [int(data.product_id)]
 
     head_product = (product_ids[0] if product_ids else None)
-    head_contract = contract_ids[0]
-    q.update_work_order_header(conn, work_order_id, new_no, data.date, head_product, head_contract, float(total))
-    # Пересохраним связи
-    q.set_work_order_contracts(conn, work_order_id, contract_ids)
+    q.update_work_order_header(conn, work_order_id, new_no, data.date, head_product, data.contract_id, float(total))
+    # Пересохраним изделия (контракты — один)
     q.set_work_order_products(conn, work_order_id, product_ids)
 
     q.delete_work_order_items(conn, work_order_id)
