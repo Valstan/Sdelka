@@ -104,11 +104,11 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._enforce_right_width_limit(adjust_to_content=False)
         self.bind("<Configure>", _on_resize, add="+")
 
-        # Header form (Номер, Дата, Контракт, Изделие)
+        # Header form (Номер, Дата, Контракты +, Изделия +)
         header = ctk.CTkFrame(left)
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        for i in range(4):
-            header.grid_columnconfigure(i, weight=1 if i >= 2 else 0)
+        for i in range(6):
+            header.grid_columnconfigure(i, weight=(1 if i in (2, 4) else 0))
 
         # Order No (авто подставляется, можно менять)
         ctk.CTkLabel(header, text="№ наряда").grid(row=0, column=0, sticky="w", padx=5)
@@ -124,36 +124,46 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
-        # Contract
+        # Contract (первый) + кнопка добавления
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=2, sticky="w", padx=5)
         self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр")
         self.contract_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
-        self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
-        self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
+        self.contract_entry.bind("<KeyRelease>", lambda e: self._on_contract_key_for(self.contract_entry))
+        self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key_for(self.contract_entry))
+        ctk.CTkButton(header, text="+", width=32, command=self._add_contract_row).grid(row=1, column=3, sticky="w", padx=2, pady=(0, 6))
 
-        # Product
-        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=3, sticky="w", padx=5)
+        # Product (первый) + кнопка добавления
+        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=4, sticky="w", padx=5)
         self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название")
-        self.product_entry.grid(row=1, column=3, sticky="ew", padx=5, pady=(0, 6))
-        self.product_entry.bind("<KeyRelease>", self._on_product_key)
-        self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
+        self.product_entry.grid(row=1, column=4, sticky="ew", padx=5, pady=(0, 6))
+        self.product_entry.bind("<KeyRelease>", lambda e: self._on_product_key_for(self.product_entry))
+        self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key_for(self.product_entry))
+        ctk.CTkButton(header, text="+", width=32, command=self._add_product_row).grid(row=1, column=5, sticky="w", padx=2, pady=(0, 6))
 
-        # Suggestion frames
+        # Suggestion frames (один общий для контрактов, один общий для изделий)
         self.suggest_contract_frame = create_suggestions_frame(self)
         self.suggest_contract_frame.place_forget()
         self.suggest_product_frame = create_suggestions_frame(self)
         self.suggest_product_frame.place_forget()
 
+        # Дополнительные строки для контрактов/изделий
+        extras = ctk.CTkFrame(left)
+        extras.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        self.contracts_extra_frame = ctk.CTkFrame(extras)
+        self.contracts_extra_frame.pack(fill="x")
+        self.products_extra_frame = ctk.CTkFrame(extras)
+        self.products_extra_frame.pack(fill="x", pady=(6, 0))
+
         # Items section (инлайновые строки + плюсик)
         items_frame = ctk.CTkFrame(left)
-        items_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        items_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
         ctk.CTkLabel(items_frame, text="Виды работ").pack(side="left", padx=5)
         add_item_btn = ctk.CTkButton(items_frame, text="+", width=32, command=self._show_inline_item_editor)
         add_item_btn.pack(side="right", padx=5)
 
         # Встроенная панель ввода новой строки (скрыта по умолчанию)
         self._inline_item_editor = ctk.CTkFrame(left)
-        self._inline_item_editor.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
+        self._inline_item_editor.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 6))
         for i in range(5):
             self._inline_item_editor.grid_columnconfigure(i, weight=1 if i == 0 else 0)
         self._inline_item_editor.grid_remove()
@@ -560,72 +570,123 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _place_suggest_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         place_suggestions_under_entry(entry, frame, self)
 
-    def _on_contract_key(self, _evt=None) -> None:
+    def _on_contract_key_for(self, entry: ctk.CTkEntry) -> None:
         self._hide_all_suggests()
         for w in self.suggest_contract_frame.winfo_children():
+            try:
             w.destroy()
-        
-        place_suggestions_under_entry(self.contract_entry, self.suggest_contract_frame, self)
-        
+            except Exception:
+                pass
+        place_suggestions_under_entry(entry, self.suggest_contract_frame, self)
+        text = entry.get().strip()
         with get_connection() as conn:
-            rows = suggestions.suggest_contracts(conn, self.contract_entry.get().strip(), CONFIG.autocomplete_limit)
-        
+            rows = suggestions.suggest_contracts(conn, text, CONFIG.autocomplete_limit)
         shown = 0
         for _id, label in rows:
-            create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label, e=entry: self._pick_contract_for(i, l, e)).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("work_orders.contract", self.contract_entry.get().strip(), CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.contract", text, CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda l=label: self._pick_contract(self.selected_contract_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda l=label, e=entry: self._pick_contract_for(self.selected_contract_id or 0, l, e)).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
-        # Если нет данных из БД и истории, показываем все контракты
         if shown == 0:
             with get_connection() as conn:
                 all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_contracts:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_contract_frame, text=label, command=lambda i=_id, l=label, e=entry: self._pick_contract_for(i, l, e)).pack(fill="x", padx=2, pady=1)
                 shown += 1
 
-    def _pick_contract(self, contract_id: int, label: str) -> None:
-        self.selected_contract_id = contract_id
-        self.contract_entry.delete(0, "end")
-        self.contract_entry.insert(0, label)
+    def _pick_contract_for(self, contract_id: int, label: str, entry: ctk.CTkEntry) -> None:
+        try:
+            entry.delete(0, "end")
+            entry.insert(0, label)
+        except Exception:
+            pass
         record_use("work_orders.contract", label)
         self.suggest_contract_frame.place_forget()
 
-    def _on_product_key(self, _evt=None) -> None:
+    def _on_product_key_for(self, entry: ctk.CTkEntry) -> None:
         self._hide_all_suggests()
         for w in self.suggest_product_frame.winfo_children():
+            try:
             w.destroy()
-        
-        place_suggestions_under_entry(self.product_entry, self.suggest_product_frame, self)
-        
+            except Exception:
+                pass
+        place_suggestions_under_entry(entry, self.suggest_product_frame, self)
+        text = entry.get().strip()
         with get_connection() as conn:
-            rows = suggestions.suggest_products(conn, self.product_entry.get().strip(), CONFIG.autocomplete_limit)
-        
+            rows = suggestions.suggest_products(conn, text, CONFIG.autocomplete_limit)
         shown = 0
         for _id, label in rows:
-            create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label, e=entry: self._pick_product_for(i, l, e)).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("work_orders.product", self.product_entry.get().strip(), CONFIG.autocomplete_limit):
+        for label in get_recent("work_orders.product", text, CONFIG.autocomplete_limit):
             if label not in [lbl for _, lbl in rows]:
-                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda l=label: self._pick_product(self.selected_product_id or 0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda l=label, e=entry: self._pick_product_for(self.selected_product_id or 0, l, e)).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
-        # Если нет данных из БД и истории, показываем все изделия
         if shown == 0:
             with get_connection() as conn:
                 all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
             for _id, label in all_products:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(self.suggest_product_frame, text=label, command=lambda i=_id, l=label, e=entry: self._pick_product_for(i, l, e)).pack(fill="x", padx=2, pady=1)
                 shown += 1
+
+    def _pick_product_for(self, product_id: int, label: str, entry: ctk.CTkEntry) -> None:
+        try:
+            entry.delete(0, "end")
+            entry.insert(0, label)
+        except Exception:
+            pass
+        record_use("work_orders.product", label)
+        self.suggest_product_frame.place_forget()
+
+    def _add_contract_row(self) -> None:
+        try:
+            row = ctk.CTkFrame(self.contracts_extra_frame)
+            row.pack(fill="x", pady=2)
+            e = ctk.CTkEntry(row, placeholder_text="Контракт")
+            e.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            e.bind("<KeyRelease>", lambda _e=None, ent=e: self._on_contract_key_for(ent))
+            e.bind("<FocusIn>", lambda _e=None, ent=e: self._on_contract_key_for(ent))
+            btn_del = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda fr=row, ent=e: self._remove_contract_row(fr, ent))
+            btn_del.pack(side="right")
+            self._extra_contract_entries.append(e)
+        except Exception:
+            pass
+
+    def _remove_contract_row(self, frame: ctk.CTkFrame, entry: ctk.CTkEntry) -> None:
+        try:
+            if entry in self._extra_contract_entries:
+                self._extra_contract_entries.remove(entry)
+            frame.destroy()
+        except Exception:
+            pass
+
+    def _add_product_row(self) -> None:
+        try:
+            row = ctk.CTkFrame(self.products_extra_frame)
+            row.pack(fill="x", pady=2)
+            e = ctk.CTkEntry(row, placeholder_text="Изделие")
+            e.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            e.bind("<KeyRelease>", lambda _e=None, ent=e: self._on_product_key_for(ent))
+            e.bind("<FocusIn>", lambda _e=None, ent=e: self._on_product_key_for(ent))
+            btn_del = ctk.CTkButton(row, text="Удалить", width=80, fg_color="#b91c1c", hover_color="#7f1d1d", command=lambda fr=row, ent=e: self._remove_product_row(fr, ent))
+            btn_del.pack(side="right")
+            self._extra_product_entries.append(e)
+        except Exception:
+            pass
+
+    def _remove_product_row(self, frame: ctk.CTkFrame, entry: ctk.CTkEntry) -> None:
+        try:
+            if entry in self._extra_product_entries:
+                self._extra_product_entries.remove(entry)
+            frame.destroy()
+        except Exception:
+            pass
 
     def _on_job_key(self, _evt=None) -> None:
         self._hide_all_suggests()
@@ -724,7 +785,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._refresh_workers_display()
             self._update_totals()
         else:
-            self._add_worker(worker_id, label)
+        self._add_worker(worker_id, label)
         self.suggest_worker_frame.place_forget()
 
     def _add_worker_from_entry(self) -> None:
@@ -832,8 +893,8 @@ class WorkOrdersForm(ctk.CTkFrame):
                 try:
                     row_widgets[key].grid_forget()
                     row_widgets[key].destroy()
-                except Exception:
-                    pass
+        except Exception:
+            pass
             try:
                 self._item_widgets.pop(idx)
             except Exception:
@@ -854,13 +915,13 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     def _clear_items(self) -> None:
         # Очистить табличный контейнер
-        try:
+            try:
             for child in self.items_table.winfo_children():
                 child.destroy()
             self._item_widgets.clear()
             self._item_row_widgets.clear()
-        except Exception:
-            pass
+            except Exception:
+                pass
         self.item_rows.clear()
         self._update_totals()
 
@@ -1090,13 +1151,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._orders_loading = True
         try:
             rows = self._fetch_orders_page(self._orders_page_size, self._orders_offset)
-            for r in rows:
+        for r in rows:
                 iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
                 self._order_rows.append(iid)
             self._orders_offset += len(rows)
             if len(rows) < self._orders_page_size:
                 self._orders_can_load_more = False
-            self._autosize_orders_columns()
+        self._autosize_orders_columns()
         finally:
             self._orders_loading = False
 
@@ -1196,14 +1257,62 @@ class WorkOrdersForm(ctk.CTkFrame):
         with get_connection() as conn:
             c = conn.execute("SELECT code FROM contracts WHERE id=?", (data.contract_id,)).fetchone()
             p = conn.execute("SELECT name, product_no FROM products WHERE id=?", (data.product_id,)).fetchone() if data.product_id else None
+            # Загрузить доп. связи
+            try:
+                extra_cids = q.get_work_order_contract_ids(conn, data.id)
+            except Exception:
+                extra_cids = []
+            try:
+                extra_pids = q.get_work_order_product_ids(conn, data.id)
+            except Exception:
+                extra_pids = []
         self.contract_entry.delete(0, "end")
         if c:
             self.contract_entry.insert(0, c["code"])  # display
         self.selected_contract_id = data.contract_id
+        # Очистим и создадим доп. контракты
+        for e in list(self._extra_contract_entries):
+            try:
+                e.master.destroy()
+            except Exception:
+                pass
+        self._extra_contract_entries.clear()
+        for cid in extra_cids:
+            if cid == data.contract_id:
+                continue
+            with get_connection() as conn:
+                row = conn.execute("SELECT code FROM contracts WHERE id=?", (cid,)).fetchone()
+            label = row["code"] if row else str(cid)
+            self._add_contract_row()
+            try:
+                self._extra_contract_entries[-1].insert(0, label)
+            except Exception:
+                pass
         self.product_entry.delete(0, "end")
         if p:
             self.product_entry.insert(0, f"{p['product_no']} — {p['name']}")
         self.selected_product_id = data.product_id
+        # Очистим и создадим доп. изделия
+        for e in list(self._extra_product_entries):
+            try:
+                e.master.destroy()
+            except Exception:
+                pass
+        self._extra_product_entries.clear()
+        for pid in extra_pids:
+            if pid == (data.product_id or -1):
+                continue
+            with get_connection() as conn:
+                row = conn.execute("SELECT name, product_no FROM products WHERE id=?", (pid,)).fetchone()
+            if row:
+                label = f"{row['product_no']} — {row['name']}"
+            else:
+                label = str(pid)
+            self._add_product_row()
+            try:
+                self._extra_product_entries[-1].insert(0, label)
+            except Exception:
+                pass
         # items
         self._clear_items()
         for (job_type_id, name, qty, unit_price, line_amount) in data.items:
@@ -1230,7 +1339,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_amounts.clear()
         with get_connection() as conn:
             for wid, amount in data.workers:
-                r = conn.execute("SELECT full_name FROM workers WHERE id=\?", (wid,)).fetchone()
+                r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
                 self.selected_workers[wid] = r["full_name"] if r else str(wid)
                 try:
                     self.worker_amounts[wid] = float(amount)
@@ -1255,7 +1364,16 @@ class WorkOrdersForm(ctk.CTkFrame):
         if not self.item_rows:
             messagebox.showwarning("Проверка", "Добавьте хотя бы одну строку работ")
             return None
-        if not self.selected_contract_id:
+        # Собираем контракты: основной + дополнительные (по тексту ищем/создаем)
+        contract_labels: list[str] = []
+        head_contract = (self.contract_entry.get() or "").strip()
+        if head_contract:
+            contract_labels.append(head_contract)
+        for e in list(self._extra_contract_entries):
+            val = (e.get() or "").strip()
+            if val:
+                contract_labels.append(val)
+        if not contract_labels:
             messagebox.showwarning("Проверка", "Выберите контракт из подсказок")
             return None
         date_str = self.date_var.get().strip()
@@ -1275,6 +1393,16 @@ class WorkOrdersForm(ctk.CTkFrame):
             except Exception:
                 messagebox.showwarning("Проверка", "Номер наряда должен быть положительным числом")
                 return None
+        # Собираем изделия: основной + дополнительные
+        product_labels: list[str] = []
+        head_product = (self.product_entry.get() or "").strip()
+        if head_product:
+            product_labels.append(head_product)
+        for e in list(self._extra_product_entries):
+            val = (e.get() or "").strip()
+            if val:
+                product_labels.append(val)
+
         # Проверяем работников
         worker_ids = list(self.selected_workers.keys())
         if not worker_ids:
@@ -1307,13 +1435,51 @@ class WorkOrdersForm(ctk.CTkFrame):
         for worker_id, worker_name in self.selected_workers.items():
             amount = self.worker_amounts.get(worker_id)
             workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name, amount=amount))
+        # Разрешение контрактов и изделий в ID
+        extra_contract_ids: list[int] = []
+        with get_connection() as conn:
+            for label in contract_labels:
+                row = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (label.casefold(),)).fetchone()
+                if row:
+                    extra_contract_ids.append(int(row["id"]))
+                else:
+                    # Создадим контракт без дат/описания
+                    new_id = q.upsert_contract(conn, label, None, None, None)
+                    # upsert_contract может вернуть lastrowid|rowcount; достанем id по коду
+                    row2 = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (label.casefold(),)).fetchone()
+                    if row2:
+                        extra_contract_ids.append(int(row2["id"]))
+        extra_product_ids: list[int] = []
+        with get_connection() as conn:
+            for label in product_labels:
+                # Пытаемся распарсить "номер — имя" или просто номер/имя
+                text = label
+                product_no = text.split("—", 1)[0].strip()
+                row = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (product_no.casefold(), text.casefold())).fetchone()
+                if row:
+                    extra_product_ids.append(int(row["id"]))
+                else:
+                    # Создадим продукт: если удалось выделить номер, используем его; иначе номер = имя
+                    name = text
+                    no = product_no if product_no else text
+                    new_id = q.upsert_product(conn, name, no)
+                    row2 = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (no.casefold(), name.casefold())).fetchone()
+                    if row2:
+                        extra_product_ids.append(int(row2["id"]))
+
+        # Первый контракт/изделие считаем основными для заголовка
+        head_contract_id = extra_contract_ids[0] if extra_contract_ids else None
+        head_product_id = extra_product_ids[0] if extra_product_ids else None
+
         return WorkOrderInput(
             order_no=order_no_val,
             date=date_str,
-            product_id=self.selected_product_id,
-            contract_id=int(self.selected_contract_id),
+            product_id=head_product_id,
+            contract_id=int(head_contract_id) if head_contract_id is not None else 0,
             items=items,
             workers=workers,
+            extra_contract_ids=extra_contract_ids,
+            extra_product_ids=extra_product_ids,
         )
 
     def _save(self) -> None:
@@ -1384,22 +1550,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._refresh_workers_display()
         for w in self.workers_list.winfo_children():
             try:
-                w.destroy()
+            w.destroy()
             except Exception:
                 pass
         for w in self.suggest_contract_frame.winfo_children():
             try:
-                w.destroy()
+            w.destroy()
             except Exception:
                 pass
         for w in self.suggest_product_frame.winfo_children():
             try:
-                w.destroy()
+            w.destroy()
             except Exception:
                 pass
         for w in self.suggest_job_frame.winfo_children():
             try:
-                w.destroy()
+            w.destroy()
             except Exception:
                 pass
         self.suggest_contract_frame.place_forget()
@@ -1413,13 +1579,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
         self.qty_var.set("1")
-        try:
+            try:
             for child in self.items_table.winfo_children():
                 child.destroy()
             self._item_widgets.clear()
             self._item_row_widgets.clear()
-        except Exception:
-            pass
+            except Exception:
+                pass
         self._update_totals()
         try:
             self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])

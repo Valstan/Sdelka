@@ -61,6 +61,22 @@ CREATE TABLE IF NOT EXISTS work_orders (
     FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS work_order_contracts (
+    work_order_id INTEGER NOT NULL,
+    contract_id INTEGER NOT NULL,
+    PRIMARY KEY (work_order_id, contract_id),
+    FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS work_order_products (
+    work_order_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    PRIMARY KEY (work_order_id, product_id),
+    FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS work_order_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     work_order_id INTEGER NOT NULL,
@@ -97,6 +113,10 @@ DDL_INDEXES = (
     ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
     ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
     ("idx_work_orders_order_no", "work_orders", ("order_no",), "CREATE INDEX IF NOT EXISTS idx_work_orders_order_no ON work_orders(order_no)"),
+    ("idx_wo_contracts_wo", "work_order_contracts", ("work_order_id",), "CREATE INDEX IF NOT EXISTS idx_wo_contracts_wo ON work_order_contracts(work_order_id)"),
+    ("idx_wo_contracts_contract", "work_order_contracts", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_wo_contracts_contract ON work_order_contracts(contract_id)"),
+    ("idx_wo_products_wo", "work_order_products", ("work_order_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_wo ON work_order_products(work_order_id)"),
+    ("idx_wo_products_product", "work_order_products", ("product_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_product ON work_order_products(product_id)"),
 )
 
 

@@ -409,3 +409,73 @@ def get_work_order_workers(conn: sqlite3.Connection, work_order_id: int) -> list
         """,
         (work_order_id,),
     ).fetchall()
+
+
+# --- Work order contracts/products (many-to-one helpers) ---
+
+def set_work_order_contracts(conn: sqlite3.Connection, work_order_id: int, contract_ids: Sequence[int]) -> None:
+    conn.execute("DELETE FROM work_order_contracts WHERE work_order_id = ?", (work_order_id,))
+    unique: list[int] = []
+    for cid in contract_ids:
+        try:
+            cid_int = int(cid)
+        except Exception:
+            continue
+        if cid_int not in unique:
+            unique.append(cid_int)
+    if unique:
+        conn.executemany(
+            "INSERT INTO work_order_contracts(work_order_id, contract_id) VALUES (?, ?)",
+            [(work_order_id, cid) for cid in unique],
+        )
+
+
+def set_work_order_products(conn: sqlite3.Connection, work_order_id: int, product_ids: Sequence[int]) -> None:
+    conn.execute("DELETE FROM work_order_products WHERE work_order_id = ?", (work_order_id,))
+    unique: list[int] = []
+    for pid in product_ids:
+        try:
+            pid_int = int(pid)
+        except Exception:
+            continue
+        if pid_int not in unique:
+            unique.append(pid_int)
+    if unique:
+        conn.executemany(
+            "INSERT INTO work_order_products(work_order_id, product_id) VALUES (?, ?)",
+            [(work_order_id, pid) for pid in unique],
+        )
+
+
+def get_work_order_contract_ids(conn: sqlite3.Connection, work_order_id: int) -> list[int]:
+    rows = conn.execute(
+        "SELECT contract_id FROM work_order_contracts WHERE work_order_id = ? ORDER BY contract_id",
+        (work_order_id,),
+    ).fetchall()
+    result: list[int] = []
+    for r in rows:
+        try:
+            result.append(int(r["contract_id"]))
+        except Exception:
+            try:
+                result.append(int(r[0]))
+            except Exception:
+                pass
+    return result
+
+
+def get_work_order_product_ids(conn: sqlite3.Connection, work_order_id: int) -> list[int]:
+    rows = conn.execute(
+        "SELECT product_id FROM work_order_products WHERE work_order_id = ? ORDER BY product_id",
+        (work_order_id,),
+    ).fetchall()
+    result: list[int] = []
+    for r in rows:
+        try:
+            result.append(int(r["product_id"]))
+        except Exception:
+            try:
+                result.append(int(r[0]))
+            except Exception:
+                pass
+    return result
