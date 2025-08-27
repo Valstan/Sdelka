@@ -1151,13 +1151,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._orders_loading = True
         try:
             rows = self._fetch_orders_page(self._orders_page_size, self._orders_offset)
-        for r in rows:
+            for r in rows:
                 iid = self.orders_tree.insert("", "end", iid=str(r["id"]), values=(r["order_no"], r["date"], r["contract_code"] or "", r["product_name"] or "", f"{r['total_amount']:.2f}"))
                 self._order_rows.append(iid)
             self._orders_offset += len(rows)
             if len(rows) < self._orders_page_size:
                 self._orders_can_load_more = False
-        self._autosize_orders_columns()
+            self._autosize_orders_columns()
         finally:
             self._orders_loading = False
 
