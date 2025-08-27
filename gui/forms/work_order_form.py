@@ -574,7 +574,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_contract_frame.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         place_suggestions_under_entry(entry, self.suggest_contract_frame, self)
@@ -611,7 +611,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
         for w in self.suggest_product_frame.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         place_suggestions_under_entry(entry, self.suggest_product_frame, self)
