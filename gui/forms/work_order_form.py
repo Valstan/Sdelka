@@ -1550,22 +1550,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._refresh_workers_display()
         for w in self.workers_list.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         for w in self.suggest_contract_frame.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         for w in self.suggest_product_frame.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         for w in self.suggest_job_frame.winfo_children():
             try:
-            w.destroy()
+                w.destroy()
             except Exception:
                 pass
         self.suggest_contract_frame.place_forget()
@@ -1579,13 +1579,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
         self.qty_var.set("1")
-            try:
+        try:
             for child in self.items_table.winfo_children():
                 child.destroy()
             self._item_widgets.clear()
             self._item_row_widgets.clear()
-            except Exception:
-                pass
+        except Exception:
+            pass
         self._update_totals()
         try:
             self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])
