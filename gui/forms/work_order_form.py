@@ -104,31 +104,36 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._enforce_right_width_limit(adjust_to_content=False)
         self.bind("<Configure>", _on_resize, add="+")
 
-        # Header form
+        # Header form (Номер, Дата, Контракт, Изделие)
         header = ctk.CTkFrame(left)
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        # 3 колонки
-        for i in range(3):
-            header.grid_columnconfigure(i, weight=1)
+        for i in range(4):
+            header.grid_columnconfigure(i, weight=1 if i >= 2 else 0)
+
+        # Order No (авто подставляется, можно менять)
+        ctk.CTkLabel(header, text="№ наряда").grid(row=0, column=0, sticky="w", padx=5)
+        self.order_no_var = ctk.StringVar(value="")
+        self.order_no_entry = ctk.CTkEntry(header, textvariable=self.order_no_var, width=100)
+        self.order_no_entry.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 6))
 
         # Date
         self.date_var = ctk.StringVar(value=dt.date.today().strftime(CONFIG.date_format))
-        ctk.CTkLabel(header, text="Дата").grid(row=0, column=0, sticky="w", padx=5)
-        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var)
-        self.date_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
+        ctk.CTkLabel(header, text="Дата").grid(row=0, column=1, sticky="w", padx=5)
+        self.date_entry = ctk.CTkEntry(header, textvariable=self.date_var, width=120)
+        self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
         # Contract
-        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=1, sticky="w", padx=5)
+        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=2, sticky="w", padx=5)
         self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр")
-        self.contract_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 6))
+        self.contract_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
 
         # Product
-        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=2, sticky="w", padx=5)
+        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=3, sticky="w", padx=5)
         self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название")
-        self.product_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
+        self.product_entry.grid(row=1, column=3, sticky="ew", padx=5, pady=(0, 6))
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
 
@@ -138,26 +143,34 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_product_frame = create_suggestions_frame(self)
         self.suggest_product_frame.place_forget()
 
-        # Items section
+        # Items section (инлайновые строки + плюсик)
         items_frame = ctk.CTkFrame(left)
-        items_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        for i in range(5):
-            items_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
+        items_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        ctk.CTkLabel(items_frame, text="Виды работ").pack(side="left", padx=5)
+        add_item_btn = ctk.CTkButton(items_frame, text="+", width=32, command=self._show_inline_item_editor)
+        add_item_btn.pack(side="right", padx=5)
 
-        ctk.CTkLabel(items_frame, text="Вид работ").grid(row=0, column=0, sticky="w", padx=5)
-        self.job_entry = ctk.CTkEntry(items_frame, placeholder_text="Начните ввод")
+        # Встроенная панель ввода новой строки (скрыта по умолчанию)
+        self._inline_item_editor = ctk.CTkFrame(left)
+        self._inline_item_editor.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 6))
+        for i in range(5):
+            self._inline_item_editor.grid_columnconfigure(i, weight=1 if i == 0 else 0)
+        self._inline_item_editor.grid_remove()
+
+        ctk.CTkLabel(self._inline_item_editor, text="Вид работ").grid(row=0, column=0, sticky="w", padx=5)
+        self.job_entry = ctk.CTkEntry(self._inline_item_editor, placeholder_text="Начните ввод")
         self.job_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
         self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
         self.job_entry.bind("<Button-1>", lambda e: self.after(1, self._on_job_key))
 
-        ctk.CTkLabel(items_frame, text="Кол-во").grid(row=0, column=1, sticky="w", padx=5)
+        ctk.CTkLabel(self._inline_item_editor, text="Кол-во").grid(row=0, column=1, sticky="w", padx=5)
         self.qty_var = ctk.StringVar(value="1")
-        self.qty_entry = ctk.CTkEntry(items_frame, textvariable=self.qty_var)
+        self.qty_entry = ctk.CTkEntry(self._inline_item_editor, textvariable=self.qty_var)
         self.qty_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.qty_entry.bind("<FocusIn>", lambda e: self._hide_all_suggests())
 
-        self.add_btn = ctk.CTkButton(items_frame, text="Добавить", command=self._add_item)
+        self.add_btn = ctk.CTkButton(self._inline_item_editor, text="Добавить", command=self._add_item)
         self.add_btn.grid(row=1, column=4, sticky="e", padx=5, pady=(0, 6))
 
         self.suggest_job_frame = create_suggestions_frame(self)
@@ -165,7 +178,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Items list (adaptive rows with delete buttons)
         items_list_frame = ctk.CTkFrame(left)
-        items_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=6)
+        items_list_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=6)
         # Header row
         hdr = ctk.CTkFrame(items_list_frame)
         hdr.grid(row=0, column=0, sticky="ew")
@@ -247,17 +260,26 @@ class WorkOrdersForm(ctk.CTkFrame):
                 pass
         self._toggle_items_scroll = _toggle_items_scroll_internal
 
-        # Workers section
-        workers_frame = ctk.CTkFrame(left)
-        workers_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=6)
+        # Workers section (инлайновые строки + плюсик)
+        workers_header = ctk.CTkFrame(left)
+        workers_header.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 6))
+        ctk.CTkLabel(workers_header, text="Работники").pack(side="left", padx=5)
+        add_worker_btn = ctk.CTkButton(workers_header, text="+", width=32, command=self._show_inline_worker_editor)
+        add_worker_btn.pack(side="right", padx=5)
 
-        ctk.CTkLabel(workers_frame, text="Работник").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.worker_entry = ctk.CTkEntry(workers_frame, placeholder_text="Начните ввод ФИО", width=300)
-        self.worker_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        # Встроенный редактор ввода работника (скрыт по умолчанию)
+        self._inline_worker_editor = ctk.CTkFrame(left)
+        self._inline_worker_editor.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 6))
+        for i in range(2):
+            self._inline_worker_editor.grid_columnconfigure(i, weight=1 if i == 0 else 0)
+        self._inline_worker_editor.grid_remove()
+        ctk.CTkLabel(self._inline_worker_editor, text="Работник").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.worker_entry = ctk.CTkEntry(self._inline_worker_editor, placeholder_text="Начните ввод ФИО")
+        self.worker_entry.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
         self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
         self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
-        ctk.CTkButton(workers_frame, text="Добавить", command=self._add_worker_from_entry).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ctk.CTkButton(self._inline_worker_editor, text="Добавить", command=self._add_worker_from_entry).grid(row=1, column=1, sticky="e", padx=5, pady=5)
 
         self.suggest_worker_frame = create_suggestions_frame(self)
         self.suggest_worker_frame.place_forget()
@@ -266,7 +288,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
         self.workers_list = ctk.CTkScrollableFrame(left)
-        self.workers_list.grid(row=4, column=0, sticky="nsew", padx=10, pady=(0, 8))
+        self.workers_list.grid(row=6, column=0, sticky="nsew", padx=10, pady=(0, 8))
         try:
             can_workers = self.workers_list._parent_canvas
             sb_workers = self.workers_list._scrollbar
@@ -1164,6 +1186,11 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception:
             pass
         self.date_var.set(data.date)
+        # Показать номер наряда
+        try:
+            self.order_no_var.set(str(data.order_no))
+        except Exception:
+            pass
         # contract text
         with get_connection() as conn:
             c = conn.execute("SELECT code FROM contracts WHERE id=?", (data.contract_id,)).fetchone()
@@ -1202,7 +1229,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.worker_amounts.clear()
         with get_connection() as conn:
             for wid, amount in data.workers:
-                r = conn.execute("SELECT full_name FROM workers WHERE id=?", (wid,)).fetchone()
+                r = conn.execute("SELECT full_name FROM workers WHERE id=\?", (wid,)).fetchone()
                 self.selected_workers[wid] = r["full_name"] if r else str(wid)
                 try:
                     self.worker_amounts[wid] = float(amount)
@@ -1236,33 +1263,37 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception as exc:
             messagebox.showwarning("Проверка", str(exc))
             return None
-        
+        # Номер наряда (необязателен; если указан — проверим число)
+        order_no_val: int | None = None
+        raw_no = (self.order_no_var.get() or "").strip()
+        if raw_no:
+            try:
+                order_no_val = int(raw_no)
+                if order_no_val <= 0:
+                    raise ValueError
+            except Exception:
+                messagebox.showwarning("Проверка", "Номер наряда должен быть положительным числом")
+                return None
         # Проверяем работников
         worker_ids = list(self.selected_workers.keys())
         if not worker_ids:
             messagebox.showwarning("Проверка", "Добавьте работников в бригаду")
             return None
-        
         # Проверяем на дубликаты и некорректные ID
         unique_worker_ids = list(set(worker_ids))
         if len(unique_worker_ids) != len(worker_ids):
             messagebox.showwarning("Проверка", "Обнаружены дублирующиеся работники в бригаде")
             return None
-        
-        # Проверяем корректность ID
         for worker_id in unique_worker_ids:
             if not isinstance(worker_id, int):
                 messagebox.showwarning("Проверка", f"Некорректный ID работника: {worker_id}")
                 return None
-            # Разрешаем отрицательные ID для ручно добавленных работников
             if worker_id > 0:
-                # Для положительных ID проверяем существование в БД
                 with get_connection() as conn:
                     exists = conn.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,)).fetchone()
                     if not exists:
                         messagebox.showwarning("Проверка", f"Работник с ID {worker_id} не найден в базе данных")
                         return None
-        
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
         for i in self.item_rows:
@@ -1270,19 +1301,18 @@ class WorkOrdersForm(ctk.CTkFrame):
                 messagebox.showwarning("Проверка", "Выберите вид работ из подсказок для каждой строки")
                 return None
             items.append(WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity))
-        
         # Создаем список работников с именами и суммами
         workers: list[WorkOrderWorkerInput] = []
         for worker_id, worker_name in self.selected_workers.items():
             amount = self.worker_amounts.get(worker_id)
             workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name, amount=amount))
-        
         return WorkOrderInput(
+            order_no=order_no_val,
             date=date_str,
             product_id=self.selected_product_id,
             contract_id=int(self.selected_contract_id),
             items=items,
-            workers=workers,  # Передаем работников с именами
+            workers=workers,
         )
 
     def _save(self) -> None:
@@ -1349,7 +1379,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_product_id = None
         self.selected_workers.clear()
         self.item_rows.clear()
-        self._manual_worker_counter = -1  # Сбрасываем счетчик ручных работников
+        self._manual_worker_counter = -1
         self._refresh_workers_display()
         for w in self.workers_list.winfo_children():
             try:
@@ -1375,10 +1405,13 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_product_frame.place_forget()
         self.suggest_job_frame.place_forget()
         self.date_var.set(dt.date.today().strftime(CONFIG.date_format))
+        try:
+            self.order_no_var.set("")
+        except Exception:
+            pass
         self.contract_entry.delete(0, "end")
         self.product_entry.delete(0, "end")
         self.qty_var.set("1")
-        # Очистить табличный контейнер (если уже создан)
         try:
             for child in self.items_table.winfo_children():
                 child.destroy()
@@ -1387,13 +1420,25 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception:
             pass
         self._update_totals()
-        # вернуть кнопку в обычный режим
         try:
-            self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])  # стандартный цвет темы
+            self.save_btn.configure(text="Сохранить", fg_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"])
         except Exception:
             self.save_btn.configure(text="Сохранить")
-        # Снять режим просмотра: разблокировать поля ввода и необходимые кнопки
         try:
             self._set_edit_locked(False)
+        except Exception:
+            pass
+
+    def _show_inline_item_editor(self) -> None:
+        try:
+            self._inline_item_editor.grid()
+            self.job_entry.focus_set()
+        except Exception:
+            pass
+
+    def _show_inline_worker_editor(self) -> None:
+        try:
+            self._inline_worker_editor.grid()
+            self.worker_entry.focus_set()
         except Exception:
             pass

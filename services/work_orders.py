@@ -28,6 +28,7 @@ class WorkOrderWorkerInput:
 
 @dataclass
 class WorkOrderInput:
+    order_no: int | None = None
     date: str
     product_id: int | None
     contract_id: int
@@ -67,7 +68,11 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
 
     total = _round_rub(total)
 
-    order_no = q.next_order_no(conn)
+    # Определяем номер наряда: из данных или следующий по счетчику
+    order_no = int(data.order_no) if (getattr(data, "order_no", None) not in (None, "")) else q.next_order_no(conn)
+    # Проверим уникальность, чтобы не уткнуться в UNIQUE
+    if q.order_no_in_use(conn, order_no):
+        raise ValueError(f"Номер наряда {order_no} уже используется. Укажите другой номер.")
     work_order_id = q.insert_work_order(conn, order_no, data.date, data.product_id, data.contract_id, float(total))
 
     for (job_type_id, quantity, unit_price, line_amount) in line_values:
@@ -244,7 +249,14 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
 
     total = _round_rub(total)
 
-    q.update_work_order_header(conn, work_order_id, data.date, data.product_id, data.contract_id, float(total))
+    # Обновим заголовок, учитывая возможную смену номера наряда
+    current = q.get_work_order_header(conn, work_order_id)
+    cur_no = int(current["order_no"]) if current else None
+    new_no = cur_no if getattr(data, "order_no", None) in (None, "") else int(data.order_no)
+    if new_no != cur_no:
+        if q.order_no_in_use(conn, new_no, exclude_id=work_order_id):
+            raise ValueError(f"Номер наряда {new_no} уже используется. Укажите другой номер.")
+    q.update_work_order_header(conn, work_order_id, new_no, data.date, data.product_id, data.contract_id, float(total))
 
     q.delete_work_order_items(conn, work_order_id)
     for (job_type_id, quantity, unit_price, line_amount) in line_values:

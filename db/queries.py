@@ -300,10 +300,10 @@ def insert_work_order(conn: sqlite3.Connection, order_no: int, date: str, produc
     return cur.lastrowid
 
 
-def update_work_order_header(conn: sqlite3.Connection, work_order_id: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> None:
+def update_work_order_header(conn: sqlite3.Connection, work_order_id: int, order_no: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> None:
     conn.execute(
-        "UPDATE work_orders SET date=?, product_id=?, contract_id=?, total_amount=? WHERE id=?",
-        (date, product_id, contract_id, total_amount, work_order_id),
+        "UPDATE work_orders SET order_no=?, date=?, product_id=?, contract_id=?, total_amount=? WHERE id=?",
+        (order_no, date, product_id, contract_id, total_amount, work_order_id),
     )
 
 
@@ -357,6 +357,14 @@ def set_work_order_workers_with_amounts(conn: sqlite3.Connection, work_order_id:
 def next_order_no(conn: sqlite3.Connection) -> int:
     row = conn.execute("SELECT COALESCE(MAX(order_no), 0) + 1 AS next_no FROM work_orders").fetchone()
     return int(row["next_no"]) if row else 1
+
+
+def order_no_in_use(conn: sqlite3.Connection, order_no: int, exclude_id: int | None = None) -> bool:
+    if exclude_id is not None:
+        row = conn.execute("SELECT 1 FROM work_orders WHERE order_no=? AND id<>?", (order_no, exclude_id)).fetchone()
+    else:
+        row = conn.execute("SELECT 1 FROM work_orders WHERE order_no=?", (order_no,)).fetchone()
+    return bool(row)
 
 
 def fetch_work_orders(conn: sqlite3.Connection, where_sql: str = "", params: Sequence[Any] | None = None) -> list[sqlite3.Row]:

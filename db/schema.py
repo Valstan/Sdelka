@@ -96,6 +96,7 @@ DDL_INDEXES = (
     ("idx_contracts_code", "contracts", ("code",), "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)"),
     ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
     ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
+    ("idx_work_orders_order_no", "work_orders", ("order_no",), "CREATE INDEX IF NOT EXISTS idx_work_orders_order_no ON work_orders(order_no)"),
 )
 
 
