@@ -128,6 +128,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.order_no_var = ctk.StringVar(value="")
         self.order_no_entry = ctk.CTkEntry(header, textvariable=self.order_no_var, width=100)
         self.order_no_entry.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 6))
+        # Подставим следующий свободный номер сразу
+        try:
+            with get_connection() as conn:
+                self.order_no_var.set(str(q.next_order_no(conn)))
+        except Exception:
+            pass
 
         # Date
         self.date_var = ctk.StringVar(value=dt.date.today().strftime(CONFIG.date_format))
@@ -136,19 +142,21 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
-        # Contract (один, без добавления)
-        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=2, sticky="w", padx=5)
-        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Начните вводить шифр")
-        self.contract_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
-        self.contract_entry.bind("<KeyRelease>", lambda e: self._on_contract_key_for(self.contract_entry))
-        self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key_for(self.contract_entry))
-
-        # Product (первый) + кнопка добавления
-        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=4, sticky="w", padx=5)
+        # Product (сначала выбираем изделие)
+        ctk.CTkLabel(header, text="Изделие").grid(row=0, column=2, sticky="w", padx=5)
         self.product_entry = ctk.CTkEntry(header, placeholder_text="Номер/Название")
-        self.product_entry.grid(row=1, column=4, sticky="ew", padx=5, pady=(0, 6))
+        self.product_entry.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         self.product_entry.bind("<KeyRelease>", lambda e: self._on_product_key_for(self.product_entry))
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key_for(self.product_entry))
+
+        # Contract (заполняется автоматически по изделию, недоступно для редактирования)
+        ctk.CTkLabel(header, text="Контракт").grid(row=0, column=4, sticky="w", padx=5)
+        self.contract_entry = ctk.CTkEntry(header, placeholder_text="Авто")
+        self.contract_entry.grid(row=1, column=4, sticky="ew", padx=5, pady=(0, 6))
+        try:
+            self.contract_entry.configure(state="disabled")
+        except Exception:
+            pass
 
         # Suggestion frames (один общий для контрактов, один общий для изделий)
         self.suggest_contract_frame = create_suggestions_frame(self)
@@ -531,6 +539,29 @@ class WorkOrdersForm(ctk.CTkFrame):
         ):
             frame.place_forget()
 
+    def _find_job_entry_row(self, widget) -> tuple[ctk.CTkEntry | None, int | None]:
+        """Find job-entry and its row index by walking up from clicked widget.
+
+        Returns (entry, row_index) or (None, None).
+        """
+        try:
+            # Build mapping entry->row_idx
+            entries: list[ctk.CTkEntry] = []
+            for idx, wmap in enumerate(self._item_widgets):
+                ent = wmap.get("name")
+                if ent is not None:
+                    entries.append(ent)
+            # Walk up masters from clicked widget and test membership
+            w = widget
+            while w is not None:
+                for idx, ent in enumerate(entries):
+                    if w == ent:
+                        return ent, idx
+                w = getattr(w, "master", None)
+        except Exception:
+            pass
+        return None, None
+
     def _place_suggest_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         place_suggestions_under_entry(entry, frame, self)
 
@@ -605,7 +636,53 @@ class WorkOrdersForm(ctk.CTkFrame):
             entry.insert(0, label)
         except Exception:
             pass
+        # Установим выбранное изделие
+        self.selected_product_id = product_id
         record_use("work_orders.product", label)
+        # Автоподстановка контракта по изделию
+        try:
+            with get_connection() as conn:
+                row = conn.execute(
+                    "SELECT c.id AS cid, c.code AS code FROM products p LEFT JOIN contracts c ON c.id = p.contract_id WHERE p.id=?",
+                    (product_id,),
+                ).fetchone()
+                code = None
+                cid = None
+                if row:
+                    try:
+                        cid = int(row["cid"]) if row["cid"] is not None else None
+                        code = row["code"]
+                    except Exception:
+                        cid = int(row[0]) if row[0] is not None else None
+                        code = row[1] if len(row) > 1 else None
+                # Если у изделия нет контракта — привяжем к "Без контракта"
+                if cid is None:
+                    try:
+                        cid = q.get_or_create_default_contract(conn)
+                        q.set_product_contract(conn, int(product_id), int(cid))
+                        code = conn.execute("SELECT code FROM contracts WHERE id=?", (cid,)).fetchone()[0]
+                    except Exception:
+                        pass
+                self.selected_contract_id = cid
+                try:
+                    self.contract_entry.configure(state="normal")
+                except Exception:
+                    pass
+                try:
+                    self.contract_entry.delete(0, "end")
+                    if code:
+                        self.contract_entry.insert(0, str(code))
+                except Exception:
+                    pass
+                try:
+                    self.contract_entry.configure(state="disabled")
+                except Exception:
+                    pass
+        except Exception:
+            try:
+                self.contract_entry.configure(state="disabled")
+            except Exception:
+                pass
         self.suggest_product_frame.place_forget()
 
     # Убраны добавления дополнительных контрактов (разрешён только один)
@@ -653,6 +730,40 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.product_entry.delete(0, "end")
         self.product_entry.insert(0, label)
         self.selected_product_id = product_id
+        # Автоподстановка контракта по изделию
+        try:
+            with get_connection() as conn:
+                row = conn.execute(
+                    "SELECT c.id AS cid, c.code AS code FROM products p LEFT JOIN contracts c ON c.id = p.contract_id WHERE p.id=?",
+                    (product_id,),
+                ).fetchone()
+                code = None
+                cid = None
+                if row:
+                    try:
+                        cid = int(row["cid"]) if row["cid"] is not None else None
+                        code = row["code"]
+                    except Exception:
+                        cid = int(row[0]) if row[0] is not None else None
+                        code = row[1] if len(row) > 1 else None
+                if cid is None:
+                    try:
+                        cid = q.get_or_create_default_contract(conn)
+                        q.set_product_contract(conn, int(product_id), int(cid))
+                        code = conn.execute("SELECT code FROM contracts WHERE id=?", (cid,)).fetchone()[0]
+                    except Exception:
+                        pass
+                self.selected_contract_id = cid
+                try:
+                    self.contract_entry.configure(state="normal")
+                    self.contract_entry.delete(0, "end")
+                    if code:
+                        self.contract_entry.insert(0, str(code))
+                    self.contract_entry.configure(state="disabled")
+                except Exception:
+                    pass
+        except Exception:
+            pass
         record_use("work_orders.product", label)
         self.suggest_product_frame.place_forget()
 
@@ -676,6 +787,14 @@ class WorkOrdersForm(ctk.CTkFrame):
         widget = getattr(event, "widget", None)
         if widget is None:
             self._hide_all_suggests()
+            return
+        # Если клик внутри поля "Вид работ" — откроем подсказки по месту клика и не будем их скрывать
+        ent, row_idx = self._find_job_entry_row(widget)
+        if ent is not None and row_idx is not None:
+            try:
+                self._on_job_key_edit(ent, row_idx)
+            except Exception:
+                pass
             return
         for frame in (self.suggest_contract_frame, self.suggest_product_frame, self.suggest_job_frame, self.suggest_worker_frame):
             w = widget
@@ -719,6 +838,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         name_entry = ctk.CTkEntry(self.items_table, textvariable=name_var)
         name_entry.grid(row=row_index, column=0, sticky="ew", padx=4, pady=2)
         name_entry.bind("<KeyRelease>", lambda _e=None, ent=name_entry, i=idx: self._on_job_key_edit(ent, i))
+        name_entry.bind("<FocusIn>", lambda _e=None, ent=name_entry, i=idx: self._on_job_key_edit(ent, i))
+        # При клике фокус уже у виджета — откроем подсказки в том же тикe
+        name_entry.bind("<Button-1>", lambda e, ent=name_entry, i=idx: self._on_job_click_show(e, ent, i))
 
         qty_var = ctk.StringVar(value=str(qty))
         qty_entry = ctk.CTkEntry(self.items_table, textvariable=qty_var, width=self._col_qty_w)
@@ -834,8 +956,31 @@ class WorkOrdersForm(ctk.CTkFrame):
         text = (entry.get() or "").strip()
         with get_connection() as conn:
             rows = suggestions.suggest_job_types(conn, text, CONFIG.autocomplete_limit)
+        # Если пустой ввод — дополнительно показать недавние из истории
+        if not text:
+            extras: list[tuple[int, str]] = []
+            for label in get_recent("work_orders.job_type", "", CONFIG.autocomplete_limit):
+                try:
+                    with get_connection() as conn:
+                        r = conn.execute("SELECT id FROM job_types WHERE name_norm = ?", (label.casefold(),)).fetchone()
+                        if r:
+                            jt_id = int(r["id"] if isinstance(r, dict) else r[0])
+                            extras.append((jt_id, label))
+                except Exception:
+                    pass
+            # добавим, избегая дублей по id
+            seen = {rid for rid, _ in rows}
+            rows.extend((rid, lbl) for rid, lbl in extras if rid not in seen)
         for jt_id, label in rows:
             create_suggestion_button(self.suggest_job_frame, text=label, command=lambda i=jt_id, l=label, row=idx: self._pick_job_for_row(row, i, l)).pack(fill="x", padx=2, pady=1)
+
+    def _on_job_click_show(self, event, entry: ctk.CTkEntry, idx: int):
+        # Показ подсказок по клику и остановка всплытия события, чтобы глобальный клик не спрятал подсказки
+        try:
+            self._on_job_key_edit(entry, idx)
+        except Exception:
+            pass
+        return "break"
 
     def _pick_job_for_row(self, row_idx: int, job_type_id: int, label: str) -> None:
         # Установить вид работ и цену из БД, пересчитать сумму
@@ -1058,12 +1203,17 @@ class WorkOrdersForm(ctk.CTkFrame):
         """Включает/выключает режим просмотра (блокирует поля формы)."""
         self._edit_locked = locked
         # В текущей версии нет отдельных job_entry/qty_entry (редактирование построчное)
-        widgets = [self.date_entry, self.contract_entry, self.product_entry]
+        widgets = [self.date_entry, self.product_entry]
         for w in widgets:
             try:
                 w.configure(state=("disabled" if locked else "normal"))
             except Exception:
                 pass
+        # Контракт всегда недоступен для ручного ввода
+        try:
+            self.contract_entry.configure(state="disabled")
+        except Exception:
+            pass
         # Кнопки: в режиме просмотра активна только "Изменить"; в режиме редактирования — "Сохранить" и "Удалить"
         try:
             self.save_btn.configure(state=("disabled" if locked else "normal"))
@@ -1285,6 +1435,8 @@ class WorkOrdersForm(ctk.CTkFrame):
             name_entry.grid(row=row_index, column=0, sticky="ew", padx=4, pady=2)
             cur_idx = len(self.item_rows) - 1
             name_entry.bind("<KeyRelease>", lambda _e=None, ent=name_entry, i=cur_idx: self._on_job_key_edit(ent, i))
+            name_entry.bind("<FocusIn>", lambda _e=None, ent=name_entry, i=cur_idx: self._on_job_key_edit(ent, i))
+            name_entry.bind("<Button-1>", lambda e, ent=name_entry, i=cur_idx: self._on_job_click_show(e, ent, i))
             qty_var = ctk.StringVar(value=str(qty))
             qty_entry = ctk.CTkEntry(self.items_table, textvariable=qty_var, width=self._col_qty_w)
             qty_entry.grid(row=row_index, column=1, sticky="e", padx=4, pady=2)
@@ -1419,7 +1571,12 @@ class WorkOrdersForm(ctk.CTkFrame):
                     # Создадим продукт: если удалось выделить номер, используем его; иначе номер = имя
                     name = text
                     no = product_no if product_no else text
-                    new_id = q.upsert_product(conn, name, no)
+                    # Привязка нового изделия к текущему выбранному контракту
+                    head_contract_id = extra_contract_ids[0] if extra_contract_ids else None
+                    try:
+                        q.upsert_product(conn, name, no, int(head_contract_id) if head_contract_id is not None else None)
+                    except Exception:
+                        q.upsert_product(conn, name, no)
                     row2 = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (no.casefold(), name.casefold())).fetchone()
                     if row2:
                         extra_product_ids.append(int(row2["id"]))
@@ -1529,7 +1686,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_job_frame.place_forget()
         self.date_var.set(dt.date.today().strftime(CONFIG.date_format))
         try:
-            self.order_no_var.set("")
+            # Автозаполнение следующего номера при создании нового наряда
+            with get_connection() as conn:
+                self.order_no_var.set(str(q.next_order_no(conn)))
         except Exception:
             pass
         self.contract_entry.delete(0, "end")

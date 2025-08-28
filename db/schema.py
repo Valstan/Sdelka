@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS products (
     name TEXT NOT NULL UNIQUE,
     name_norm TEXT,
     product_no TEXT NOT NULL UNIQUE,
-    product_no_norm TEXT
+    product_no_norm TEXT,
+    contract_id INTEGER,
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS contracts (
@@ -102,6 +104,7 @@ DDL_INDEXES = (
     ("idx_products_name_no", "products", ("name", "product_no"), "CREATE INDEX IF NOT EXISTS idx_products_name_no ON products(name, product_no)"),
     ("idx_products_name_norm", "products", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_products_name_norm ON products(name_norm)"),
     ("idx_products_no_norm", "products", ("product_no_norm",), "CREATE INDEX IF NOT EXISTS idx_products_no_norm ON products(product_no_norm)"),
+    ("idx_products_contract", "products", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_products_contract ON products(contract_id)"),
     ("idx_contracts_code", "contracts", ("code",), "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)"),
     ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
     ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
@@ -123,6 +126,7 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
 
     migrate_workers_if_needed(conn)
     add_norm_columns_and_backfill(conn)
+    ensure_products_contract_column(conn)
 
     # Ensure new columns for worker allocations are present and backfilled
     ensure_work_order_workers_amounts(conn)
@@ -261,6 +265,22 @@ def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
                     r["id"],
                 ),
             )
+
+
+def ensure_products_contract_column(conn: sqlite3.Connection) -> None:
+    """Ensure products.contract_id exists for strict product-to-contract binding.
+
+    - Adds INTEGER column if missing
+    - Does not backfill; existing products remain without contract until set via UI/import
+    """
+    try:
+        if not table_exists(conn, "products"):
+            return
+        cols = set(get_table_columns(conn, "products"))
+        if "contract_id" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN contract_id INTEGER")
+    except Exception as exc:  # noqa: TRY003
+        logger.warning("ensure_products_contract_column failed: %s", exc)
 
 
 def create_indexes_if_possible(conn: sqlite3.Connection) -> None:

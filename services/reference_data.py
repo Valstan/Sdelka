@@ -45,12 +45,12 @@ def list_job_types(conn: sqlite3.Connection, prefix: str | None = None, limit: i
 
 # Products
 
-def create_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
-    return q.insert_product(conn, name, product_no)
+def create_product(conn: sqlite3.Connection, name: str, product_no: str, contract_id: int | None = None) -> int:
+    return q.insert_product(conn, name, product_no, contract_id)
 
 
-def save_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str) -> None:
-    q.update_product(conn, product_id, name, product_no)
+def save_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str, contract_id: int | None = None) -> None:
+    q.update_product(conn, product_id, name, product_no, contract_id)
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:

@@ -47,8 +47,21 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
                 refs_upserts += 1
 
             # Products
-            for r in src_conn.execute("SELECT name, product_no FROM products").fetchall():
-                q.upsert_product(tgt_conn, r["name"], r["product_no"])
+            for r in src_conn.execute("SELECT name, product_no, contract_id FROM products").fetchall():
+                # Map contract_id by code if available
+                tgt_contract_id: Optional[int] = None
+                try:
+                    if r.get("contract_id"):
+                        row = src_conn.execute("SELECT code FROM contracts WHERE id=?", (r["contract_id"],)).fetchone()
+                        if row and row.get("code"):
+                            c = q.get_contract_by_code(tgt_conn, row["code"])  # map by code
+                            if c:
+                                tgt_contract_id = int(c["id"])  # type: ignore[index]
+                except Exception:
+                    tgt_contract_id = None
+                if tgt_contract_id is None:
+                    tgt_contract_id = q.get_or_create_default_contract(tgt_conn)
+                q.upsert_product(tgt_conn, r["name"], r["product_no"], tgt_contract_id)
                 refs_upserts += 1
 
             # Contracts

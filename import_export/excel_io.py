@@ -40,11 +40,12 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
         },
     },
     "products": {
-        "columns": ["id", "name", "product_no"],
+        "columns": ["id", "name", "product_no", "contract_id"],
         "headers": {
             "id": "Идентификатор",
             "name": "Наименование",
             "product_no": "№ изд.",
+            "contract_id": "ID контракта",
         },
     },
     "contracts": {
@@ -425,8 +426,11 @@ def import_xlsx_full(file_path: str | Path, progress_cb: callable | None = None)
                         product_id = None
                         prod_no_clean = _norm_str(prod_no)
                         if prod_no_clean:
-                            # name = "Изделие", product_no = код
-                            q.upsert_product(conn, "Изделие", prod_no_clean)
+                            # name = "Изделие", product_no = код, привязка к контракту листа (или Без контракта)
+                            prod_cid = contract_id
+                            if not prod_cid:
+                                prod_cid = q.get_or_create_default_contract(conn)
+                            q.upsert_product(conn, "Изделие", prod_no_clean, prod_cid)
                             products_count += 1
                             rowp = conn.execute("SELECT id FROM products WHERE product_no = ?", (prod_no_clean,)).fetchone()
                             if rowp:
@@ -548,6 +552,7 @@ def import_products_from_excel(conn: sqlite3.Connection, file_path: str | Path) 
         "изделие": "name",
         "№ изд.": "product_no",
         "номер изделия": "product_no",
+        "контракт": "contract_code",
     }
     rename_map: dict[str, str] = {}
     for col in list(df.columns):
@@ -568,7 +573,19 @@ def import_products_from_excel(conn: sqlite3.Connection, file_path: str | Path) 
 
     count = 0
     for row in df.itertuples(index=False):
-        count += q.upsert_product(conn, str(row.name), str(row.product_no)) or 0
+        contract_id = None
+        code = getattr(row, "contract_code", None)
+        if code is not None:
+            code_str = str(code).strip()
+            if code_str:
+                q.upsert_contract(conn, code_str, None, None, None)
+                r = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (code_str.casefold(),)).fetchone()
+                if r:
+                    try:
+                        contract_id = int(r["id"] if isinstance(r, dict) else r[0])
+                    except Exception:
+                        contract_id = None
+        count += q.upsert_product(conn, str(row.name), str(row.product_no), contract_id) or 0
     logger.info("Импортировано изделий: %s", count)
     return count
 
@@ -719,7 +736,7 @@ def generate_job_types_template(file_path: str | Path) -> Path:
 
 
 def generate_products_template(file_path: str | Path) -> Path:
-    df = pd.DataFrame({"Наименование": [], "№ изд.": []})
+    df = pd.DataFrame({"Наименование": [], "№ изд.": [], "Контракт": []})
     file_path = Path(file_path)
     df.to_excel(file_path, index=False)
     return file_path

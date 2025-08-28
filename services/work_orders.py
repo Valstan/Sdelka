@@ -60,9 +60,20 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         if data.product_id is not None:
             product_ids = [int(data.product_id)]
     for pid in product_ids:
-        p_row = conn.execute("SELECT id FROM products WHERE id = ?", (pid,)).fetchone()
+        p_row = conn.execute("SELECT id, contract_id FROM products WHERE id = ?", (pid,)).fetchone()
         if not p_row:
             raise ValueError("Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле.")
+        # Жесткая привязка изделия к одному контракту: если не задан — привяжем к 'Без контракта'; если задан и не совпадает — ошибка
+        try:
+            prod_contract_id = p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+        except Exception:
+            prod_contract_id = None
+        if prod_contract_id is None:
+            default_cid = q.get_or_create_default_contract(conn)
+            q.set_product_contract(conn, int(pid), int(default_cid))
+            prod_contract_id = default_cid
+        if int(prod_contract_id) != int(data.contract_id):
+            raise ValueError("Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту.")
 
     total = Decimal("0")
     line_values: list[tuple[int, float, float, float]] = []
