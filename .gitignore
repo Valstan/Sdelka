@@ -1,3 +1,6 @@
+# Project data directory (completely ignored)
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -176,6 +179,7 @@ cython_debug/
 .idea/
 
 # Project data and artifacts (should not be in VCS)
+/data/
 /data/*.db
 /data/*.sqlite
 /data/*.sqlite3
