@@ -16,6 +16,20 @@ from config.settings import CONFIG
 
 logger = logging.getLogger(__name__)
 
+# Импорт модуля для работы с CSV контрактами
+try:
+    from .contracts_csv_io import import_contracts_from_csv, export_contracts_to_csv, generate_contracts_template
+except ImportError:
+    # Если модуль не найден, создаем заглушки
+    def import_contracts_from_csv(*args, **kwargs):
+        raise ImportError("Модуль contracts_csv_io не найден")
+    
+    def export_contracts_to_csv(*args, **kwargs):
+        raise ImportError("Модуль contracts_csv_io не найден")
+    
+    def generate_contracts_template(*args, **kwargs):
+        raise ImportError("Модуль contracts_csv_io не найден")
+
 
 # Настройки экспорта человеческих заголовков и набора колонок
 TABLE_EXPORT_CONFIG: dict[str, dict] = {
@@ -49,10 +63,16 @@ TABLE_EXPORT_CONFIG: dict[str, dict] = {
         },
     },
     "contracts": {
-        "columns": ["id", "code", "start_date", "end_date", "description"],
+        "columns": ["id", "code", "name", "contract_type", "executor", "igk", "contract_number", "bank_account", "start_date", "end_date", "description"],
         "headers": {
             "id": "Идентификатор",
             "code": "Шифр контракта",
+            "name": "Наименование",
+            "contract_type": "Вид контракта",
+            "executor": "Исполнитель",
+            "igk": "ИГК",
+            "contract_number": "Номер контракта",
+            "bank_account": "Отдельный счет",
             "start_date": "Дата начала",
             "end_date": "Дата окончания",
             "description": "Описание",

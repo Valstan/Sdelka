@@ -109,19 +109,11 @@ class SettingsView(ctk.CTkFrame):
         # --- Импорт / Экспорт ---
         io_box = ctk.CTkFrame(self)
         io_box.pack(fill="x", padx=10, pady=10)
-        ctk.CTkLabel(io_box, text="Импорт из Excel").pack(anchor="w")
+        ctk.CTkLabel(io_box, text="Импорт данных").pack(anchor="w")
         row1 = ctk.CTkFrame(io_box)
         row1.pack(fill="x", pady=(4, 8))
-        self._btn_imp_workers = ctk.CTkButton(row1, text="Импорт Работников", command=self._import_workers)
-        self._btn_imp_workers.pack(side="left", padx=5)
-        self._btn_imp_jobs = ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs)
-        self._btn_imp_jobs.pack(side="left", padx=5)
-        self._btn_imp_products = ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products)
-        self._btn_imp_products.pack(side="left", padx=5)
-        self._btn_imp_contracts = ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts)
-        self._btn_imp_contracts.pack(side="left", padx=5)
-        self._btn_imp_full = ctk.CTkButton(row1, text="Импорт нарядов", command=self._import_full_xlsx)
-        self._btn_imp_full.pack(side="left", padx=5)
+        self._btn_import_unified = ctk.CTkButton(row1, text="Импорт данных", command=self._import_unified)
+        self._btn_import_unified.pack(side="left", padx=5)
 
         ctk.CTkLabel(io_box, text="Экспорт таблиц").pack(anchor="w")
         row2 = ctk.CTkFrame(io_box)
@@ -134,6 +126,8 @@ class SettingsView(ctk.CTkFrame):
         self._btn_exp_products.pack(side="left", padx=5)
         self._btn_exp_contracts = ctk.CTkButton(row2, text="Экспорт Контрактов", command=lambda: self._export_table("contracts"))
         self._btn_exp_contracts.pack(side="left", padx=5)
+        self._btn_exp_contracts_csv = ctk.CTkButton(row2, text="Экспорт CSV Контрактов", command=self._export_contracts_csv)
+        self._btn_exp_contracts_csv.pack(side="left", padx=5)
         self._btn_exp_all = ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all)
         self._btn_exp_all.pack(side="left", padx=5)
 
@@ -148,6 +142,8 @@ class SettingsView(ctk.CTkFrame):
         self._btn_tpl_products.pack(side="left", padx=5)
         self._btn_tpl_contracts = ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts"))
         self._btn_tpl_contracts.pack(side="left", padx=5)
+        self._btn_tpl_contracts_csv = ctk.CTkButton(row3, text="Шаблон CSV Контрактов", command=self._save_contracts_csv_template)
+        self._btn_tpl_contracts_csv.pack(side="left", padx=5)
 
         # Применить ограничения режима только просмотра
         if self._readonly:
@@ -157,10 +153,7 @@ class SettingsView(ctk.CTkFrame):
                 self._btn_build_exe,
                 self._btn_changelog,
                 self._db_path_entry,
-                self._btn_imp_workers,
-                self._btn_imp_jobs,
-                self._btn_imp_products,
-                self._btn_imp_contracts,
+                self._btn_import_unified,
                 self._opt_list_font,
                 self._opt_ui_font,
             ):
@@ -331,66 +324,52 @@ class SettingsView(ctk.CTkFrame):
     def _ask_save(self, title: str, default_ext: str, filter_name: str, initialfile: str | None = None) -> str | None:
         return filedialog.asksaveasfilename(title=title, defaultextension=default_ext, initialfile=initialfile or "", filetypes=[(filter_name, f"*{default_ext}")])
 
-    def _import_workers(self) -> None:
-        from import_export.excel_io import import_workers_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_workers_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано работников: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
-
-    def _import_jobs(self) -> None:
-        from import_export.excel_io import import_job_types_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_job_types_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано видов работ: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
-
-    def _import_products(self) -> None:
-        from import_export.excel_io import import_products_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_products_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано изделий: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
-
-    def _import_contracts(self) -> None:
-        from import_export.excel_io import import_contracts_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_contracts_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано контрактов: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
-
-    def _import_full_xlsx(self) -> None:
+    def _import_unified(self) -> None:
         if self._readonly:
             messagebox.showwarning("Импорт", "Режим только для чтения — импорт недоступен")
             return
-        from import_export.excel_io import import_xlsx_full
-        path = self._ask_open(title="Выберите файл с нарядами", default_ext=".xlsx", filter_name="Книги (*.xlsx;*.xls;*.ods)", patterns="*.xlsx;*.xls;*.ods")
+        from import_engine import import_data
+        path = filedialog.askopenfilename(
+            title="Выберите файл для импорта",
+            filetypes=[
+                ("Поддерживаемые", "*.txt;*.csv;*.xls;*.xlsx;*.ods;*.docx;*.odt;*.html;*.xml;*.pdf;*.dbf;*.json"),
+                ("Все файлы", "*.*"),
+            ],
+        )
         if not path:
             return
-        # Progress window
+        # Диалог dry-run/настройки
+        dry = tk.BooleanVar(value=True)
+        preset = tk.StringVar(value="Авто")
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Импорт данных — параметры")
+        ctk.CTkLabel(dlg, text="Режим").pack(anchor="w", padx=10, pady=(10, 2))
+        ctk.CTkCheckBox(dlg, text="Черновой прогон (без записи в БД)", variable=dry).pack(anchor="w", padx=12)
+        ctk.CTkLabel(dlg, text="Профиль").pack(anchor="w", padx=10, pady=(10, 2))
+        ctk.CTkOptionMenu(dlg, values=["Авто", "Наряды", "Цена-лист", "Справочники"], variable=preset).pack(anchor="w", padx=12)
+        ctk.CTkLabel(dlg, text="Подсказка: Авто — определить автоматически; Наряды — импорт нарядов; Цена-лист — виды работ с ценами; Справочники — работники/изделия/контракты.").pack(anchor="w", padx=12, pady=(6, 0))
+
+        btns = ctk.CTkFrame(dlg)
+        btns.pack(fill="x", padx=10, pady=10)
+        done = tk.BooleanVar(value=False)
+
+        def _ok():
+            done.set(True)
+            dlg.destroy()
+
+        ctk.CTkButton(btns, text="OK", command=_ok).pack(side="right", padx=6)
+        ctk.CTkButton(btns, text="Отмена", command=dlg.destroy).pack(side="right", padx=6)
+        dlg.transient(self)
+        dlg.grab_set()
+        self.wait_window(dlg)
+        if not done.get():
+            return
+
+        # Окно прогресса
         win = ctk.CTkToplevel(self)
-        win.title("Импорт нарядов")
-        win.geometry("420x140")
+        win.title("Импорт данных")
+        win.geometry("480x160")
         ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
         pb = ctk.CTkProgressBar(win)
         pb.pack(fill="x", padx=10)
@@ -399,14 +378,33 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
 
         def progress_cb(step: int, total: int, note: str):
-            pb.set(step / max(total, 1))
-            note_var.set(note)
-            win.update_idletasks()
+            # Обновляем UI из главного потока через after, безопасно для Tk
+            def _do():
+                try:
+                    pb.set(step / max(total, 1))
+                    note_var.set(note)
+                except Exception:
+                    pass
+            try:
+                win.after(0, _do)
+            except Exception:
+                pass
 
         def run():
+            import os
             try:
-                jt, pr, orders = import_xlsx_full(path, progress_cb)
-                messagebox.showinfo("Импорт", f"Импорт завершен.\nВиды работ: {jt}\nИзделия: {pr}\nНаряды: {orders}")
+                preset_code = {"Авто": "auto", "Наряды": "orders", "Цена-лист": "price", "Справочники": "refs"}.get(preset.get(), "auto")
+                res = import_data(path, dry_run=bool(dry.get()), preset=preset_code, progress_cb=progress_cb, backup_before=True)
+                report_path = getattr(res, "details_html", None)
+                if report_path:
+                    try:
+                        if os.name == "nt":
+                            os.startfile(report_path)  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    messagebox.showinfo("Импорт (черновой)", f"Готово. Отчёт: {report_path}")
+                else:
+                    messagebox.showinfo("Импорт", "Готово.")
             except Exception as e:
                 messagebox.showerror("Импорт", str(e))
             finally:
@@ -688,29 +686,56 @@ class SettingsView(ctk.CTkFrame):
         content.append("=" * 50)
         content.append("")
         
-        # Версия 3.2 (текущая)
-        # Текущая дата в формате "25 августа 2025 года"
-        import datetime as _dt
-        _months = {
-            1: "января", 2: "февраля", 3: "марта", 4: "апреля",
-            5: "мая", 6: "июня", 7: "июля", 8: "августа",
-            9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
-        }
-        _today = _dt.date.today()
-        _date_ru = f"{_today.day} {_months.get(_today.month, '')} {_today.year} года"
-        content.append(f"ВЕРСИЯ 3.2 от {_date_ru}")
+        # Версия 3.7 (текущая)
+        content.append("ВЕРСИЯ 3.7 от 29 августа 2025 года")
+        content.append("-" * 40)
+        content.append("✨ НОВОЕ:")
+        content.append("• Единый модуль импорта данных и одна кнопка ‘Импорт данных’")
+        content.append("• Русские пресеты профилей: ‘Авто’, ‘Наряды’, ‘Цена-лист’, ‘Справочники’")
+        content.append("• Черновой прогон (dry-run) с HTML-отчётом и автозапуском отчёта")
+        content.append("• Автобэкап БД перед реальным импортом")
+        content.append("")
+        content.append("🔁 ИЗМЕНЕНО:")
+        content.append("• Улучшено определение типа документов (контракты/изделия/наряды)")
+        content.append("• Безопасное обновление прогресса импорта в UI")
+        content.append("")
+        
+        # Версия 3.6 (текущая)
+        content.append("ВЕРСИЯ 3.6 от 28 августа 2025 года")
+        content.append("-" * 40)
+        content.append("🔧 ИСПРАВЛЕНИЯ:")
+        content.append("• Исправлена проблема с импортом изделий и контрактов из CSV")
+        content.append("• Улучшен алгоритм парсинга оборотно-сальдовой ведомости")
+        content.append("• Оптимизирована логика группировки данных по изделиям и контрактам")
+        content.append("• Убраны отладочные сообщения для production-использования")
+        content.append("")
+        
+        # Версия 3.5
+        content.append("ВЕРСИЯ 3.5 от 28 августа 2025 года")
         content.append("-" * 40)
         content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
-        content.append("• Список нарядов: постраничная подгрузка (100 за шаг)")
-        content.append("• Виды работ в наряде: табличная сетка, обрезка с многоточием")
-        content.append("• Импорт XLSX/ODS многолистовых файлов (справочники+наряды) с прогрессом")
-        content.append("• Сухой анализ книги импорта (без записи в БД) для проверки структур")
+        content.append("• Новый модуль импорта изделий с привязкой к контрактам из CSV файлов")
+        content.append("• Автоматический парсинг оборотно-сальдовой ведомости по счету 002")
+        content.append("• Извлечение информации об изделиях (двигатели) и контрактах")
+        content.append("• Автоматическое связывание изделий с соответствующими контрактами")
+        content.append("• Создание системного контракта 'Без контракта' для изделий без привязки")
+        content.append("• Поддержка прогресс-бара для длительных операций импорта")
         content.append("")
-        content.append("🔧 ИСПРАВЛЕНИЯ:")
-        content.append("• Прокрутка списков (виды работ, работники) и ускорение колеса")
-        content.append("• ‘Отмена’ всегда активна; очистка формы возвращает режим ввода")
-        content.append("• Фильтры ‘Вид работ’ и ‘Изделие’ не ломают генерацию отчётов")
-        content.append("• PDF: перенос длинных текстов, сжатие ‘Вид работ’, разбиение больших таблиц")
+        
+        # Версия 3.4
+        content.append("ВЕРСИЯ 3.4 от 28 августа 2025 года")
+        content.append("-" * 40)
+        content.append("✨ НОВЫЕ ВОЗМОЖНОСТИ:")
+        content.append("• Полная поддержка всех полей контрактов в интерфейсе справочника")
+        content.append("• Новые поля контрактов: Наименование, Вид контракта, Исполнитель, ИГК, Номер контракта, Отдельный счет")
+        content.append("• Расширенная таблица контрактов с отображением всех полей")
+        content.append("• Улучшенная форма редактирования контрактов с 5 строками полей")
+        content.append("")
+        content.append("🔁 ИЗМЕНЕНО:")
+        content.append("• Интерфейс справочника контрактов полностью переработан для отображения всех полей")
+        content.append("• 'Отмена' всегда активна; очистка формы возвращает режим ввода")
+        content.append("• Фильтры 'Вид работ' и 'Изделие' не ломают генерацию отчётов")
+        content.append("• PDF: перенос длинных текстов, сжатие 'Вид работ', разбиение больших таблиц")
         content.append("")
         content.append("🔁 ИЗМЕНЕНО:")
         content.append("• Диалог выбора файла для импорта принимает форматы: .xlsx, .xls, .ods")
@@ -796,3 +821,102 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showinfo("Копирование", "История изменений скопирована в буфер обмена")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось скопировать в буфер обмена: {e}")
+
+    def _import_contracts_csv(self) -> None:
+        """Импорт контрактов из CSV файла"""
+        try:
+            from import_export.excel_io import import_contracts_from_csv
+            path = filedialog.askopenfilename(
+                title="Выберите CSV файл с контрактами",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            with get_connection() as conn:
+                imported, updated = import_contracts_from_csv(conn, path)
+                self.status.configure(text=f"Импорт CSV контрактов завершен. Импортировано: {imported}, обновлено: {updated}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка импорта CSV контрактов: {e}")
+
+    def _export_contracts_csv(self) -> None:
+        """Экспорт контрактов в CSV файл"""
+        try:
+            from import_export.excel_io import export_contracts_to_csv
+            path = filedialog.asksaveasfilename(
+                title="Сохранить контракты как CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            with get_connection() as conn:
+                result_path = export_contracts_to_csv(conn, path)
+                self.status.configure(text=f"Экспорт CSV контрактов завершен: {result_path}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка экспорта CSV контрактов: {e}")
+
+    def _save_contracts_csv_template(self) -> None:
+        """Создание шаблона CSV файла для импорта контрактов"""
+        try:
+            from import_export.excel_io import generate_contracts_template
+            path = filedialog.asksaveasfilename(
+                title="Сохранить шаблон CSV контрактов",
+                defaultextension=".csv",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            result_path = generate_contracts_template(path)
+            self.status.configure(text=f"Шаблон CSV контрактов создан: {result_path}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка создания шаблона CSV контрактов: {e}")
+
+    def _import_products_contracts(self) -> None:
+        """Импорт изделий с привязкой к контрактам из CSV файла"""
+        try:
+            from import_export.products_contracts_import import import_products_from_contracts_csv
+            path = filedialog.askopenfilename(
+                title="Выберите CSV файл с изделиями и контрактами",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            
+            # Создаем окно прогресса
+            win = ctk.CTkToplevel(self)
+            win.title("Импорт изделий с контрактами")
+            win.geometry("420x140")
+            ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
+            pb = ctk.CTkProgressBar(win)
+            pb.pack(fill="x", padx=10)
+            pb.set(0)
+            note_var = tk.StringVar(value="")
+            ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
+
+            def progress_cb(step: int, total: int, note: str):
+                pb.set(step / max(total, 1))
+                note_var.set(note)
+                win.update_idletasks()
+
+            def run():
+                try:
+                    result = import_products_from_contracts_csv(path, progress_cb)
+                    messagebox.showinfo("Импорт", 
+                        f"Импорт завершен.\n"
+                        f"Изделий: {result['products']}\n"
+                        f"Контрактов: {result['contracts']}\n"
+                        f"Ошибок: {result['errors']}")
+                    self.status.configure(text=f"Импорт изделий с контрактами завершен. Изделий: {result['products']}, контрактов: {result['contracts']}")
+                except Exception as e:
+                    messagebox.showerror("Импорт", str(e))
+                    self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")
+                finally:
+                    try:
+                        win.destroy()
+                    except Exception:
+                        pass
+
+            threading.Thread(target=run, daemon=True).start()
+            
+        except Exception as e:
+            self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")

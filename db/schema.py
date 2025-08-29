@@ -47,6 +47,15 @@ CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
     code_norm TEXT,
+    name TEXT,
+    name_norm TEXT,
+    contract_type TEXT,
+    contract_type_norm TEXT,
+    executor TEXT,
+    executor_norm TEXT,
+    igk TEXT,
+    contract_number TEXT,
+    bank_account TEXT,
     start_date TEXT,
     end_date TEXT,
     description TEXT
@@ -91,6 +100,23 @@ CREATE TABLE IF NOT EXISTS work_order_workers (
     FOREIGN KEY (work_order_id) REFERENCES work_orders(id) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (worker_id) REFERENCES workers(id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
+ 
+CREATE TABLE IF NOT EXISTS contract_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    code TEXT,
+    name TEXT,
+    contract_type TEXT,
+    executor TEXT,
+    igk TEXT,
+    contract_number TEXT,
+    bank_account TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    description TEXT,
+    changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
 """
 
 DDL_INDEXES = (
@@ -107,10 +133,14 @@ DDL_INDEXES = (
     ("idx_products_contract", "products", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_products_contract ON products(contract_id)"),
     ("idx_contracts_code", "contracts", ("code",), "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)"),
     ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
+    ("idx_contracts_name_norm", "contracts", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_name_norm ON contracts(name_norm)"),
+    ("idx_contracts_type_norm", "contracts", ("contract_type_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_type_norm ON contracts(contract_type_norm)"),
+    ("idx_contracts_executor_norm", "contracts", ("executor_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_executor_norm ON contracts(executor_norm)"),
     ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
     ("idx_work_orders_order_no", "work_orders", ("order_no",), "CREATE INDEX IF NOT EXISTS idx_work_orders_order_no ON work_orders(order_no)"),
     ("idx_wo_products_wo", "work_order_products", ("work_order_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_wo ON work_order_products(work_order_id)"),
     ("idx_wo_products_product", "work_order_products", ("product_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_product ON work_order_products(product_id)"),
+    ("idx_contract_history_contract", "contract_history", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_contract_history_contract ON contract_history(contract_id)"),
 )
 
 
@@ -127,6 +157,8 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     migrate_workers_if_needed(conn)
     add_norm_columns_and_backfill(conn)
     ensure_products_contract_column(conn)
+    ensure_contracts_extended_columns(conn)
+    ensure_contract_history_table(conn)
 
     # Ensure new columns for worker allocations are present and backfilled
     ensure_work_order_workers_amounts(conn)
@@ -281,6 +313,59 @@ def ensure_products_contract_column(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE products ADD COLUMN contract_id INTEGER")
     except Exception as exc:  # noqa: TRY003
         logger.warning("ensure_products_contract_column failed: %s", exc)
+
+
+def ensure_contracts_extended_columns(conn: sqlite3.Connection) -> None:
+    """Добавляет расширенные колонки в таблицу contracts если их нет."""
+    new_columns = [
+        ("name", "TEXT"),
+        ("name_norm", "TEXT"),
+        ("contract_type", "TEXT"),
+        ("contract_type_norm", "TEXT"),
+        ("executor", "TEXT"),
+        ("executor_norm", "TEXT"),
+        ("igk", "TEXT"),
+        ("contract_number", "TEXT"),
+        ("bank_account", "TEXT"),
+    ]
+    
+    for col_name, col_type in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE contracts ADD COLUMN {col_name} {col_type}")
+            logger.info(f"Добавлена колонка {col_name} в таблицу contracts")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                logger.debug(f"Колонка {col_name} уже существует в таблице contracts")
+            else:
+                logger.warning(f"Ошибка при добавлении колонки {col_name}: {e}")
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка при добавлении колонки {col_name}: {e}")
+
+
+def ensure_contract_history_table(conn: sqlite3.Connection) -> None:
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contract_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                code TEXT,
+                name TEXT,
+                contract_type TEXT,
+                executor TEXT,
+                igk TEXT,
+                contract_number TEXT,
+                bank_account TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                description TEXT,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE CASCADE
+            )
+            """
+        )
+    except Exception as exc:
+        logger.warning("ensure_contract_history_table failed: %s", exc)
 
 
 def create_indexes_if_possible(conn: sqlite3.Connection) -> None:

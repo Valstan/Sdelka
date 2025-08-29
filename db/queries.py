@@ -304,30 +304,77 @@ def search_products_by_substring(conn: sqlite3.Connection, term: str, limit: int
 
 # Contracts
 
-def insert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
-    cur = conn.execute("INSERT INTO contracts(code, code_norm, start_date, end_date, description) VALUES (?, ?, ?, ?, ?)", (code, normalize_for_search(code), start_date, end_date, description))
+def insert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None, 
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None, 
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO contracts(code, code_norm, name, name_norm, contract_type, contract_type_norm, executor, executor_norm, igk, contract_number, bank_account, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        (code, normalize_for_search(code), name, normalize_for_search(name) if name else None, 
+         contract_type, normalize_for_search(contract_type) if contract_type else None,
+         executor, normalize_for_search(executor) if executor else None,
+         igk, contract_number, bank_account, start_date, end_date, description)
+    )
     return cur.lastrowid or cur.rowcount
 
 
-def update_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None) -> None:
-    conn.execute("UPDATE contracts SET code = ?, code_norm=?, start_date = ?, end_date = ?, description = ? WHERE id = ?", (code, normalize_for_search(code), start_date, end_date, description, contract_id))
+def update_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> None:
+    conn.execute(
+        "UPDATE contracts SET code = ?, code_norm=?, name = ?, name_norm=?, contract_type = ?, contract_type_norm=?, executor = ?, executor_norm=?, igk = ?, contract_number = ?, bank_account = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?", 
+        (code, normalize_for_search(code), name, normalize_for_search(name) if name else None,
+         contract_type, normalize_for_search(contract_type) if contract_type else None,
+         executor, normalize_for_search(executor) if executor else None,
+         igk, contract_number, bank_account, start_date, end_date, description, contract_id)
+    )
 
 
 def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
     conn.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
 
 
-def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
+def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> int:
+    # Save history snapshot when updating existing contract
+    existing = get_contract_by_code(conn, code)
     sql = """
-    INSERT INTO contracts(code, code_norm, start_date, end_date, description) VALUES(?, ?, ?, ?, ?)
-    ON CONFLICT(code) DO UPDATE SET start_date=excluded.start_date, end_date=excluded.end_date, description=excluded.description
+    INSERT INTO contracts(code, code_norm, name, name_norm, contract_type, contract_type_norm, executor, executor_norm, igk, contract_number, bank_account, start_date, end_date, description) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(code) DO UPDATE SET 
+        name=excluded.name, name_norm=excluded.name_norm,
+        contract_type=excluded.contract_type, contract_type_norm=excluded.contract_type_norm,
+        executor=excluded.executor, executor_norm=excluded.executor_norm,
+        igk=excluded.igk, contract_number=excluded.contract_number, bank_account=excluded.bank_account,
+        start_date=excluded.start_date, end_date=excluded.end_date, description=excluded.description
     """
-    cur = conn.execute(sql, (code, normalize_for_search(code), start_date, end_date, description))
+    # If will update existing, snapshot the previous state BEFORE update
+    if existing:
+        prev = existing
+        if prev:
+            conn.execute(
+                """
+                INSERT INTO contract_history(contract_id, code, name, contract_type, executor, igk, contract_number, bank_account, start_date, end_date, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(prev["id"]),  # type: ignore[index]
+                    prev["code"], prev["name"], prev["contract_type"], prev["executor"], prev["igk"],
+                    prev["contract_number"], prev["bank_account"], prev["start_date"], prev["end_date"], prev["description"],
+                ),
+            )
+    cur = conn.execute(sql, (code, normalize_for_search(code), name, normalize_for_search(name) if name else None,
+                            contract_type, normalize_for_search(contract_type) if contract_type else None,
+                            executor, normalize_for_search(executor) if executor else None,
+                            igk, contract_number, bank_account, start_date, end_date, description))
     return cur.lastrowid or cur.rowcount
 
 
 def get_contract_by_code(conn: sqlite3.Connection, code: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM contracts WHERE code_norm = ?", (normalize_for_search(code),)).fetchone()
+
+
+def get_contract_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM contracts WHERE name_norm = ?", (normalize_for_search(name),)).fetchone()
 
 
 def list_contracts(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
@@ -352,8 +399,8 @@ def search_contracts_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int
 def search_contracts_by_substring(conn: sqlite3.Connection, term: str, limit: int) -> list[sqlite3.Row]:
     like = f"%{normalize_for_search(term)}%"
     return conn.execute(
-        "SELECT * FROM contracts WHERE code_norm LIKE ? ORDER BY code LIMIT ?",
-        (like, limit),
+        "SELECT * FROM contracts WHERE code_norm LIKE ? OR name_norm LIKE ? OR contract_type_norm LIKE ? OR executor_norm LIKE ? ORDER BY code LIMIT ?",
+        (like, like, like, like, limit),
     ).fetchall()
 
 

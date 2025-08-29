@@ -63,12 +63,16 @@ def list_products(conn: sqlite3.Connection, prefix: str | None = None, limit: in
 
 # Contracts
 
-def create_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
-    return q.insert_contract(conn, code, start_date, end_date, description)
+def create_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> int:
+    return q.insert_contract(conn, code, start_date, end_date, description, name, contract_type, executor, igk, contract_number, bank_account)
 
 
-def save_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None) -> None:
-    q.update_contract(conn, contract_id, code, start_date, end_date, description)
+def save_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                 name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                 igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> None:
+    q.update_contract(conn, contract_id, code, start_date, end_date, description, name, contract_type, executor, igk, contract_number, bank_account)
 
 
 def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
