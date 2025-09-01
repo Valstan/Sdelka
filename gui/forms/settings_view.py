@@ -381,12 +381,15 @@ class SettingsView(ctk.CTkFrame):
             # Обновляем UI из главного потока через after, безопасно для Tk
             def _do():
                 try:
+                    # окно могло быть закрыто
+                    if not tk.Toplevel.winfo_exists(win):
+                        return
                     pb.set(step / max(total, 1))
                     note_var.set(note)
                 except Exception:
                     pass
             try:
-                win.after(0, _do)
+                self.after(0, _do)
             except Exception:
                 pass
 
@@ -396,20 +399,42 @@ class SettingsView(ctk.CTkFrame):
                 preset_code = {"Авто": "auto", "Наряды": "orders", "Цена-лист": "price", "Справочники": "refs"}.get(preset.get(), "auto")
                 res = import_data(path, dry_run=bool(dry.get()), preset=preset_code, progress_cb=progress_cb, backup_before=True)
                 report_path = getattr(res, "details_html", None)
-                if report_path:
+                def _show_success():
                     try:
-                        if os.name == "nt":
-                            os.startfile(report_path)  # type: ignore[attr-defined]
+                        if report_path:
+                            if os.name == "nt":
+                                try:
+                                    os.startfile(report_path)  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+                            messagebox.showinfo("Импорт (черновой)", f"Готово. Отчёт: {report_path}")
+                        else:
+                            messagebox.showinfo("Импорт", "Готово.")
                     except Exception:
                         pass
-                    messagebox.showinfo("Импорт (черновой)", f"Готово. Отчёт: {report_path}")
-                else:
-                    messagebox.showinfo("Импорт", "Готово.")
-            except Exception as e:
-                messagebox.showerror("Импорт", str(e))
-            finally:
                 try:
-                    win.destroy()
+                    self.after(0, _show_success)
+                except Exception:
+                    pass
+            except Exception as e:
+                def _show_err():
+                    try:
+                        messagebox.showerror("Импорт", str(e))
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _show_err)
+                except Exception:
+                    pass
+            finally:
+                def _close():
+                    try:
+                        if tk.Toplevel.winfo_exists(win):
+                            win.destroy()
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _close)
                 except Exception:
                     pass
 
@@ -894,25 +919,57 @@ class SettingsView(ctk.CTkFrame):
             ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
 
             def progress_cb(step: int, total: int, note: str):
-                pb.set(step / max(total, 1))
-                note_var.set(note)
-                win.update_idletasks()
+                # Обновление прогресса только из главного потока
+                def _do():
+                    try:
+                        if not tk.Toplevel.winfo_exists(win):
+                            return
+                        pb.set(step / max(total, 1))
+                        note_var.set(note)
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _do)
+                except Exception:
+                    pass
 
             def run():
                 try:
                     result = import_products_from_contracts_csv(path, progress_cb)
-                    messagebox.showinfo("Импорт", 
-                        f"Импорт завершен.\n"
-                        f"Изделий: {result['products']}\n"
-                        f"Контрактов: {result['contracts']}\n"
-                        f"Ошибок: {result['errors']}")
-                    self.status.configure(text=f"Импорт изделий с контрактами завершен. Изделий: {result['products']}, контрактов: {result['contracts']}")
-                except Exception as e:
-                    messagebox.showerror("Импорт", str(e))
-                    self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")
-                finally:
+                    def _success():
+                        try:
+                            messagebox.showinfo("Импорт",
+                                f"Импорт завершен.\n"
+                                f"Изделий: {result['products']}\n"
+                                f"Контрактов: {result['contracts']}\n"
+                                f"Ошибок: {result['errors']}")
+                            self.status.configure(text=f"Импорт изделий с контрактами завершен. Изделий: {result['products']}, контрактов: {result['contracts']}")
+                        except Exception:
+                            pass
                     try:
-                        win.destroy()
+                        self.after(0, _success)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    def _err():
+                        try:
+                            messagebox.showerror("Импорт", str(e))
+                            self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _err)
+                    except Exception:
+                        pass
+                finally:
+                    def _close():
+                        try:
+                            if tk.Toplevel.winfo_exists(win):
+                                win.destroy()
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _close)
                     except Exception:
                         pass
 
