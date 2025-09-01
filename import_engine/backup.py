@@ -11,13 +11,14 @@ def make_backup_copy(dest_dir: str | Path | None = None) -> str:
     src = Path(get_current_db_path())
     if not src.exists():
         return ""
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"{src.stem}_auto_backup_{stamp}{src.suffix}"
+    # Приводим к стандарту backup_base_sdelka_MMDD_HHMM
+    stamp = datetime.now().strftime("%m%d_%H%M")
+    backup_name = f"backup_base_sdelka_{stamp}{src.suffix}"
     if dest_dir:
         target = Path(dest_dir) / backup_name
         target.parent.mkdir(parents=True, exist_ok=True)
     else:
-        target = src.with_name(backup_name)
+        target = src.parent / backup_name
     shutil.copy2(src, target)
     return str(target)
 

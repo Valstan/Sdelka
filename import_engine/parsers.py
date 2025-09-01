@@ -16,20 +16,54 @@ class ParsedBlock:
 
 
 def parse_job_types(df: pd.DataFrame) -> list[dict[str, Any]]:
+    # Попробуем определить строку заголовков в первых строках, если текущие колонки не текстовые
+    try:
+        import pandas as pd  # noqa
+        def _looks_like_header_row(vals: list[str]) -> bool:
+            s = " ".join(v.lower() for v in vals)
+            return ("вид" in s or "наимен" in s) and ("ед" in s or "изм" in s or "unit" in s) and ("цена" in s or "тариф" in s or "расцен" in s or "стоим" in s)
+        if all((str(c).isdigit() or str(c).strip() == "") for c in df.columns):
+            for i in range(min(8, len(df))):
+                vals = [str(x).strip() for x in df.iloc[i].tolist()]
+                if _looks_like_header_row(vals):
+                    df = df.copy()
+                    df.columns = vals
+                    df = df.iloc[i+1:].reset_index(drop=True)
+                    break
+    except Exception:
+        pass
     cols = [str(c).strip().lower() for c in df.columns]
     name_col = next((c for c in df.columns if "вид" in str(c).lower() or "наимен" in str(c).lower()), None)
-    unit_col = next((c for c in df.columns if "ед" in str(c).lower()), None)
-    price_col = next((c for c in df.columns if "цена" in str(c).lower() or "тариф" in str(c).lower()), None)
+    unit_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("ед", "unit", "изм"))), None)
+    price_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("цена", "тариф", "расцен", "стоим"))), None)
     code_col = next((c for c in df.columns if "код" in str(c).lower()), None)
     out: list[dict[str, Any]] = []
     for _, r in df.iterrows():
         name = str(r.get(name_col, "")).strip()
         unit = str(r.get(unit_col, "шт.")).strip() or "шт."
-        price_raw = str(r.get(price_col, "0")).replace(" ", "").replace("\xa0", "").replace(",", ".")
-        try:
-            price = float(price_raw)
-        except Exception:
-            continue
+        # Нормализуем цену: допускаем пустые/None/NaN/текст — считаем их нулевыми
+        price: float = 0.0
+        if price_col is not None:
+            raw_val = r.get(price_col, None)
+            try:
+                import pandas as pd  # local import safe
+                if pd.isna(raw_val):
+                    price = 0.0
+                else:
+                    s = str(raw_val)
+                    s = s.replace(" ", "").replace("\xa0", "").replace(",", ".")
+                    try:
+                        v = float(s)
+                    except Exception:
+                        v = 0.0
+                    # Защитимся от нечисловых значений (NaN, inf)
+                    try:
+                        import math
+                        price = v if math.isfinite(v) else 0.0
+                    except Exception:
+                        price = v
+            except Exception:
+                price = 0.0
         if not name:
             continue
         out.append({"name": name, "unit": unit, "price": price, "code": str(r.get(code_col, "")).strip()})
@@ -52,21 +86,44 @@ def parse_products(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def parse_contracts(df: pd.DataFrame) -> list[dict[str, Any]]:
+    cols_lower = [str(c).strip().lower() for c in df.columns]
+    # Базовые колонки
     code_col = next((c for c in df.columns if "шифр" in str(c).lower() or "номер" in str(c).lower()), None)
     name_col = next((c for c in df.columns if "наимен" in str(c).lower()), None)
-    type_col = next((c for c in df.columns if "вид контракт" in str(c).lower() or "вид" in str(c).lower()), None)
-    exec_col = next((c for c in df.columns if "исполн" in str(c).lower()), None)
+    type_col = next((c for c in df.columns if "вид контракт" in str(c).lower() or ("вид" in str(c).lower() and "контракт" in str(c).lower())), None)
+    exec_col = next((c for c in df.columns if "исполнител" in str(c).lower()), None)
+    if exec_col is None:
+        exec_col = next((c for c in df.columns if "исполн" in str(c).lower() and "дата" not in str(c).lower()), None)
     igk_col = next((c for c in df.columns if "игк" in str(c).lower()), None)
-    cn_col = next((c for c in df.columns if "номер контракт" in str(c).lower()), None)
-    acc_col = next((c for c in df.columns if "счет" in str(c).lower()), None)
-    start_col = next((c for c in df.columns if "начал" in str(c).lower() or "заключ" in str(c).lower()), None)
-    end_col = next((c for c in df.columns if "оконч" in str(c).lower() or "исполн" in str(c).lower()), None)
-    desc_col = next((c for c in df.columns if "коммент" in str(c).lower() or "опис" in str(c).lower()), None)
+    cn_col = next((c for c in df.columns if "номер контракт" in str(c).lower() or ("номер" in str(c).lower() and "контракт" in str(c).lower())), None)
+    acc_col = next((c for c in df.columns if "счет" in str(c).lower() or "р/с" in str(c).lower()), None)
+    # Даты: стараемся различать начало и окончание, избегая путаницы с "исполнитель"
+    start_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("начал", "заключ")) or ("срок" in str(c).lower() and "с" in str(c).lower() and "по" not in str(c).lower() and "до" not in str(c).lower())), None)
+    # Для окончания используем более специфичные признаки: 'оконч', 'действует до', 'срок ... до', 'по'/'до' рядом с срок/действ
+    end_col = None
+    for c in df.columns:
+        s = str(c).lower()
+        if "оконч" in s or "действует до" in s or ("срок" in s and ("до" in s or "по" in s)) or ("действ" in s and ("до" in s or "по" in s)):
+            end_col = c
+            break
+    # Явное правило под подсказанный столбец: "Плановая дата исполнения контракта"
+    if end_col is None:
+        for c in df.columns:
+            s = str(c).lower()
+            if ("планов" in s or "плановая" in s) and "дата" in s and "исполн" in s and "контракт" in s:
+                end_col = c
+                break
+    # если так и не нашли, попробуем англ
+    if end_col is None:
+        end_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("end", "finish", "valid to", "valid until"))), None)
+    desc_col = next((c for c in df.columns if "коммент" in str(c).lower() or "опис" in str(c).lower() or "примеч" in str(c).lower()), None)
     out: list[dict[str, Any]] = []
     for _, r in df.iterrows():
         code = str(r.get(code_col, "")).strip()
         if not code:
             continue
+        start_val = r.get(start_col, None)
+        end_val = r.get(end_col, None)
         out.append({
             "code": code,
             "name": str(r.get(name_col, "")).strip() or None,
@@ -75,26 +132,110 @@ def parse_contracts(df: pd.DataFrame) -> list[dict[str, Any]]:
             "igk": str(r.get(igk_col, "")).strip() or None,
             "contract_number": str(r.get(cn_col, "")).strip() or None,
             "bank_account": str(r.get(acc_col, "")).strip() or None,
-            "start_date": normalize_date_text(str(r.get(start_col, "")).strip() or None),
-            "end_date": normalize_date_text(str(r.get(end_col, "")).strip() or None),
+            "start_date": normalize_date_text(None if start_val is None else str(start_val).strip() or None),
+            "end_date": normalize_date_text(None if end_val is None else str(end_val).strip() or None),
             "description": str(r.get(desc_col, "")).strip() or None,
         })
     return out
 
 
 def parse_workers(df: pd.DataFrame) -> list[dict[str, Any]]:
-    fio_col = next((c for c in df.columns if "фио" in str(c).lower() or "сотрудник" in str(c).lower()), None)
-    tab_col = next((c for c in df.columns if "таб" in str(c).lower() or "персонал" in str(c).lower()), None)
-    pos_col = next((c for c in df.columns if "должн" in str(c).lower() or "разряд" in str(c).lower()), None)
+    # Попробуем извлечь номер цеха из шапки документа (первые строки листа)
+    dept_from_header: str | None = None
+    try:
+        scan_rows = min(12, len(df))
+        for i in range(scan_rows):
+            try:
+                row_vals = [str(x).strip() for x in df.iloc[i].tolist()]
+            except Exception:
+                row_vals = []
+            line = " ".join(row_vals)
+            low = line.lower()
+            # Ищем шаблоны вида: "Список работников цеха № 1", "Дизельный цех № 2", "Цех № 3"
+            import re as _re
+            m = _re.search(r"(?i)цех[ау]?\s*№\s*(\d+)", low)
+            if m:
+                dept_from_header = m.group(1)
+                break
+    except Exception:
+        pass
+
+    # Нормализуем заголовки. Если CSV как в примере — может не быть явных заголовков:
+    # попробуем самую первую непустую строку как заголовки, если текущие все похожи на 0..N или пустые
+    try:
+        import pandas as pd  # noqa
+        df = df.copy()
+        # Найдём первую строку, где явно есть "ФИО" ("Табель" может отсутствовать)
+        header_row_index = None
+        scan_limit = min(6, len(df))
+        for i in range(scan_limit):
+            row_low = [str(x).strip().lower() for x in df.iloc[i].tolist()]
+            row_text = " ".join(row_low)
+            if ("фио" in row_text):
+                header_row_index = i
+                break
+        if header_row_index is not None:
+            df.columns = [str(x).strip() for x in df.iloc[header_row_index].tolist()]
+            df = df.iloc[header_row_index + 1 :].reset_index(drop=True)
+    except Exception:
+        pass
+
+    # Определяем возможные колонки
+    fio_col = next((c for c in df.columns if "фио" in str(c).lower() or "сотрудник" in str(c).lower() or "работник" in str(c).lower()), None)
+    fam_col = next((c for c in df.columns if "фамил" in str(c).lower()), None)
+    im_col = next((c for c in df.columns if str(c) and "имя" == str(c).strip().lower()), None)
+    otch_col = next((c for c in df.columns if "отче" in str(c).lower()), None)
+    tab_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("таб", "табел", "табель", "персонал", "tn", "personnel"))), None)
+    pos_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("должн", "разряд", "роль", "позиция"))), None)
+    dept_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("цех", "отдел", "подраздел", "участок", "бригада"))), None)
+    status_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("статус", "уволен", "работает"))), None)
+
     out: list[dict[str, Any]] = []
     for _, r in df.iterrows():
-        fio = str(r.get(fio_col, "")).strip()
+        fio_val = None
+        if fio_col is not None:
+            fio_val = str(r.get(fio_col, "")).strip()
+        else:
+            # Попробуем собрать ФИО из отдельных колонок
+            parts: list[str] = []
+            if fam_col is not None:
+                parts.append(str(r.get(fam_col, "")).strip())
+            if im_col is not None:
+                parts.append(str(r.get(im_col, "")).strip())
+            if otch_col is not None:
+                parts.append(str(r.get(otch_col, "")).strip())
+            fio_val = " ".join([p for p in parts if p])
+        fio = (fio_val or "").strip()
         if not fio:
             continue
+        personnel_no = str(r.get(tab_col, "")).strip() if tab_col is not None else ""
+        # Если в файле табельный в третьем столбце без заголовка — fallback на эвристику по позициям
+        if not personnel_no and tab_col is None:
+            try:
+                third_val = r.iloc[2] if len(r) > 2 else None
+                personnel_no = str(third_val).strip() if third_val is not None else ""
+            except Exception:
+                pass
+        if not personnel_no:
+            personnel_no = f"AUTO-{normalize_for_search(fio)}"
+        position = str(r.get(pos_col, "")).strip() or None if pos_col is not None else None
+        dept = str(r.get(dept_col, "")).strip() or None if dept_col is not None else None
+        if (dept is None or dept == "") and dept_from_header:
+            # Пользователь просил сохранить именно цифру номера цеха
+            dept = dept_from_header
+        status_raw = str(r.get(status_col, "")).strip().lower() if status_col is not None else ""
+        status: str | None = None
+        if status_raw:
+            if any(k in status_raw for k in ("уволен", "не работает", "fired")):
+                status = "Уволен"
+            elif any(k in status_raw for k in ("работ", "active", "актив")):
+                status = "Работает"
         out.append({
             "full_name": fio,
-            "personnel_no": str(r.get(tab_col, "")).strip() or f"AUTO-{normalize_for_search(fio)}",
-            "position": str(r.get(pos_col, "")).strip() or None,
+            "personnel_no": personnel_no,
+            "position": position,
+            "dept": dept,
+            "status": status,
         })
     return out
 

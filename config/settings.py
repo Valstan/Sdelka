@@ -11,7 +11,7 @@ class AppConfig:
     base_dir: Path = Path(os.environ.get("APP_BASE_DIR", Path.cwd()))
 
     data_dir: Path = base_dir / "data"
-    db_path: Path = data_dir / "app.db"
+    db_path: Path = data_dir / "base_sdelka_rmz.db"
     user_settings_path: Path = data_dir / "user_settings.json"
 
     backups_dir: Path = base_dir / "backups"

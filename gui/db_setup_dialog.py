@@ -66,7 +66,7 @@ class DbSetupDialog(ctk.CTkToplevel):
         self._ok_and_close()
 
     def _create_new(self) -> None:
-        initial_name = "app.db"
+        initial_name = "base_sdelka_rmz.db"
         cur = Path(get_current_db_path())
         try:
             if cur.parent.exists():

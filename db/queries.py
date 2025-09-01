@@ -250,7 +250,7 @@ def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
 def upsert_product(conn: sqlite3.Connection, name: str, product_no: str, contract_id: int | None = None) -> int:
     sql = """
     INSERT INTO products(name, name_norm, product_no, product_no_norm, contract_id) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(name) DO UPDATE SET product_no=excluded.product_no, product_no_norm=excluded.product_no_norm, contract_id=COALESCE(excluded.contract_id, products.contract_id)
+    ON CONFLICT(product_no) DO UPDATE SET name=excluded.name, name_norm=excluded.name_norm, contract_id=COALESCE(excluded.contract_id, products.contract_id)
     """
     cur = conn.execute(sql, (name, normalize_for_search(name), product_no, normalize_for_search(product_no), contract_id))
     return cur.lastrowid or cur.rowcount

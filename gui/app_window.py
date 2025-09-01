@@ -32,6 +32,13 @@ class AppWindow(ctk.CTk):
         self._tabview = None
         self._segmented_button = None
         self._title_badge = None
+        # Отслеживание запланированных after-задач для корректного завершения
+        self._after_ids: set[str] = set()
+        self._closing: bool = False
+        try:
+            self.protocol("WM_DELETE_WINDOW", self._on_close)
+        except Exception:
+            pass
         # Применить пользовательские шрифты для остального UI
         try:
             prefs = load_prefs()
@@ -88,7 +95,7 @@ class AppWindow(ctk.CTk):
         except Exception:
             pass
         # Первичное размещение
-        self.after(50, self._place_title_badge)
+        self._schedule_after(50, self._place_title_badge)
 
     def _create_title_badge(self) -> None:
         # Фиксированный шрифт ~8pt в пикселях (не зависит от scaling/настроек)
@@ -203,6 +210,8 @@ class AppWindow(ctk.CTk):
         try:
             seg._last_tab_caption = None
             def _watch():
+                if self._closing:
+                    return
                 try:
                     current = tabview.get()
                 except Exception:
@@ -210,8 +219,37 @@ class AppWindow(ctk.CTk):
                 if getattr(seg, "_last_tab_caption", None) != current:
                     seg._last_tab_caption = current
                     apply_fonts()
-                tabview.after(120, _watch)
-            tabview.after(80, _watch)
+                self._schedule_after(120, _watch)
+            self._schedule_after(80, _watch)
         except Exception:
             pass
-        tabview.after(50, apply_fonts)
+        self._schedule_after(50, apply_fonts)
+
+    def _schedule_after(self, delay_ms: int, callback) -> None:
+        if self._closing:
+            return
+        try:
+            aid = self.after(delay_ms, callback)
+            try:
+                self._after_ids.add(aid)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_close(self) -> None:
+        self._closing = True
+        # Отменить все запланированные after
+        for aid in list(self._after_ids):
+            try:
+                self.after_cancel(aid)
+            except Exception:
+                pass
+            try:
+                self._after_ids.discard(aid)
+            except Exception:
+                pass
+        try:
+            super().destroy()
+        except Exception:
+            pass

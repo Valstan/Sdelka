@@ -22,8 +22,9 @@ def backup_sqlite_db(db_path: Path | str, backups_dir: Path | str | None = None,
     backups_dir.mkdir(parents=True, exist_ok=True)
     max_backups = max_backups or CONFIG.max_backup_files
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"{db_path.stem}_{ts}{db_path.suffix}"
+    # Именование: backup_base_sdelka_MMDD_HHMM.db (без года)
+    ts = datetime.now().strftime("%m%d_%H%M")
+    backup_name = f"backup_base_sdelka_{ts}{db_path.suffix}"
     backup_path = backups_dir / backup_name
 
     # Используем Online Backup API SQLite для консистентной копии, безопасной для WAL
@@ -37,13 +38,13 @@ def backup_sqlite_db(db_path: Path | str, backups_dir: Path | str | None = None,
         shutil.copy2(db_path, backup_path)
         logger.warning("Online backup не удался (%s). Выполнено файловое копирование: %s", exc, backup_path)
 
-    rotate_backups(backups_dir, prefix=db_path.stem, suffix=db_path.suffix, keep=max_backups)
+    rotate_backups(backups_dir, prefix="backup_base_sdelka_", suffix=db_path.suffix, keep=max_backups)
     return backup_path
 
 
 def rotate_backups(backups_dir: Path, prefix: str, suffix: str, keep: int) -> None:
     files = sorted(
-        (p for p in backups_dir.glob(f"{prefix}_*{suffix}") if p.is_file()),
+        (p for p in backups_dir.glob(f"{prefix}*{suffix}") if p.is_file()),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )

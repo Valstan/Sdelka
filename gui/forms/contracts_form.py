@@ -24,6 +24,12 @@ class ContractsForm(ctk.CTkFrame):
         self._snapshot: tuple[str, str | None, str | None, str | None, str | None, str | None, str | None, str | None, str | None, str | None] | None = None
         self._build_ui()
         self._load()
+        # Обновлять список при импорте
+        try:
+            self.bind("<<DataImported>>", lambda e: self._load())
+            self.winfo_toplevel().bind("<<DataImported>>", lambda e: self._load(), add="+")
+        except Exception:
+            pass
 
     def _build_ui(self) -> None:
         form = ctk.CTkFrame(self)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -28,6 +28,17 @@ def normalize_date_text(val: str | None) -> str | None:
     if not val:
         return None
     s = str(val).strip()
+    # Try to interpret Excel serial dates
+    try:
+        # pandas may pass floats for Excel dates; reject huge or tiny values safely
+        if s.replace('.', '', 1).isdigit():
+            num = float(s)
+            # Excel serial dates start at 1899-12-30; valid range safeguard
+            if 1 <= num <= 80000:
+                base = datetime(1899, 12, 30)
+                return (base + timedelta(days=int(num))).strftime("%Y-%m-%d")
+    except Exception:
+        pass
     # dd.mm.yyyy or dd.mm.yy
     m = re.match(r"^(\d{2})\.(\d{2})\.(\d{2,4})$", s)
     if m:

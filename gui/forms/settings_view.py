@@ -8,6 +8,7 @@ import tkinter as tk
 import threading
 import subprocess
 import sys
+import re
 
 from config.settings import CONFIG
 from services.merge_db import merge_from_file
@@ -26,6 +27,8 @@ from utils.user_prefs import (
 from utils.ui_theming import apply_user_fonts
 from db.sqlite import get_connection
 from utils.versioning import get_version
+from utils.backup import backup_sqlite_db
+from datetime import datetime
 
 
 class SettingsView(ctk.CTkFrame):
@@ -64,29 +67,18 @@ class SettingsView(ctk.CTkFrame):
         # Путь к БД
         row_db = ctk.CTkFrame(db_box)
         row_db.pack(fill="x", pady=(2, 6))
-        ctk.CTkLabel(row_db, text="Путь к файлу БД (.db)").pack(side="left", padx=6)
+        ctk.CTkLabel(row_db, text="Путь к файлу БД (.db)").pack(anchor="w", padx=6)
         self._db_path_var = ctk.StringVar(value=str(get_current_db_path()))
-        self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var, width=560)
-        self._db_path_entry.pack(side="left", padx=6, fill="x", expand=True)
-        ctk.CTkButton(row_db, text="Выбрать...", command=self._choose_existing_db).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Создать...", command=self._create_new_db).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
+        self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var)
+        self._db_path_entry.pack(fill="x", padx=6)
+        btns_db = ctk.CTkFrame(db_box)
+        btns_db.pack(fill="x", pady=(4, 6))
+        ctk.CTkButton(btns_db, text="Выбрать...", command=self._choose_existing_db).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Создать...", command=self._create_new_db).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
 
-        # WAL и таймауты
-        row_wal = ctk.CTkFrame(db_box)
-        row_wal.pack(fill="x", pady=(2, 6))
-        self._wal_var = ctk.BooleanVar(value=get_enable_wal())
-        self._wal_chk = ctk.CTkCheckBox(row_wal, text="Включить WAL (рекомендуется для совместной работы)", variable=self._wal_var, command=lambda: None)
-        self._wal_chk.pack(side="left", padx=6)
-
-        row_to = ctk.CTkFrame(db_box)
-        row_to.pack(fill="x", pady=(2, 6))
-        ctk.CTkLabel(row_to, text="Таймаут ожидания блокировок (мс)").pack(side="left", padx=6)
-        self._busy_var = ctk.StringVar(value=str(get_busy_timeout_ms()))
-        self._busy_entry = ctk.CTkEntry(row_to, textvariable=self._busy_var, width=120)
-        self._busy_entry.pack(side="left", padx=6)
-        ctk.CTkButton(row_to, text="Сохранить", command=self._apply_db_settings).pack(side="left", padx=6)
+        # WAL/таймаут — убраны из интерфейса; применяем разумные значения по умолчанию в _apply_db_settings
 
         # UI Preferences
         ui_box = ctk.CTkFrame(self)
@@ -131,19 +123,23 @@ class SettingsView(ctk.CTkFrame):
         self._btn_exp_all = ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all)
         self._btn_exp_all.pack(side="left", padx=5)
 
-        ctk.CTkLabel(io_box, text="Шаблоны Excel").pack(anchor="w")
-        row3 = ctk.CTkFrame(io_box)
-        row3.pack(fill="x", pady=(4, 8))
-        self._btn_tpl_workers = ctk.CTkButton(row3, text="Шаблон Работники", command=lambda: self._save_template("workers"))
-        self._btn_tpl_workers.pack(side="left", padx=5)
-        self._btn_tpl_jobs = ctk.CTkButton(row3, text="Шаблон Виды работ", command=lambda: self._save_template("job_types"))
-        self._btn_tpl_jobs.pack(side="left", padx=5)
-        self._btn_tpl_products = ctk.CTkButton(row3, text="Шаблон Изделия", command=lambda: self._save_template("products"))
-        self._btn_tpl_products.pack(side="left", padx=5)
-        self._btn_tpl_contracts = ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts"))
-        self._btn_tpl_contracts.pack(side="left", padx=5)
-        self._btn_tpl_contracts_csv = ctk.CTkButton(row3, text="Шаблон CSV Контрактов", command=self._save_contracts_csv_template)
-        self._btn_tpl_contracts_csv.pack(side="left", padx=5)
+        # ---- Версии базы данных (откат к бэкапу) ----
+        ver_box = ctk.CTkFrame(self)
+        ver_box.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(ver_box, text="Версии базы данных (откат к бэкапу)").pack(anchor="w", pady=(0, 8))
+        rowv = ctk.CTkFrame(ver_box)
+        rowv.pack(fill="x")
+        ctk.CTkLabel(rowv, text="Выберите версию:").pack(side="left", padx=6)
+        self._backup_choice = ctk.StringVar(value="")
+        self._backup_map: dict[str, str] = {}
+        self._opt_backups = ctk.CTkOptionMenu(rowv, values=["(бэкапы не найдены)"], variable=self._backup_choice)
+        self._opt_backups.pack(side="left", padx=6)
+        ctk.CTkButton(rowv, text="Обновить список", command=self._refresh_backup_list).pack(side="left", padx=6)
+        ctk.CTkButton(rowv, text="Перейти на эту версию данных", fg_color="#2563eb", command=self._restore_selected_backup).pack(side="left", padx=6)
+        try:
+            self._refresh_backup_list()
+        except Exception:
+            pass
 
         # Применить ограничения режима только просмотра
         if self._readonly:
@@ -192,7 +188,7 @@ class SettingsView(ctk.CTkFrame):
         self.status.configure(text="Путь к существующей БД применён. Перезапустите приложение.")
 
     def _create_new_db(self) -> None:
-        initial_name = "app.db"
+        initial_name = "base_sdelka_rmz.db"
         cur = Path(get_current_db_path())
         try:
             if cur.parent.exists():
@@ -249,15 +245,9 @@ class SettingsView(ctk.CTkFrame):
                 with get_connection(new_path) as conn:
                     initialize_schema(conn)
 
-            # Сохранить WAL и таймаут (влияют на будущие подключения)
-            set_enable_wal(bool(self._wal_var.get()))
-            try:
-                to_ms = int(self._busy_var.get())
-                if to_ms < 1000:
-                    to_ms = 1000
-            except Exception:
-                to_ms = 10000
-            set_busy_timeout_ms(to_ms)
+            # Применить значения по умолчанию для WAL/таймаута без UI
+            set_enable_wal(True)
+            set_busy_timeout_ms(10000)
 
             self.status.configure(text="Путь к БД применён. Перезапустите приложение, чтобы все окна использовали новую БД.")
         except Exception as exc:
@@ -277,9 +267,9 @@ class SettingsView(ctk.CTkFrame):
         if not src.exists():
             messagebox.showerror("Экспорт", "Файл базы данных не найден")
             return
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        initial = f"{src.stem}_backup_{stamp}.db"
+        # Стандарт: backup_base_sdelka_MMDD_HHMM
+        stamp = datetime.now().strftime("%m%d_%H%M")
+        initial = f"backup_base_sdelka_{stamp}.db"
         dest = filedialog.asksaveasfilename(
             title="Сохранить копию базы",
             defaultextension=".db",
@@ -348,7 +338,6 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkCheckBox(dlg, text="Черновой прогон (без записи в БД)", variable=dry).pack(anchor="w", padx=12)
         ctk.CTkLabel(dlg, text="Профиль").pack(anchor="w", padx=10, pady=(10, 2))
         ctk.CTkOptionMenu(dlg, values=["Авто", "Наряды", "Цена-лист", "Справочники"], variable=preset).pack(anchor="w", padx=12)
-        ctk.CTkLabel(dlg, text="Подсказка: Авто — определить автоматически; Наряды — импорт нарядов; Цена-лист — виды работ с ценами; Справочники — работники/изделия/контракты.").pack(anchor="w", padx=12, pady=(6, 0))
 
         btns = ctk.CTkFrame(dlg)
         btns.pack(fill="x", padx=10, pady=10)
@@ -410,6 +399,13 @@ class SettingsView(ctk.CTkFrame):
                             messagebox.showinfo("Импорт (черновой)", f"Готово. Отчёт: {report_path}")
                         else:
                             messagebox.showinfo("Импорт", "Готово.")
+                        # После успешного импорта/чернового прогона — освежить списки в открытых формах
+                        try:
+                            root = self.winfo_toplevel()
+                            # Простой способ: отправим виртуальные событие для всех слушателей
+                            root.event_generate('<<DataImported>>', when='tail')
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 try:
@@ -473,37 +469,116 @@ class SettingsView(ctk.CTkFrame):
         except Exception as exc:
             messagebox.showerror("Экспорт", str(exc))
 
-    def _save_template(self, kind: str) -> None:
-        from import_export.excel_io import (
-            generate_workers_template,
-            generate_job_types_template,
-            generate_products_template,
-            generate_contracts_template,
-        )
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        map_rus = {
-            "workers": "работники",
-            "job_types": "виды_работ",
-            "products": "изделия",
-            "contracts": "контракты",
-        }
-        initial = sanitize_filename(f"шаблон_{map_rus.get(kind, kind)}_{stamp}") + ".xlsx"
-        path = self._ask_save(f"Шаблон {map_rus.get(kind, kind)}", ".xlsx", "Excel", initialfile=initial)
-        if not path:
+    # --- Backups list/restore ---
+    def _parse_backup_timestamp(self, path: Path) -> datetime | None:
+        # Шаблон нового имени: backup_base_sdelka_MMDD_HHMM
+        stem = path.stem
+        m = re.fullmatch(r"backup_base_sdelka_(\d{2})(\d{2})_(\d{2})(\d{2})", stem)
+        if not m:
+            return None
+        month, day, hour, minute = m.groups()
+        try:
+            now = datetime.now()
+            return datetime(year=now.year, month=int(month), day=int(day), hour=int(hour), minute=int(minute))
+        except Exception:
+            return None
+
+    def _format_ru_dt(self, dt: datetime) -> str:
+        months = [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        ]
+        d = dt.day
+        m = months[dt.month - 1]
+        y = dt.year
+        hh = dt.hour
+        mm = dt.minute
+        return f"База от {d} {m} {y} года {hh} часов {mm:02d} минут"
+
+    def _list_backups(self) -> list[Path]:
+        cur = Path(get_current_db_path())
+        backups_dir = CONFIG.backups_dir
+        try:
+            backups_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        # Находим все файлы резервных копий по новому стандарту: backup_base_sdelka_MMDD_HHMM
+        candidates: list[Path] = []
+        try:
+            for p in Path(backups_dir).iterdir():
+                if not p.is_file():
+                    continue
+                if p.suffix.lower() != (cur.suffix or ".db").lower() and p.suffix.lower() != ".db":
+                    continue
+                if re.fullmatch(r"backup_base_sdelka_\d{4}_\d{4}", p.stem):
+                    candidates.append(p)
+        except Exception:
+            candidates = []
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates
+
+    def _refresh_backup_list(self) -> None:
+        try:
+            self._backup_map.clear()
+            files = self._list_backups()
+            options: list[str] = []
+            used_labels: set[str] = set()
+            for p in files:
+                dt = self._parse_backup_timestamp(p)
+                if dt is None:
+                    try:
+                        dt = datetime.fromtimestamp(p.stat().st_mtime)
+                    except Exception:
+                        dt = None
+                base_label = self._format_ru_dt(dt) if dt else p.stem
+                label = base_label
+                if label in used_labels:
+                    label = f"{base_label} — {p.name}"
+                used_labels.add(label)
+                self._backup_map[label] = str(p)
+                options.append(label)
+            if not options:
+                options = ["(бэкапы не найдены)"]
+            # Обновление UI должно происходить в главном потоке
+            def _apply():
+                try:
+                    self._opt_backups.configure(values=options)
+                    self._backup_choice.set(options[0])
+                except Exception:
+                    pass
+            try:
+                self.after(0, _apply)
+            except Exception:
+                _apply()
+        except Exception:
+            pass
+
+    def _restore_selected_backup(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Восстановление БД", "Режим только для чтения — действие недоступно")
+            return
+        label = self._backup_choice.get().strip()
+        backup_path = self._backup_map.get(label)
+        if not backup_path or "не найдены" in label:
+            messagebox.showwarning("Восстановление БД", "Выберите доступную версию из списка")
+            return
+        backup_file = Path(backup_path)
+        if not backup_file.exists():
+            messagebox.showerror("Восстановление БД", "Файл бэкапа не найден на диске")
+            return
+        if not messagebox.askyesno("Восстановление БД", "Перейти на выбранную версию?\nТекущая база будет сохранена как бэкап."):
             return
         try:
-            if kind == "workers":
-                generate_workers_template(path)
-            elif kind == "job_types":
-                generate_job_types_template(path)
-            elif kind == "products":
-                generate_products_template(path)
-            elif kind == "contracts":
-                generate_contracts_template(path)
-            messagebox.showinfo("Шаблон", "Шаблон сохранен")
+            # 1) Сохранить текущую БД в бэкап
+            cur = Path(get_current_db_path())
+            backup_sqlite_db(cur)
+            # 2) Перезаписать канонический файл основной БД (имя неизменно)
+            shutil.copy2(backup_file, cur)
+            # 3) Обновить статус и поле пути (оно не меняется)
+            self._db_path_var.set(str(cur))
+            self.status.configure(text="База восстановлена из бэкапа. Перезапустите приложение для применения во всех окнах.")
         except Exception as exc:
-            messagebox.showerror("Шаблон", str(exc))
+            messagebox.showerror("Восстановление БД", f"Ошибка восстановления: {exc}")
 
     # ---- Build EXE ----
     def _build_exe(self) -> None:

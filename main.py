@@ -58,7 +58,19 @@ def main() -> None:
     except Exception:
         # по умолчанию полный доступ
         set_mode(AppMode.FULL)
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        # Безопасно отменяем отложенные коллбеки, чтобы не было ошибок after script на первом старте
+        try:
+            if hasattr(app, "_after_ids"):
+                for aid in list(app._after_ids):
+                    try:
+                        app.after_cancel(aid)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

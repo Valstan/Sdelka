@@ -84,9 +84,19 @@ def upsert_workers(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> 
         if not fio:
             continue
         personnel_no = (r.get("personnel_no") or f"AUTO-{normalize_for_search(fio)}").strip()
-        res = q.upsert_worker(conn, fio, None, r.get("position"), personnel_no)
+        dept = (r.get("dept") or None)
+        # Пользователь просил сохранять цифру цеха; если нашли чистое число — нормализуем как строку без пробелов
+        try:
+            if dept is not None:
+                s = str(dept).strip()
+                if s.isdigit():
+                    dept = s
+        except Exception:
+            pass
+        position = (r.get("position") or None)
+        status = (r.get("status") or None)
+        res = q.upsert_worker(conn, fio, dept, position, personnel_no, status)
         if res:
-            # upsert_worker returns 1 on insert or update
             added += 1
         else:
             updated += 0

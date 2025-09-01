@@ -26,6 +26,12 @@ class WorkersForm(ctk.CTkFrame):
         self._hide_jobs: dict[int, str] = {}
         self._build_ui()
         self._load_workers()
+        # Обновлять список при импорте
+        try:
+            self.bind("<<DataImported>>", lambda e: self._load_workers())
+            self.winfo_toplevel().bind("<<DataImported>>", lambda e: self._load_workers(), add="+")
+        except Exception:
+            pass
 
     def _build_ui(self) -> None:
         form = ctk.CTkFrame(self)

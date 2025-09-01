@@ -8,6 +8,8 @@ import sys
 import subprocess
 
 from config.settings import CONFIG
+import tkinter as tk
+from pathlib import Path
 from utils.text import normalize_for_search
 from db.sqlite import get_connection
 from services import suggestions
@@ -115,6 +117,7 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Экспорт в 1С (JSON)", command=self._export_1c_json).pack(side="left", padx=4)
 
         # Простая табличка предпросмотра списка (не обязательна для печати)
         self.tree = ttk.Treeview(self, show="headings")
@@ -683,6 +686,47 @@ class ReportsView(ctk.CTkFrame):
             messagebox.showerror("Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}")
             return
         self._open_file(path)
+
+    def _export_1c_json(self) -> None:
+        # Экспорт в 1С: единый формат JSON
+        from reports.export_1c import build_orders_unified, save_1c_json
+        base_path = filedialog.asksaveasfilename(
+            title="Сохранить JSON для 1С",
+            defaultextension=".json",
+            initialfile="выгрузка_1с.json",
+            filetypes=[("JSON", "*.json")],
+        )
+        if not base_path:
+            return
+        # Собрать данные
+        with get_connection() as conn:
+            kwargs = dict(
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                product_id=self._selected_product_id,
+                contract_id=self._selected_contract_id,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+                job_type_id=self._selected_job_type_id,
+            )
+            orders = build_orders_unified(conn, **kwargs)
+        meta = {
+            "date_from": self.date_from.get().strip() or None,
+            "date_to": self.date_to.get().strip() or None,
+            "product_id": self._selected_product_id,
+            "contract_id": self._selected_contract_id,
+            "worker_id": self._selected_worker_id,
+            "worker_name": self.worker_entry.get().strip() or None,
+            "dept": self.dept_var.get().strip() or None,
+            "job_type_id": self._selected_job_type_id,
+        }
+        try:
+            save_1c_json(path=base_path, orders=orders, meta=meta, encoding="utf-8")
+        except Exception as e:
+            messagebox.showerror("Экспорт 1С", f"Ошибка экспорта: {e}")
+            return
+        self._open_file(str(base_path))
 
     def _open_date_picker(self, var, anchor=None) -> None:
         from gui.widgets.date_picker import open_for_anchor
