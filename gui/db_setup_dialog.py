@@ -16,11 +16,21 @@ class DbSetupDialog(ctk.CTkToplevel):
         self.geometry("520x220")
         self.resizable(False, False)
         try:
+            # Всегда поверх и модально по отношению к временной корневой
+            self.transient(master)
+        except Exception:
+            pass
+        try:
             self.attributes("-topmost", True)
         except Exception:
             pass
         try:
             self.grab_set()
+        except Exception:
+            pass
+        try:
+            self.focus_force()
+            self.lift()
         except Exception:
             pass
 
@@ -44,15 +54,12 @@ class DbSetupDialog(ctk.CTkToplevel):
         self.result: bool = False
 
     def _choose_existing(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Выберите файл базы данных",
-            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
-        )
+        path = self._ask_open_db()
         if not path:
             return
         p = Path(path)
         if not p.exists():
-            messagebox.showerror("База данных", "Файл не найден")
+            messagebox.showerror("База данных", "Файл не найден", parent=self)
             return
         # Проверим, что можно открыть
         try:
@@ -60,7 +67,7 @@ class DbSetupDialog(ctk.CTkToplevel):
                 # Лёгкая проверка — запроc sqlite_master
                 conn.execute("SELECT name FROM sqlite_master LIMIT 1")
         except Exception as exc:
-            messagebox.showerror("База данных", f"Не удалось открыть файл БД: {exc}")
+            messagebox.showerror("База данных", f"Не удалось открыть файл БД: {exc}", parent=self)
             return
         set_db_path(p)
         self._ok_and_close()
@@ -73,12 +80,7 @@ class DbSetupDialog(ctk.CTkToplevel):
                 initial_name = cur.name
         except Exception:
             pass
-        path = filedialog.asksaveasfilename(
-            title="Создать новую базу данных",
-            defaultextension=".db",
-            initialfile=initial_name,
-            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
-        )
+        path = self._ask_save_db(initial_name)
         if not path:
             return
         p = Path(path)
@@ -91,7 +93,7 @@ class DbSetupDialog(ctk.CTkToplevel):
             with get_connection(p) as conn:
                 initialize_schema(conn)
         except Exception as exc:
-            messagebox.showerror("Создание БД", f"Не удалось создать БД: {exc}")
+            messagebox.showerror("Создание БД", f"Не удалось создать БД: {exc}", parent=self)
             return
         self._ok_and_close()
 
@@ -106,9 +108,66 @@ class DbSetupDialog(ctk.CTkToplevel):
     def _ok_and_close(self) -> None:
         self.result = True
         try:
+            self.update_idletasks()
             self.grab_release()
         except Exception:
             pass
         self.destroy()
+
+    # --- Вспомогательные методы для корректного вызова диалогов файловой системы ---
+    def _before_system_dialog(self) -> None:
+        # Снять topmost и grab, чтобы системный проводник не прятался под окном
+        try:
+            self.attributes("-topmost", False)
+        except Exception:
+            pass
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
+
+    def _after_system_dialog(self) -> None:
+        # Вернуть модальность и поверх всех окон
+        try:
+            self.grab_set()
+        except Exception:
+            pass
+        try:
+            self.attributes("-topmost", True)
+        except Exception:
+            pass
+        try:
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
+    def _ask_open_db(self) -> str | None:
+        self._before_system_dialog()
+        try:
+            return filedialog.askopenfilename(
+                parent=self,
+                title="Выберите файл базы данных",
+                filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+            )
+        finally:
+            self._after_system_dialog()
+
+    def _ask_save_db(self, initial_name: str) -> str | None:
+        self._before_system_dialog()
+        try:
+            return filedialog.asksaveasfilename(
+                parent=self,
+                title="Создать новую базу данных",
+                defaultextension=".db",
+                initialfile=initial_name,
+                filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+            )
+        finally:
+            self._after_system_dialog()
 
 
