@@ -85,14 +85,30 @@ def upsert_workers(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> 
             continue
         personnel_no = (r.get("personnel_no") or f"AUTO-{normalize_for_search(fio)}").strip()
         dept = (r.get("dept") or None)
-        # Пользователь просил сохранять цифру цеха; если нашли чистое число — нормализуем как строку без пробелов
+        # Нормализация цеха: сохраняем цифру. Поддержка значений вида "1", 1, 1.0, "цех № 1" и т.п.
         try:
             if dept is not None:
                 s = str(dept).strip()
                 if s.isdigit():
                     dept = s
+                else:
+                    try:
+                        val = float(s.replace(",", "."))
+                        if val.is_integer():
+                            dept = str(int(val))
+                        else:
+                            import re as _re
+                            m = _re.search(r"(\d+)", s)
+                            dept = m.group(1) if m else None
+                    except Exception:
+                        import re as _re
+                        m = _re.search(r"(\d+)", s)
+                        dept = m.group(1) if m else None
         except Exception:
-            pass
+            try:
+                dept = None
+            except Exception:
+                pass
         position = (r.get("position") or None)
         status = (r.get("status") or None)
         res = q.upsert_worker(conn, fio, dept, position, personnel_no, status)

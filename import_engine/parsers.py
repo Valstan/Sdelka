@@ -160,12 +160,12 @@ def parse_workers(df: pd.DataFrame) -> list[dict[str, Any]]:
     except Exception:
         pass
 
-    # Нормализуем заголовки. Если CSV как в примере — может не быть явных заголовков:
-    # попробуем самую первую непустую строку как заголовки, если текущие все похожи на 0..N или пустые
+    # Нормализуем заголовки. Для XLSX бывает, что заголовки на строке > 0.
+    # Ищем строку, содержащую "ФИО" и/или явные заголовки работника.
     try:
         import pandas as pd  # noqa
         df = df.copy()
-        # Найдём первую строку, где явно есть "ФИО" ("Табель" может отсутствовать)
+        # 1) Попытка: явная колонка "ФИО"
         header_row_index = None
         scan_limit = min(6, len(df))
         for i in range(scan_limit):
@@ -174,9 +174,38 @@ def parse_workers(df: pd.DataFrame) -> list[dict[str, Any]]:
             if ("фио" in row_text):
                 header_row_index = i
                 break
+        # 2) Если не нашли — эвристика по наибольшему числу ключевых слов заголовков в первых 20 строках
+        if header_row_index is None:
+            best_idx = None
+            best_score = -1
+            keys_main = ("фио", "фамил", "имя", "отче", "сотрудник", "работник")
+            keys_extra = ("таб", "табел", "табель", "персонал", "tn", "personnel", "должн", "разряд", "цех", "отдел", "подраздел", "участок", "бригада")
+            for i in range(min(20, len(df))):
+                row_low = [str(x).strip().lower() for x in df.iloc[i].tolist()]
+                s = " ".join(row_low)
+                score = sum(1 for k in keys_main if k in s) * 2 + sum(1 for k in keys_extra if k in s)
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+            if best_idx is not None and best_score >= 2:
+                header_row_index = best_idx
+        # 3) Применяем найденную строку заголовков
         if header_row_index is not None:
             df.columns = [str(x).strip() for x in df.iloc[header_row_index].tolist()]
             df = df.iloc[header_row_index + 1 :].reset_index(drop=True)
+        else:
+            # 4) Если колонок почти нет или они числовые/пустые — пробуем взять первую осмысленную строку
+            try:
+                if all((str(c).strip() == "" or str(c).strip().isdigit()) for c in df.columns):
+                    for i in range(min(20, len(df))):
+                        vals = [str(x).strip() for x in df.iloc[i].tolist()]
+                        line = " ".join(vals).lower()
+                        if any(k in line for k in keys_main) or any(k in line for k in keys_extra):
+                            df.columns = [str(x).strip() for x in df.iloc[i].tolist()]
+                            df = df.iloc[i + 1 :].reset_index(drop=True)
+                            break
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -185,9 +214,9 @@ def parse_workers(df: pd.DataFrame) -> list[dict[str, Any]]:
     fam_col = next((c for c in df.columns if "фамил" in str(c).lower()), None)
     im_col = next((c for c in df.columns if str(c) and "имя" == str(c).strip().lower()), None)
     otch_col = next((c for c in df.columns if "отче" in str(c).lower()), None)
-    tab_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("таб", "табел", "табель", "персонал", "tn", "personnel"))), None)
+    tab_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("таб", "табел", "табель", "персонал", "tn", "personnel", "таб.№", "таб. №", "таб.н"))), None)
     pos_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("должн", "разряд", "роль", "позиция"))), None)
-    dept_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("цех", "отдел", "подраздел", "участок", "бригада"))), None)
+    dept_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("цех", "цех№", "цех №", "отдел", "подраздел", "участок", "бригада", "dept", "department"))), None)
     status_col = next((c for c in df.columns if any(k in str(c).lower() for k in ("статус", "уволен", "работает"))), None)
 
     out: list[dict[str, Any]] = []
@@ -219,7 +248,33 @@ def parse_workers(df: pd.DataFrame) -> list[dict[str, Any]]:
         if not personnel_no:
             personnel_no = f"AUTO-{normalize_for_search(fio)}"
         position = str(r.get(pos_col, "")).strip() or None if pos_col is not None else None
-        dept = str(r.get(dept_col, "")).strip() or None if dept_col is not None else None
+        dept_raw = None
+        if dept_col is not None:
+            try:
+                dept_raw = r.get(dept_col, "")
+            except Exception:
+                dept_raw = ""
+        dept = None
+        if dept_raw is not None:
+            s = str(dept_raw).strip()
+            if s:
+                # Вырезаем цифры, поддержка форматов "2", 2, 2.0, "Цех № 2"
+                try:
+                    if s.isdigit():
+                        dept = s
+                    else:
+                        try:
+                            val = float(s.replace(",", "."))
+                            if val.is_integer():
+                                dept = str(int(val))
+                        except Exception:
+                            pass
+                        if dept is None:
+                            import re as _re
+                            m = _re.search(r"(\d+)", s)
+                            dept = m.group(1) if m else None
+                except Exception:
+                    dept = None
         if (dept is None or dept == "") and dept_from_header:
             # Пользователь просил сохранить именно цифру номера цеха
             dept = dept_from_header

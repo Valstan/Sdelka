@@ -78,7 +78,7 @@ def detect_sheet(df: pd.DataFrame) -> tuple[DocKind, int, dict[str, Any] | None]
     if has_any(["фио", "сотрудник", "работник"]) and (has_any(["таб", "персонал"]) or has_any(["разряд", "должн"])):
         scores["workers"] += 3
     has_fio_split = (any("фамил" in c for c in cols) and any(c.strip() == "имя" for c in cols_raw)) or any("отче" in c for c in cols)
-    has_worker_attrs = has_any(["таб", "персонал"]) or has_any(["разряд", "должн"]) or has_any(["цех", "отдел", "подраздел", "участок", "бригада"])
+    has_worker_attrs = has_any(["таб", "табел", "табель", "персонал", "tn", "personnel"]) or has_any(["разряд", "должн"]) or has_any(["цех", "отдел", "подраздел", "участок", "бригада"])
     if has_fio_split and has_worker_attrs:
         scores["workers"] += 2
     if ("список" in head_text and ("работник" in head_text or "сотрудник" in head_text)):

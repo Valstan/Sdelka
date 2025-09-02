@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -34,6 +34,8 @@ class WorkersForm(ctk.CTkFrame):
             pass
 
     def _build_ui(self) -> None:
+        # Top spacer removed to avoid empty gap under tabs
+
         form = ctk.CTkFrame(self)
         form.pack(fill="x", padx=10, pady=10)
 
@@ -85,6 +87,9 @@ class WorkersForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
+        # Export aligned to the right in the same row
+        export_btn = ctk.CTkButton(btns, text="Экспорт работников", command=self._export_workers)
+        export_btn.pack(side="right")
         if self._readonly:
             for w in (self.full_name_entry, self.dept_entry, self.position_entry, self.personnel_entry):
                 try:
@@ -419,6 +424,7 @@ class WorkersForm(ctk.CTkFrame):
 
     def _save(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
             return
         full_name = self.full_name_var.get().strip()
         if not full_name:
@@ -448,6 +454,7 @@ class WorkersForm(ctk.CTkFrame):
 
     def _delete(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
             return
         if not self._selected_id:
             return
@@ -461,3 +468,18 @@ class WorkersForm(ctk.CTkFrame):
             return
         self._load_workers()
         self._clear()
+
+    def _export_workers(self) -> None:
+        from import_export.excel_io import export_table_to_excel
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        initial = f"экспорт_работники_{stamp}.xlsx"
+        path = filedialog.asksaveasfilename(title="Сохранить работников", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
+        if not path:
+            return
+        try:
+            with get_connection() as conn:
+                export_table_to_excel(conn, "workers", path)
+            messagebox.showinfo("Экспорт", "Готово")
+        except Exception as exc:
+            messagebox.showerror("Экспорт", str(exc))

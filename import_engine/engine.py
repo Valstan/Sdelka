@@ -129,18 +129,46 @@ def import_data(
 
     # Generic tabular readers (много листов/таблиц)
     dfs = read_any_tabular(p)
-    forced_routes: list[tuple[str, int]] | None = None
-    # Если единичная таблица (CSV/XLSX/ODS) со списком работников — принудительно маршрут как workers
-    if len(dfs) == 1 and dfs and dfs[0] is not None:
-        # Принудительно маршрутизируем как "workers", если обнаружены маркеры 'ФИО' + 'Табель' в колонках или первых строках
-        df0 = dfs[0]
-        cols_low = [str(c).strip().lower() for c in df0.columns]
-        text_head = " ".join([";".join([str(x).strip().lower() for x in (list(df0.iloc[i, :]) if i < len(df0) else [])]) for i in range(min(5, len(df0)))])
-        def has_worker_markers(s: str) -> bool:
-            return (("фио" in s) and ("таб" in s or "табел" in s or "табель" in s or "персонал" in s)) or ("список" in s and ("работник" in s or "сотрудник" in s))
-        if has_worker_markers(" ".join(cols_low)) or has_worker_markers(text_head):
-            forced_routes = [("workers", 0)]
-    routes = forced_routes if forced_routes is not None else split_and_route(dfs)
+    # Принудительное распознавание листов работников (XLSX/ODS), даже если листов несколько
+    forced_workers: list[int] = []
+    if dfs:
+        def _has_worker_markers_df(df) -> bool:
+            try:
+                cols_low = [str(c).strip().lower() for c in df.columns]
+            except Exception:
+                cols_low = []
+            # Сканируем первые строки как текстовую шапку
+            try:
+                scan_rows = min(6, len(df))
+                head_text = " ".join([" ".join([str(x).strip().lower() for x in (list(df.iloc[i, :]) if i < len(df) else [])]) for i in range(scan_rows)])
+            except Exception:
+                head_text = ""
+            def any_marker(s: str) -> bool:
+                s = s or ""
+                return (
+                    ("фио" in s and (
+                        "таб" in s or "табел" in s or "табель" in s or "персонал" in s or
+                        "разряд" in s or "должн" in s or "цех" in s or "отдел" in s or "участок" in s or "бригада" in s
+                    )) or (
+                        "список" in s and ("работник" in s or "сотрудник" in s)
+                    )
+                )
+            return any_marker(" ".join(cols_low)) or any_marker(head_text)
+        for idx, df in enumerate(dfs):
+            try:
+                # Пропускаем пустые листы без колонок и строк
+                if getattr(df, "shape", (0, 0))[1] == 0 or len(df) == 0:
+                    continue
+            except Exception:
+                pass
+            if _has_worker_markers_df(df):
+                forced_workers.append(idx)
+    # Базовые маршруты детектора
+    routes = split_and_route(dfs)
+    # Добавим принудительно распознанные листы работников
+    for idx in forced_workers:
+        if ("workers", idx) not in routes:
+            routes.append(("workers", idx))
     # Если детектор посчитал все листы unknown (score=0), предупредим пользователя в dry-run
     detected = None
     try:

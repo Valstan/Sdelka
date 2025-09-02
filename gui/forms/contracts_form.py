@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -32,6 +32,8 @@ class ContractsForm(ctk.CTkFrame):
             pass
 
     def _build_ui(self) -> None:
+        # No top spacer/banners to avoid empty gaps
+
         form = ctk.CTkFrame(self)
         form.pack(fill="x", padx=10, pady=10)
 
@@ -106,6 +108,8 @@ class ContractsForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
+        export_btn = ctk.CTkButton(btns, text="Экспорт контрактов", command=self._export_contracts)
+        export_btn.pack(side="right")
         if self._readonly:
             for w in (self.code_entry, self.name_entry, self.contract_type_entry, self.executor_entry, 
                      self.igk_entry, self.contract_number_entry, self.bank_account_entry, 
@@ -271,6 +275,7 @@ class ContractsForm(ctk.CTkFrame):
 
     def _save(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
             return
         code = self.code_var.get().strip()
         if not code:
@@ -307,6 +312,7 @@ class ContractsForm(ctk.CTkFrame):
 
     def _delete(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
             return
         if not self._selected_id:
             return
@@ -326,3 +332,18 @@ class ContractsForm(ctk.CTkFrame):
         if anchor is None:
             return
         open_for_anchor(self, anchor, var.get().strip(), lambda d: var.set(d))
+
+    def _export_contracts(self) -> None:
+        from import_export.excel_io import export_table_to_excel
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        initial = f"экспорт_контракты_{stamp}.xlsx"
+        path = filedialog.asksaveasfilename(title="Сохранить контракты", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
+        if not path:
+            return
+        try:
+            with get_connection() as conn:
+                export_table_to_excel(conn, "contracts", path)
+            messagebox.showinfo("Экспорт", "Готово")
+        except Exception as exc:
+            messagebox.showerror("Экспорт", str(exc))

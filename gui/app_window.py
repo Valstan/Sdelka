@@ -97,6 +97,37 @@ class AppWindow(ctk.CTk):
         # Первичное размещение
         self._schedule_after(50, self._place_title_badge)
 
+        # Малый бейдж "Режим просмотра" справа от сегментированных кнопок
+        try:
+            seg = getattr(self._tabview, "_segmented_button", None)
+            self._readonly_badge = ctk.CTkLabel(self, text="Режим просмотра", text_color="#dc2626")
+            def place_badge():
+                try:
+                    if seg is None or not seg.winfo_exists():
+                        self._readonly_badge.place_forget()
+                        return
+                    # Показывать бейдж только в режиме readonly
+                    if not is_readonly():
+                        self._readonly_badge.place_forget()
+                        return
+                    self.update_idletasks(); seg.update_idletasks(); self._readonly_badge.update_idletasks()
+                    x = seg.winfo_rootx() - self.winfo_rootx()
+                    y = seg.winfo_rooty() - self.winfo_rooty()
+                    w = seg.winfo_width()
+                    self._readonly_badge.place(x=x + w + 16, y=y + 6)
+                    self._readonly_badge.lift()
+                except Exception:
+                    try:
+                        self._readonly_badge.place_forget()
+                    except Exception:
+                        pass
+            self.bind("<Configure>", lambda e: place_badge(), add="+")
+            if seg is not None:
+                seg.bind("<Configure>", lambda e: place_badge(), add="+")
+            self._schedule_after(60, place_badge)
+        except Exception:
+            pass
+
     def _create_title_badge(self) -> None:
         # Фиксированный шрифт ~8pt в пикселях (не зависит от scaling/настроек)
         try:

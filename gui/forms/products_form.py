@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -33,6 +33,8 @@ class ProductsForm(ctk.CTkFrame):
             pass
 
     def _build_ui(self) -> None:
+        # No top spacer/banners to avoid empty gaps
+
         form = ctk.CTkFrame(self)
         form.pack(fill="x", padx=10, pady=10)
 
@@ -70,6 +72,8 @@ class ProductsForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
+        export_btn = ctk.CTkButton(btns, text="Экспорт изделий", command=self._export_products)
+        export_btn.pack(side="right")
         if self._readonly:
             for w in (self.name_entry, self.no_entry, self.contract_entry):
                 try:
@@ -253,6 +257,7 @@ class ProductsForm(ctk.CTkFrame):
 
     def _save(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
             return
         name = self.name_var.get().strip()
         no = self.no_var.get().strip()
@@ -292,6 +297,7 @@ class ProductsForm(ctk.CTkFrame):
 
     def _delete(self) -> None:
         if getattr(self, "_readonly", False):
+            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
             return
         if not self._selected_id:
             return
@@ -341,3 +347,18 @@ class ProductsForm(ctk.CTkFrame):
         self.contract_var.set(label)
         record_use("products.contract", label)
         self.suggest_contract_frame.place_forget()
+
+    def _export_products(self) -> None:
+        from import_export.excel_io import export_table_to_excel
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        initial = f"экспорт_изделия_{stamp}.xlsx"
+        path = filedialog.asksaveasfilename(title="Сохранить изделия", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
+        if not path:
+            return
+        try:
+            with get_connection() as conn:
+                export_table_to_excel(conn, "products", path)
+            messagebox.showinfo("Экспорт", "Готово")
+        except Exception as exc:
+            messagebox.showerror("Экспорт", str(exc))
