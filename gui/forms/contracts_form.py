@@ -6,6 +6,8 @@ from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
+from utils.readonly_ui import guard_readonly
+from utils.export_ui import create_export_button
 from services import reference_data as ref
 from db import queries as q
 from utils.usage_history import record_use, get_recent
@@ -108,7 +110,7 @@ class ContractsForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
-        export_btn = ctk.CTkButton(btns, text="Экспорт контрактов", command=self._export_contracts)
+        export_btn = create_export_button(btns, "contracts", "Экспорт контрактов")
         export_btn.pack(side="right")
         if self._readonly:
             for w in (self.code_entry, self.name_entry, self.contract_type_entry, self.executor_entry, 
@@ -274,8 +276,7 @@ class ContractsForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
+        if not guard_readonly("сохранение"):
             return
         code = self.code_var.get().strip()
         if not code:
@@ -311,8 +312,7 @@ class ContractsForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
+        if not guard_readonly("удаление"):
             return
         if not self._selected_id:
             return
@@ -334,16 +334,4 @@ class ContractsForm(ctk.CTkFrame):
         open_for_anchor(self, anchor, var.get().strip(), lambda d: var.set(d))
 
     def _export_contracts(self) -> None:
-        from import_export.excel_io import export_table_to_excel
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        initial = f"экспорт_контракты_{stamp}.xlsx"
-        path = filedialog.asksaveasfilename(title="Сохранить контракты", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                export_table_to_excel(conn, "contracts", path)
-            messagebox.showinfo("Экспорт", "Готово")
-        except Exception as exc:
-            messagebox.showerror("Экспорт", str(exc))
+        pass

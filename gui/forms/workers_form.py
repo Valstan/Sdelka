@@ -6,6 +6,8 @@ from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
+from utils.readonly_ui import guard_readonly
+from utils.export_ui import create_export_button
 from services import reference_data as ref
 from services import suggestions
 from db import queries as q
@@ -88,7 +90,7 @@ class WorkersForm(ctk.CTkFrame):
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
         # Export aligned to the right in the same row
-        export_btn = ctk.CTkButton(btns, text="Экспорт работников", command=self._export_workers)
+        export_btn = create_export_button(btns, "workers", "Экспорт работников")
         export_btn.pack(side="right")
         if self._readonly:
             for w in (self.full_name_entry, self.dept_entry, self.position_entry, self.personnel_entry):
@@ -423,8 +425,7 @@ class WorkersForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
+        if not guard_readonly("сохранение"):
             return
         full_name = self.full_name_var.get().strip()
         if not full_name:
@@ -453,8 +454,7 @@ class WorkersForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
+        if not guard_readonly("удаление"):
             return
         if not self._selected_id:
             return

@@ -6,6 +6,8 @@ from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
+from utils.readonly_ui import guard_readonly
+from utils.export_ui import create_export_button
 from services import reference_data as ref
 from db import queries as q
 from services import suggestions
@@ -67,7 +69,7 @@ class JobTypesForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
-        export_btn = ctk.CTkButton(btns, text="Экспорт видов работ", command=self._export_job_types)
+        export_btn = create_export_button(btns, "job_types", "Экспорт видов работ")
         export_btn.pack(side="right")
         if self._readonly:
             for w in (self.name_entry, self.unit_entry):
@@ -273,8 +275,8 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Сохранение недоступно в режиме 'Просмотр'.")
+        from utils.readonly_ui import guard_readonly
+        if not guard_readonly("сохранение"):
             return
         name = self.name_var.get().strip()
         unit = self.unit_var.get().strip()
@@ -309,8 +311,8 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
-        if getattr(self, "_readonly", False):
-            messagebox.showwarning("Режим 'Просмотр'", "Удаление недоступно в режиме 'Просмотр'.")
+        from utils.readonly_ui import guard_readonly
+        if not guard_readonly("удаление"):
             return
         if not self._selected_id:
             return
@@ -326,16 +328,4 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _export_job_types(self) -> None:
-        from import_export.excel_io import export_table_to_excel
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        initial = f"экспорт_виды_работ_{stamp}.xlsx"
-        path = filedialog.asksaveasfilename(title="Сохранить виды работ", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                export_table_to_excel(conn, "job_types", path)
-            messagebox.showinfo("Экспорт", "Готово")
-        except Exception as exc:
-            messagebox.showerror("Экспорт", str(exc))
+        pass
