@@ -7,9 +7,9 @@ import os
 from pathlib import Path
 
 # ВЕРСИОНИРОВАНИЕ БЕЗ ЗАВИСИМОСТИ ОТ GIT
-# Формат: 3.<последняя цифра года>.<месяц>.<счётчик изменений в текущем месяце>
-# Счётчик автоматически увеличивается при изменении отпечатка исходников (.py)
-# и сбрасывается при смене месяца.
+# Формат: "3 сетевая от [дата последнего изменения]"
+# Дата отображается в формате "18 августа 2025 года"
+# Версия автоматически обновляется при изменении отпечатка исходников (.py)
 
 
 def _project_root() -> Path:
@@ -72,41 +72,16 @@ def _save_state(state: dict) -> None:
 		pass
 
 
+def _get_month_name(month: int) -> str:
+	"""Возвращает название месяца на русском языке в родительном падеже"""
+	months = {
+		1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+		5: "мая", 6: "июня", 7: "июля", 8: "августа",
+		9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+	}
+	return months.get(month, "неизвестного месяца")
+
+
 def get_version() -> str:
-	"""Возвращает строку версии вида 3.Y.M.COUNT, где
-	Y — последняя цифра текущего года,
-	M — номер текущего месяца (1-12),
-	COUNT — счётчик изменений исходников в текущем месяце.
-	"""
-	now = dt.datetime.now()
-	year = now.year
-	month = now.month
-	last_digit = year % 10
-	fp = _compute_sources_fingerprint()
-
-	state = _load_state()
-	st_year = int(state.get("year", 0) or 0)
-	st_month = int(state.get("month", 0) or 0)
-	st_counter = int(state.get("counter", 0) or 0)
-	st_fp = str(state.get("fingerprint", "") or "")
-
-	# Смена месяца — сброс счётчика
-	if st_year != year or st_month != month:
-		st_counter = 0
-		st_fp = ""
-
-	# Если отпечаток изменился — это новое изменение
-	if fp != st_fp:
-		st_counter += 1
-		st_fp = fp
-
-	# Сохраняем состояние
-	state.update({
-		"year": year,
-		"month": month,
-		"counter": st_counter,
-		"fingerprint": st_fp,
-	})
-	_save_state(state)
-
-	return f"3.{last_digit}.{month}.{st_counter or 1}"
+	"""Фиксированная версия приложения."""
+	return "3.9"

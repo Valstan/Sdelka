@@ -6,8 +6,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import tkinter as tk
 import threading
-import subprocess
-import sys
+import re
 
 from config.settings import CONFIG
 from services.merge_db import merge_from_file
@@ -25,6 +24,11 @@ from utils.user_prefs import (
 )
 from utils.ui_theming import apply_user_fonts
 from db.sqlite import get_connection
+from utils.versioning import get_version
+from utils.backup import backup_sqlite_db
+from datetime import datetime
+from tkinter import simpledialog
+from utils.security import user_password_is_set, verify_user_password, save_user_password
 
 
 class SettingsView(ctk.CTkFrame):
@@ -32,16 +36,13 @@ class SettingsView(ctk.CTkFrame):
         super().__init__(master)
         self._readonly = readonly
         self._prefs = load_prefs()
-        self._build_log_win: ctk.CTkToplevel | None = None
-        self._build_log_text = None
-        self._build_progress_label: ctk.CTkLabel | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
         box = ctk.CTkFrame(self)
         box.pack(fill="x", padx=10, pady=10)
 
-        ctk.CTkLabel(box, text="Резервное копирование и перенос базы данных").pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(box, text="База данных").pack(anchor="w", pady=(0, 8))
 
         btns = ctk.CTkFrame(box)
         btns.pack(fill="x")
@@ -50,42 +51,61 @@ class SettingsView(ctk.CTkFrame):
         self._btn_export_db.pack(side="left", padx=6)
         self._btn_merge_db = ctk.CTkButton(btns, text="Слить с другой базой...", command=self._merge_db)
         self._btn_merge_db.pack(side="left", padx=6)
-        self._btn_build_exe = ctk.CTkButton(btns, text="Собрать .exe...", command=self._build_exe)
-        self._btn_build_exe.pack(side="left", padx=6)
+        # Импорт данных перенесён сюда
+        self._btn_import_unified = ctk.CTkButton(btns, text="Импорт данных", command=self._import_unified)
+        self._btn_import_unified.pack(side="left", padx=6)
 
-        # ---- Настройки базы данных и совместной работы ----
-        db_box = ctk.CTkFrame(self)
-        db_box.pack(fill="x", padx=10, pady=10)
-        ctk.CTkLabel(db_box, text="Настройки базы данных (для совместной работы)").pack(anchor="w", pady=(0, 8))
-
-        # Путь к БД
-        row_db = ctk.CTkFrame(db_box)
+        # Путь к БД (перенесено сюда)
+        row_db = ctk.CTkFrame(box)
         row_db.pack(fill="x", pady=(2, 6))
-        ctk.CTkLabel(row_db, text="Путь к файлу БД (.db)").pack(side="left", padx=6)
+        ctk.CTkLabel(row_db, text="Путь к файлу БД (.db)").pack(anchor="w", padx=6)
         self._db_path_var = ctk.StringVar(value=str(get_current_db_path()))
-        self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var, width=560)
-        self._db_path_entry.pack(side="left", padx=6, fill="x", expand=True)
-        ctk.CTkButton(row_db, text="Выбрать...", command=self._choose_existing_db).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Создать...", command=self._create_new_db).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
-        ctk.CTkButton(row_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
+        self._db_path_entry = ctk.CTkEntry(row_db, textvariable=self._db_path_var)
+        self._db_path_entry.pack(fill="x", padx=6)
+        btns_db = ctk.CTkFrame(box)
+        btns_db.pack(fill="x", pady=(4, 6))
+        ctk.CTkButton(btns_db, text="Выбрать...", command=self._choose_existing_db).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Создать...", command=self._create_new_db).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Применить", command=self._apply_db_settings).pack(side="left", padx=6)
+        ctk.CTkButton(btns_db, text="Проверить подключение", command=self._test_db_connection).pack(side="left", padx=6)
 
-        # WAL и таймауты
-        row_wal = ctk.CTkFrame(db_box)
-        row_wal.pack(fill="x", pady=(2, 6))
-        self._wal_var = ctk.BooleanVar(value=get_enable_wal())
-        self._wal_chk = ctk.CTkCheckBox(row_wal, text="Включить WAL (рекомендуется для совместной работы)", variable=self._wal_var, command=lambda: None)
-        self._wal_chk.pack(side="left", padx=6)
+        # Версии базы данных (откат к бэкапу) — перенесено сюда
+        backups_box = ctk.CTkFrame(box)
+        backups_box.pack(fill="x", pady=(6, 6))
+        self._backups_row = ctk.CTkFrame(backups_box)
+        self._backups_row.pack(fill="x")
+        ctk.CTkLabel(self._backups_row, text="Выберите версию:").pack(side="left", padx=6)
+        self._backup_choice = ctk.StringVar(value="")
+        self._backup_map = {}
+        self._opt_backups = ctk.CTkOptionMenu(self._backups_row, values=["(бэкапы не найдены)"], variable=self._backup_choice)
+        self._opt_backups.pack(side="left", padx=6)
+        ctk.CTkButton(self._backups_row, text="Обновить список", command=self._refresh_backup_list).pack(side="left", padx=6)
+        ctk.CTkButton(self._backups_row, text="Перейти на эту версию данных", fg_color="#2563eb", command=self._restore_selected_backup).pack(side="left", padx=6)
+        try:
+            self._refresh_backup_list()
+        except Exception:
+            pass
 
-        row_to = ctk.CTkFrame(db_box)
-        row_to.pack(fill="x", pady=(2, 6))
-        ctk.CTkLabel(row_to, text="Таймаут ожидания блокировок (мс)").pack(side="left", padx=6)
-        self._busy_var = ctk.StringVar(value=str(get_busy_timeout_ms()))
-        self._busy_entry = ctk.CTkEntry(row_to, textvariable=self._busy_var, width=120)
-        self._busy_entry.pack(side="left", padx=6)
-        ctk.CTkButton(row_to, text="Сохранить", command=self._apply_db_settings).pack(side="left", padx=6)
+        # Статусная строка
+        self.status = ctk.CTkLabel(self, text="")
+        self.status.pack(fill="x", padx=10, pady=10)
 
-        # UI Preferences
+        # ---- Пароль пользователя ----
+        pw_box = ctk.CTkFrame(self)
+        pw_box.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(pw_box, text="Пароль пользователя (Полный доступ)").pack(anchor="w", pady=(0, 8))
+
+        rowp = ctk.CTkFrame(pw_box)
+        rowp.pack(fill="x", pady=(2, 6))
+        ctk.CTkButton(rowp, text="Сменить пароль...", command=self._change_user_password).pack(side="left", padx=6)
+        ctk.CTkLabel(rowp, text="Для смены требуется текущий пароль").pack(side="left", padx=6)
+
+        rowps = ctk.CTkFrame(pw_box)
+        rowps.pack(fill="x")
+        ctk.CTkButton(rowps, text="Установить пароль...", command=self._set_user_password).pack(side="left", padx=6)
+        ctk.CTkLabel(rowps, text="Если пароль ещё не установлен").pack(side="left", padx=6)
+
+        # ---- Настройки интерфейса (перенесены ниже пароля) ----
         ui_box = ctk.CTkFrame(self)
         ui_box.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(ui_box, text="Настройки интерфейса").pack(anchor="w", pady=(0, 8))
@@ -100,63 +120,17 @@ class SettingsView(ctk.CTkFrame):
         self._opt_ui_font = ctk.CTkOptionMenu(row, values=[str(i) for i in range(10, 21)], variable=self._ui_font_var, command=lambda _: self._save_prefs())
         self._opt_ui_font.pack(side="left")
 
-        self.status = ctk.CTkLabel(self, text="")
-        self.status.pack(fill="x", padx=10, pady=10)
-
-        # --- Импорт / Экспорт ---
-        io_box = ctk.CTkFrame(self)
-        io_box.pack(fill="x", padx=10, pady=10)
-        ctk.CTkLabel(io_box, text="Импорт из Excel").pack(anchor="w")
-        row1 = ctk.CTkFrame(io_box)
-        row1.pack(fill="x", pady=(4, 8))
-        self._btn_imp_workers = ctk.CTkButton(row1, text="Импорт Работников", command=self._import_workers)
-        self._btn_imp_workers.pack(side="left", padx=5)
-        self._btn_imp_jobs = ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs)
-        self._btn_imp_jobs.pack(side="left", padx=5)
-        self._btn_imp_products = ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products)
-        self._btn_imp_products.pack(side="left", padx=5)
-        self._btn_imp_contracts = ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts)
-        self._btn_imp_contracts.pack(side="left", padx=5)
-
-        ctk.CTkLabel(io_box, text="Экспорт таблиц").pack(anchor="w")
-        row2 = ctk.CTkFrame(io_box)
-        row2.pack(fill="x", pady=(4, 8))
-        self._btn_exp_workers = ctk.CTkButton(row2, text="Экспорт Работников", command=lambda: self._export_table("workers"))
-        self._btn_exp_workers.pack(side="left", padx=5)
-        self._btn_exp_jobs = ctk.CTkButton(row2, text="Экспорт Видов работ", command=lambda: self._export_table("job_types"))
-        self._btn_exp_jobs.pack(side="left", padx=5)
-        self._btn_exp_products = ctk.CTkButton(row2, text="Экспорт Изделий", command=lambda: self._export_table("products"))
-        self._btn_exp_products.pack(side="left", padx=5)
-        self._btn_exp_contracts = ctk.CTkButton(row2, text="Экспорт Контрактов", command=lambda: self._export_table("contracts"))
-        self._btn_exp_contracts.pack(side="left", padx=5)
-        self._btn_exp_all = ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all)
-        self._btn_exp_all.pack(side="left", padx=5)
-
-        ctk.CTkLabel(io_box, text="Шаблоны Excel").pack(anchor="w")
-        row3 = ctk.CTkFrame(io_box)
-        row3.pack(fill="x", pady=(4, 8))
-        self._btn_tpl_workers = ctk.CTkButton(row3, text="Шаблон Работники", command=lambda: self._save_template("workers"))
-        self._btn_tpl_workers.pack(side="left", padx=5)
-        self._btn_tpl_jobs = ctk.CTkButton(row3, text="Шаблон Виды работ", command=lambda: self._save_template("job_types"))
-        self._btn_tpl_jobs.pack(side="left", padx=5)
-        self._btn_tpl_products = ctk.CTkButton(row3, text="Шаблон Изделия", command=lambda: self._save_template("products"))
-        self._btn_tpl_products.pack(side="left", padx=5)
-        self._btn_tpl_contracts = ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts"))
-        self._btn_tpl_contracts.pack(side="left", padx=5)
-
         # Применить ограничения режима только просмотра
         if self._readonly:
             # Запретить изменяющие БД и системные действия
             for b in (
                 self._btn_merge_db,
-                self._btn_build_exe,
                 self._db_path_entry,
-                self._btn_imp_workers,
-                self._btn_imp_jobs,
-                self._btn_imp_products,
-                self._btn_imp_contracts,
+                self._btn_import_unified,
                 self._opt_list_font,
                 self._opt_ui_font,
+                # пароль менять нельзя в readonly
+                # кнопки оставляем активными только при полном доступе
             ):
                 try:
                     b.configure(state="disabled")
@@ -193,7 +167,7 @@ class SettingsView(ctk.CTkFrame):
         self.status.configure(text="Путь к существующей БД применён. Перезапустите приложение.")
 
     def _create_new_db(self) -> None:
-        initial_name = "app.db"
+        initial_name = "base_sdelka_rmz.db"
         cur = Path(get_current_db_path())
         try:
             if cur.parent.exists():
@@ -250,15 +224,9 @@ class SettingsView(ctk.CTkFrame):
                 with get_connection(new_path) as conn:
                     initialize_schema(conn)
 
-            # Сохранить WAL и таймаут (влияют на будущие подключения)
-            set_enable_wal(bool(self._wal_var.get()))
-            try:
-                to_ms = int(self._busy_var.get())
-                if to_ms < 1000:
-                    to_ms = 1000
-            except Exception:
-                to_ms = 10000
-            set_busy_timeout_ms(to_ms)
+            # Применить значения по умолчанию для WAL/таймаута без UI
+            set_enable_wal(True)
+            set_busy_timeout_ms(10000)
 
             self.status.configure(text="Путь к БД применён. Перезапустите приложение, чтобы все окна использовали новую БД.")
         except Exception as exc:
@@ -278,9 +246,9 @@ class SettingsView(ctk.CTkFrame):
         if not src.exists():
             messagebox.showerror("Экспорт", "Файл базы данных не найден")
             return
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        initial = f"{src.stem}_backup_{stamp}.db"
+        # Стандарт: backup_base_sdelka_MMDD_HHMM
+        stamp = datetime.now().strftime("%m%d_%H%M")
+        initial = f"backup_base_sdelka_{stamp}.db"
         dest = filedialog.asksaveasfilename(
             title="Сохранить копию базы",
             defaultextension=".db",
@@ -312,59 +280,140 @@ class SettingsView(ctk.CTkFrame):
         messagebox.showinfo("Слияние", f"Готово. Обновлено справочников: {refs}, добавлено нарядов: {orders}")
 
     # ---- Import/Export/Template handlers ----
-    def _ask_open(self) -> str | None:
-        return filedialog.askopenfilename(title="Выберите файл Excel", filetypes=[("Excel", "*.xlsx;*.xls")])
+    def _ask_open(self, title: str | None = None, default_ext: str | None = None, filter_name: str | None = None, patterns: str | None = None) -> str | None:
+        title = title or "Выберите файл"
+        filetypes = []
+        if filter_name:
+            pat = patterns or (f"*{default_ext}" if default_ext else "*.xlsx;*.xls;*.ods")
+            filetypes = [(filter_name, pat)]
+        else:
+            filetypes = [("Книги", "*.xlsx;*.xls;*.ods"), ("Все файлы", "*.*")]
+        return filedialog.askopenfilename(title=title, filetypes=filetypes)
 
     def _ask_save(self, title: str, default_ext: str, filter_name: str, initialfile: str | None = None) -> str | None:
         return filedialog.asksaveasfilename(title=title, defaultextension=default_ext, initialfile=initialfile or "", filetypes=[(filter_name, f"*{default_ext}")])
 
-    def _import_workers(self) -> None:
-        from import_export.excel_io import import_workers_from_excel
-        path = self._ask_open()
+    def _import_unified(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Импорт", "Режим только для чтения — импорт недоступен")
+            return
+        from import_engine import import_data
+        path = filedialog.askopenfilename(
+            title="Выберите файл для импорта",
+            filetypes=[
+                ("Поддерживаемые", "*.txt;*.csv;*.xls;*.xlsx;*.ods;*.docx;*.odt;*.html;*.xml;*.pdf;*.dbf;*.json"),
+                ("Все файлы", "*.*"),
+            ],
+        )
         if not path:
             return
-        try:
-            with get_connection() as conn:
-                n = import_workers_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано работников: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
+        # Диалог dry-run/настройки
+        dry = tk.BooleanVar(value=True)
+        preset = tk.StringVar(value="Авто")
 
-    def _import_jobs(self) -> None:
-        from import_export.excel_io import import_job_types_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_job_types_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано видов работ: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Импорт данных — параметры")
+        ctk.CTkLabel(dlg, text="Режим").pack(anchor="w", padx=10, pady=(10, 2))
+        ctk.CTkCheckBox(dlg, text="Черновой прогон (без записи в БД)", variable=dry).pack(anchor="w", padx=12)
+        ctk.CTkLabel(dlg, text="Профиль").pack(anchor="w", padx=10, pady=(10, 2))
+        ctk.CTkOptionMenu(dlg, values=["Авто", "Наряды", "Цена-лист", "Справочники"], variable=preset).pack(anchor="w", padx=12)
 
-    def _import_products(self) -> None:
-        from import_export.excel_io import import_products_from_excel
-        path = self._ask_open()
-        if not path:
-            return
-        try:
-            with get_connection() as conn:
-                n = import_products_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано изделий: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
+        btns = ctk.CTkFrame(dlg)
+        btns.pack(fill="x", padx=10, pady=10)
+        done = tk.BooleanVar(value=False)
 
-    def _import_contracts(self) -> None:
-        from import_export.excel_io import import_contracts_from_excel
-        path = self._ask_open()
-        if not path:
+        def _ok():
+            done.set(True)
+            dlg.destroy()
+
+        ctk.CTkButton(btns, text="OK", command=_ok).pack(side="right", padx=6)
+        ctk.CTkButton(btns, text="Отмена", command=dlg.destroy).pack(side="right", padx=6)
+        dlg.transient(self)
+        dlg.grab_set()
+        self.wait_window(dlg)
+        if not done.get():
             return
-        try:
-            with get_connection() as conn:
-                n = import_contracts_from_excel(conn, path)
-            messagebox.showinfo("Импорт", f"Импортировано контрактов: {n}")
-        except Exception as exc:
-            messagebox.showerror("Импорт", str(exc))
+
+        # Окно прогресса
+        win = ctk.CTkToplevel(self)
+        win.title("Импорт данных")
+        win.geometry("480x160")
+        ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
+        pb = ctk.CTkProgressBar(win)
+        pb.pack(fill="x", padx=10)
+        pb.set(0)
+        note_var = tk.StringVar(value="")
+        ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
+
+        def progress_cb(step: int, total: int, note: str):
+            # Обновляем UI из главного потока через after, безопасно для Tk
+            def _do():
+                try:
+                    # окно могло быть закрыто
+                    if not tk.Toplevel.winfo_exists(win):
+                        return
+                    pb.set(step / max(total, 1))
+                    note_var.set(note)
+                except Exception:
+                    pass
+            try:
+                self.after(0, _do)
+            except Exception:
+                pass
+
+        def run():
+            import os
+            try:
+                preset_code = {"Авто": "auto", "Наряды": "orders", "Цена-лист": "price", "Справочники": "refs"}.get(preset.get(), "auto")
+                res = import_data(path, dry_run=bool(dry.get()), preset=preset_code, progress_cb=progress_cb, backup_before=True)
+                report_path = getattr(res, "details_html", None)
+                def _show_success():
+                    try:
+                        if report_path:
+                            if os.name == "nt":
+                                try:
+                                    os.startfile(report_path)  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+                            messagebox.showinfo("Импорт (черновой)", f"Готово. Отчёт: {report_path}")
+                        else:
+                            messagebox.showinfo("Импорт", "Готово.")
+                        # После успешного импорта/чернового прогона — освежить списки в открытых формах
+                        try:
+                            root = self.winfo_toplevel()
+                            # Простой способ: отправим виртуальные событие для всех слушателей
+                            root.event_generate('<<DataImported>>', when='tail')
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _show_success)
+                except Exception:
+                    pass
+            except Exception as e:
+                def _show_err():
+                    try:
+                        messagebox.showerror("Импорт", str(e))
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _show_err)
+                except Exception:
+                    pass
+            finally:
+                def _close():
+                    try:
+                        if tk.Toplevel.winfo_exists(win):
+                            win.destroy()
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _close)
+                except Exception:
+                    pass
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _export_table(self, table: str) -> None:
         from import_export.excel_io import export_table_to_excel
@@ -399,186 +448,372 @@ class SettingsView(ctk.CTkFrame):
         except Exception as exc:
             messagebox.showerror("Экспорт", str(exc))
 
-    def _save_template(self, kind: str) -> None:
-        from import_export.excel_io import (
-            generate_workers_template,
-            generate_job_types_template,
-            generate_products_template,
-            generate_contracts_template,
-        )
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        map_rus = {
-            "workers": "работники",
-            "job_types": "виды_работ",
-            "products": "изделия",
-            "contracts": "контракты",
-        }
-        initial = sanitize_filename(f"шаблон_{map_rus.get(kind, kind)}_{stamp}") + ".xlsx"
-        path = self._ask_save(f"Шаблон {map_rus.get(kind, kind)}", ".xlsx", "Excel", initialfile=initial)
-        if not path:
+    # ---- Password handlers ----
+    def _set_user_password(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Пароль", "Режим 'Просмотр' — операция недоступна")
+            return
+        if user_password_is_set():
+            messagebox.showinfo("Пароль", "Пароль уже установлен. Используйте 'Сменить пароль...'.")
+            return
+        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль:", parent=self, show="*")
+        if new1 is None or new1.strip() == "":
+            return
+        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль:", parent=self, show="*")
+        if new2 is None:
+            return
+        if new1 != new2:
+            messagebox.showerror("Пароль", "Пароли не совпадают.")
             return
         try:
-            if kind == "workers":
-                generate_workers_template(path)
-            elif kind == "job_types":
-                generate_job_types_template(path)
-            elif kind == "products":
-                generate_products_template(path)
-            elif kind == "contracts":
-                generate_contracts_template(path)
-            messagebox.showinfo("Шаблон", "Шаблон сохранен")
+            save_user_password(new1)
+            messagebox.showinfo("Пароль", "Пароль установлен.")
         except Exception as exc:
-            messagebox.showerror("Шаблон", str(exc))
+            messagebox.showerror("Пароль", f"Ошибка сохранения: {exc}")
 
-    # ---- Build EXE ----
-    def _build_exe(self) -> None:
-        if sys.platform != "win32":
-            messagebox.showwarning("Сборка .exe", "Сборка .exe доступна только в Windows.")
+    def _change_user_password(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Пароль", "Режим 'Просмотр' — операция недоступна")
             return
-        # Выбор имени/места сохранения заранее
-        from datetime import datetime
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        initial = sanitize_filename(f"sdelka_{stamp}") + ".exe"
-        target_path = filedialog.asksaveasfilename(
-            title="Сохранить собранный .exe",
-            defaultextension=".exe",
-            initialfile=initial,
-            filetypes=[("Windows Executable", "*.exe"), ("Все файлы", "*.*")],
-        )
-        if not target_path:
+        if not user_password_is_set():
+            messagebox.showinfo("Пароль", "Пароль ещё не установлен. Используйте 'Установить пароль...'.")
             return
-        self.status.configure(text="Сборка .exe запущена, подождите...")
-        self._open_build_log_window()
-        threading.Thread(target=self._build_exe_worker, args=(target_path,), daemon=True).start()
-
-    def _build_exe_worker(self, target_path: str) -> None:
+        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:", parent=self, show="*")
+        if cur is None:
+            return
+        if not verify_user_password(cur):
+            messagebox.showerror("Пароль", "Текущий пароль неверен.")
+            return
+        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:", parent=self, show="*")
+        if new1 is None or new1.strip() == "":
+            return
+        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:", parent=self, show="*")
+        if new2 is None:
+            return
+        if new1 != new2:
+            messagebox.showerror("Пароль", "Пароли не совпадают.")
+            return
         try:
-            root_dir = Path(__file__).resolve().parents[2]  # проектный корень
-            entry = root_dir / "main.py"
-            if not entry.exists():
-                raise FileNotFoundError(f"Не найден main.py по пути {entry}")
-
-            # Обеспечить наличие pyinstaller
-            try:
-                import PyInstaller  # noqa: F401
-            except Exception:
-                pip_cmd = [sys.executable, "-m", "pip", "install", "pyinstaller"]
-                rc = self._run_and_stream(pip_cmd, root_dir, title="Установка PyInstaller")
-                if rc != 0:
-                    raise RuntimeError("Не удалось установить pyinstaller, см. лог выше")
-
-            name = "Sdelka"
-            build_cmd = [
-                sys.executable, "-m", "PyInstaller",
-                "--noconfirm", "--clean",
-                "--name", name,
-                "--onefile", "--windowed",
-                "--collect-all", "tkcalendar",
-                "--collect-all", "customtkinter",
-                str(entry),
-            ]
-            rc = self._run_and_stream(build_cmd, root_dir, title="Сборка приложения")
-            if rc != 0:
-                raise RuntimeError("Ошибка сборки, см. лог выше")
-
-            dist_exe = root_dir / "dist" / f"{name}.exe"
-            if not dist_exe.exists():
-                raise FileNotFoundError(f"Собранный файл не найден: {dist_exe}")
-
-            # Копируем в выбранное место
-            shutil.copy2(dist_exe, target_path)
-            # Можно убрать временные артефакты (build, spec)
-            try:
-                (root_dir / f"{name}.spec").unlink(missing_ok=True)
-                shutil.rmtree(root_dir / "build", ignore_errors=True)
-                # dist оставим, чтобы не пересобирать заново, если надо
-            except Exception:
-                pass
+            save_user_password(new1)
+            messagebox.showinfo("Пароль", "Пароль изменён.")
         except Exception as exc:
-            self.after(0, lambda: self.status.configure(text=""))
-            self.after(0, lambda: messagebox.showerror("Сборка .exe", str(exc)))
-            self.after(0, lambda: self._append_build_log("\n[ОШИБКА] " + str(exc) + "\n"))
-            return
-        self.after(0, lambda: self.status.configure(text="Готово: .exe сохранён."))
-        self.after(0, lambda: self._append_build_log("\n[ГОТОВО] Файл успешно собран и сохранён.\n"))
-        self.after(0, lambda: messagebox.showinfo("Сборка .exe", "Сборка завершена и файл сохранён."))
+            messagebox.showerror("Пароль", f"Ошибка сохранения: {exc}")
 
-    # ----- Build log window helpers -----
-    def _open_build_log_window(self) -> None:
-        if self._build_log_win is not None and tk.Toplevel.winfo_exists(self._build_log_win):
-            # Уже открыто — просто очистим/поднимем
-            try:
-                self._build_log_text.configure(state="normal")
-                self._build_log_text.delete("1.0", "end")
-                self._build_log_text.configure(state="disabled")
-            except Exception:
-                pass
-            self._build_log_win.lift()
-            return
-        win = ctk.CTkToplevel(self)
-        win.title("Сборка .exe — журнал")
-        win.geometry("820x420")
-        win.attributes("-topmost", True)
-        self._build_log_win = win
-
-        self._build_progress_label = ctk.CTkLabel(win, text="Начало...")
-        self._build_progress_label.pack(fill="x", padx=8, pady=(8, 4))
-
-        # Текст с прокруткой
+    # --- Backups list/restore ---
+    def _parse_backup_timestamp(self, path: Path) -> datetime | None:
+        # Шаблон нового имени: backup_base_sdelka_MMDD_HHMM
+        stem = path.stem
+        m = re.fullmatch(r"backup_base_sdelka_(\d{2})(\d{2})_(\d{2})(\d{2})", stem)
+        if not m:
+            return None
+        month, day, hour, minute = m.groups()
         try:
-            text = ctk.CTkTextbox(win)
-            text.pack(expand=True, fill="both", padx=8, pady=8)
+            now = datetime.now()
+            return datetime(year=now.year, month=int(month), day=int(day), hour=int(hour), minute=int(minute))
         except Exception:
-            frame = ctk.CTkFrame(win)
-            frame.pack(expand=True, fill="both", padx=8, pady=8)
-            sb = tk.Scrollbar(frame)
-            sb.pack(side="right", fill="y")
-            text = tk.Text(frame, yscrollcommand=sb.set)
-            text.pack(expand=True, fill="both")
-            sb.config(command=text.yview)
-        self._build_log_text = text
+            return None
+
+    def _format_ru_dt(self, dt: datetime) -> str:
+        months = [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        ]
+        d = dt.day
+        m = months[dt.month - 1]
+        y = dt.year
+        hh = dt.hour
+        mm = dt.minute
+        return f"База от {d} {m} {y} года {hh} часов {mm:02d} минут"
+
+    def _list_backups(self) -> list[Path]:
+        """Ищет бэкапы только в каталоге backups приложения."""
+        search_dirs: list[Path] = []
         try:
-            self._build_log_text.configure(state="disabled")
+            search_dirs.append(CONFIG.backups_dir)
+        except Exception:
+            pass
+        seen: set[str] = set()
+        found: list[Path] = []
+        for d in search_dirs:
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            try:
+                # Прямые файлы в каталоге
+                for p in d.iterdir():
+                    if not p.is_file():
+                        continue
+                    if p.suffix.lower() != ".db":
+                        continue
+                    if re.fullmatch(r"backup_base_sdelka_\d{4}_\d{4}", p.stem):
+                        key = str(p.resolve()).lower()
+                        if key not in seen:
+                            seen.add(key)
+                            found.append(p)
+                # Вложенные (если есть подпапки)
+                for sub in d.rglob("*.db"):
+                    try:
+                        if sub.is_file() and re.fullmatch(r"backup_base_sdelka_\d{4}_\d{4}", sub.stem):
+                            key = str(sub.resolve()).lower()
+                            if key not in seen:
+                                seen.add(key)
+                                found.append(sub)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        try:
+            found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        except Exception:
+            pass
+        return found
+
+    def _refresh_backup_list(self) -> None:
+        try:
+            self._backup_map.clear()
+            files = self._list_backups()
+            options: list[str] = []
+            used_labels: set[str] = set()
+            for p in files:
+                dt = self._parse_backup_timestamp(p)
+                if dt is None:
+                    try:
+                        dt = datetime.fromtimestamp(p.stat().st_mtime)
+                    except Exception:
+                        dt = None
+                base_label = self._format_ru_dt(dt) if dt else p.stem
+                label = base_label
+                if label in used_labels:
+                    label = f"{base_label} — {p.name}"
+                used_labels.add(label)
+                self._backup_map[label] = str(p)
+                options.append(label)
+            if not options:
+                options = ["(бэкапы не найдены)"]
+            # Обновление UI должно происходить в главном потоке
+            def _apply():
+                try:
+                    # Перед применением убедимся, что карта отображает только реально существующие файлы
+                    for k in list(self._backup_map.keys()):
+                        try:
+                            if not Path(self._backup_map[k]).exists():
+                                self._backup_map.pop(k, None)
+                        except Exception:
+                            self._backup_map.pop(k, None)
+                    self._rebuild_backups_ui(options)
+                except Exception:
+                    pass
+            try:
+                self.after(0, _apply)
+            except Exception:
+                _apply()
         except Exception:
             pass
 
-        ctk.CTkButton(win, text="Закрыть", command=win.destroy).pack(pady=(0, 8))
-
-    def _append_build_log(self, line: str) -> None:
-        if not self._build_log_win or not tk.Toplevel.winfo_exists(self._build_log_win):
+    def _rebuild_backups_ui(self, options: list[str]) -> None:
+        """Полностью пересобирает строку выбора бэкапов, чтобы исключить дубли и устаревшие элементы."""
+        row = getattr(self, "_backups_row", None)
+        if row is None or not row.winfo_exists():
             return
-        def _do():
+        # Найти все кнопки справа, чтобы перепаковать их после OptionMenu
+        children = list(row.winfo_children())
+        right_buttons: list[ctk.CTkButton] = []
+        for w in children:
             try:
-                self._build_log_text.configure(state="normal")
+                if isinstance(w, ctk.CTkButton) and w.cget("text") in {"Обновить список", "Перейти на эту версию данных"}:
+                    right_buttons.append(w)
             except Exception:
                 pass
+        # Удалить все существующие OptionMenu в строке
+        for w in children:
             try:
-                self._build_log_text.insert("end", line)
-                self._build_log_text.see("end")
-            finally:
+                if isinstance(w, ctk.CTkOptionMenu):
+                    w.destroy()
+            except Exception:
+                pass
+        # Снять и перепаковать кнопки справа, чтобы Order: [Label] [OptionMenu] [Buttons...]
+        for b in right_buttons:
+            try:
+                b.pack_forget()
+            except Exception:
+                pass
+        # Создать новый OptionMenu
+        self._backup_choice = ctk.StringVar(value=options[0])
+        self._opt_backups = ctk.CTkOptionMenu(row, values=options, variable=self._backup_choice)
+        self._opt_backups.pack(side="left", padx=6)
+        # Вернуть кнопки справа
+        for b in right_buttons:
+            try:
+                b.pack(side="left", padx=6)
+            except Exception:
+                pass
+
+    def _restore_selected_backup(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Восстановление БД", "Режим только для чтения — действие недоступно")
+            return
+        label = self._backup_choice.get().strip()
+        backup_path = self._backup_map.get(label)
+        if not backup_path or "не найдены" in label:
+            messagebox.showwarning("Восстановление БД", "Выберите доступную версию из списка")
+            return
+        backup_file = Path(backup_path)
+        if not backup_file.exists():
+            messagebox.showerror("Восстановление БД", "Файл бэкапа не найден на диске")
+            return
+        if not messagebox.askyesno("Восстановление БД", "Перейти на выбранную версию?\nТекущая база будет сохранена как бэкап."):
+            return
+        try:
+            # 1) Сохранить текущую БД в бэкап
+            cur = Path(get_current_db_path())
+            backup_sqlite_db(cur)
+            # 2) Перезаписать канонический файл основной БД (имя неизменно)
+            shutil.copy2(backup_file, cur)
+            # 3) Обновить статус и поле пути (оно не меняется)
+            self._db_path_var.set(str(cur))
+            self.status.configure(text="База восстановлена из бэкапа. Перезапустите приложение для применения во всех окнах.")
+        except Exception as exc:
+            messagebox.showerror("Восстановление БД", f"Ошибка восстановления: {exc}")
+
+
+    # История версий отключена
+    def _show_changelog(self) -> None:
+        messagebox.showinfo("Версии программы", "История версий отключена.")
+
+    def _get_changelog_content(self) -> str:
+        return ""
+
+    def _copy_changelog_to_clipboard(self, content: str) -> None:
+        return
+
+    def _import_contracts_csv(self) -> None:
+        """Импорт контрактов из CSV файла"""
+        try:
+            from import_export.excel_io import import_contracts_from_csv
+            path = filedialog.askopenfilename(
+                title="Выберите CSV файл с контрактами",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            with get_connection() as conn:
+                imported, updated = import_contracts_from_csv(conn, path)
+                self.status.configure(text=f"Импорт CSV контрактов завершен. Импортировано: {imported}, обновлено: {updated}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка импорта CSV контрактов: {e}")
+
+    def _export_contracts_csv(self) -> None:
+        """Экспорт контрактов в CSV файл"""
+        try:
+            from import_export.excel_io import export_contracts_to_csv
+            path = filedialog.asksaveasfilename(
+                title="Сохранить контракты как CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            with get_connection() as conn:
+                result_path = export_contracts_to_csv(conn, path)
+                self.status.configure(text=f"Экспорт CSV контрактов завершен: {result_path}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка экспорта CSV контрактов: {e}")
+
+    def _save_contracts_csv_template(self) -> None:
+        """Создание шаблона CSV файла для импорта контрактов"""
+        try:
+            from import_export.excel_io import generate_contracts_template
+            path = filedialog.asksaveasfilename(
+                title="Сохранить шаблон CSV контрактов",
+                defaultextension=".csv",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            result_path = generate_contracts_template(path)
+            self.status.configure(text=f"Шаблон CSV контрактов создан: {result_path}")
+        except Exception as e:
+            self.status.configure(text=f"Ошибка создания шаблона CSV контрактов: {e}")
+
+    def _import_products_contracts(self) -> None:
+        """Импорт изделий с привязкой к контрактам из CSV файла"""
+        try:
+            from import_export.products_contracts_import import import_products_from_contracts_csv
+            path = filedialog.askopenfilename(
+                title="Выберите CSV файл с изделиями и контрактами",
+                filetypes=[("CSV файлы", "*.csv"), ("Все файлы", "*.*")],
+            )
+            if not path:
+                return
+            
+            # Создаем окно прогресса
+            win = ctk.CTkToplevel(self)
+            win.title("Импорт изделий с контрактами")
+            win.geometry("420x140")
+            ctk.CTkLabel(win, text="Выполняется импорт...").pack(anchor="w", padx=10, pady=(10, 6))
+            pb = ctk.CTkProgressBar(win)
+            pb.pack(fill="x", padx=10)
+            pb.set(0)
+            note_var = tk.StringVar(value="")
+            ctk.CTkLabel(win, textvariable=note_var).pack(anchor="w", padx=10, pady=(6, 10))
+
+            def progress_cb(step: int, total: int, note: str):
+                # Обновление прогресса только из главного потока
+                def _do():
+                    try:
+                        if not tk.Toplevel.winfo_exists(win):
+                            return
+                        pb.set(step / max(total, 1))
+                        note_var.set(note)
+                    except Exception:
+                        pass
                 try:
-                    self._build_log_text.configure(state="disabled")
+                    self.after(0, _do)
                 except Exception:
                     pass
-        self.after(0, _do)
 
-    def _set_progress(self, text: str) -> None:
-        if not self._build_progress_label:
-            return
-        self.after(0, lambda: self._build_progress_label.configure(text=text))
+            def run():
+                try:
+                    result = import_products_from_contracts_csv(path, progress_cb)
+                    def _success():
+                        try:
+                            messagebox.showinfo("Импорт",
+                                f"Импорт завершен.\n"
+                                f"Изделий: {result['products']}\n"
+                                f"Контрактов: {result['contracts']}\n"
+                                f"Ошибок: {result['errors']}")
+                            self.status.configure(text=f"Импорт изделий с контрактами завершен. Изделий: {result['products']}, контрактов: {result['contracts']}")
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _success)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    def _err():
+                        try:
+                            messagebox.showerror("Импорт", str(e))
+                            self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _err)
+                    except Exception:
+                        pass
+                finally:
+                    def _close():
+                        try:
+                            if tk.Toplevel.winfo_exists(win):
+                                win.destroy()
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _close)
+                    except Exception:
+                        pass
 
-    def _run_and_stream(self, cmd: list[str], cwd: Path, title: str) -> int:
-        self._append_build_log(f"\n=== {title} ===\n$ {' '.join(cmd)}\n")
-        self._set_progress(title)
-        try:
-            proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        except Exception as exc:
-            self._append_build_log(f"[ОШИБКА ЗАПУСКА] {exc}\n")
-            return -1
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            self._append_build_log(line)
-        rc = proc.wait()
-        self._append_build_log(f"\n[ЗАВЕРШЕНО] Код выхода: {rc}\n")
-        return rc
+            threading.Thread(target=run, daemon=True).start()
+            
+        except Exception as e:
+            self.status.configure(text=f"Ошибка импорта изделий с контрактами: {e}")

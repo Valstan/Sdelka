@@ -4,14 +4,35 @@ import sqlite3
 from typing import Any, Iterable, Sequence
 
 from utils.text import normalize_for_search
+# --- Helpers for contracts/products linkage ---
+
+def get_or_create_contract_by_code(conn: sqlite3.Connection, code: str) -> int:
+    row = get_contract_by_code(conn, code)
+    if row:
+        return int(row["id"])  # type: ignore[index]
+    upsert_contract(conn, code, None, None, None)
+    row2 = get_contract_by_code(conn, code)
+    if not row2:
+        raise sqlite3.IntegrityError("Не удалось создать контракт: " + code)
+    return int(row2["id"])  # type: ignore[index]
+
+
+def get_or_create_default_contract(conn: sqlite3.Connection) -> int:
+    return get_or_create_contract_by_code(conn, "Без контракта")
+
+
+def set_product_contract(conn: sqlite3.Connection, product_id: int, contract_id: int) -> None:
+    conn.execute("UPDATE products SET contract_id=? WHERE id=?", (contract_id, product_id))
+
 
 # Workers
 
 
-def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> int:
+def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> int:
+    status_val = status or "Работает"
     sql = """
-    INSERT INTO workers(full_name, full_name_norm, dept, dept_norm, position, position_norm, personnel_no, personnel_no_norm)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO workers(full_name, full_name_norm, dept, dept_norm, position, position_norm, personnel_no, personnel_no_norm, status, status_norm)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     cur = conn.execute(sql, (
         full_name,
@@ -22,13 +43,48 @@ def insert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, po
         normalize_for_search(position),
         personnel_no,
         normalize_for_search(personnel_no),
+        status_val,
+        normalize_for_search(status_val),
     ))
     return cur.lastrowid or cur.rowcount
 
 
-def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str) -> None:
+def upsert_worker(conn: sqlite3.Connection, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> int:
+    """Insert worker or update existing one to avoid import crashes.
+
+    Prefers matching by personnel number. If insert conflicts, updates the existing row.
+    Tries to update full_name as well; on unique-name conflict, falls back to keeping old name.
+    Returns 1 on insert/update success, 0 otherwise.
+    """
+    try:
+        return insert_worker(conn, full_name, dept, position, personnel_no, status) or 0
+    except sqlite3.IntegrityError:
+        # Try by personnel_no first
+        existing = get_worker_by_personnel_no(conn, personnel_no)
+        if existing:
+            try:
+                update_worker(conn, existing["id"], full_name, dept, position, personnel_no, status)
+            except sqlite3.IntegrityError:
+                # Keep existing name if new name collides
+                update_worker(conn, existing["id"], existing["full_name"], dept, position, personnel_no, status)
+            return 1
+        # Fallback: match by full_name
+        existing = get_worker_by_full_name(conn, full_name)
+        if existing:
+            try:
+                update_worker(conn, existing["id"], full_name, dept, position, personnel_no, status)
+            except sqlite3.IntegrityError:
+                # Keep existing personnel_no if new one collides
+                update_worker(conn, existing["id"], full_name, dept, position, existing["personnel_no"], status)  # type: ignore[index]
+            return 1
+        return 0
+
+def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept: str | None, position: str | None, personnel_no: str, status: str | None = None) -> None:
+    if status is None:
+        row = conn.execute("SELECT status FROM workers WHERE id=?", (worker_id,)).fetchone()
+        status = (row["status"] if row and row["status"] else "Работает") if row is not None else "Работает"
     conn.execute(
-        "UPDATE workers SET full_name = ?, full_name_norm=?, dept = ?, dept_norm=?, position = ?, position_norm=?, personnel_no = ?, personnel_no_norm=? WHERE id = ?",
+        "UPDATE workers SET full_name = ?, full_name_norm=?, dept = ?, dept_norm=?, position = ?, position_norm=?, personnel_no = ?, personnel_no_norm=?, status = ?, status_norm=? WHERE id = ?",
         (
             full_name,
             normalize_for_search(full_name),
@@ -38,6 +94,8 @@ def update_worker(conn: sqlite3.Connection, worker_id: int, full_name: str, dept
             normalize_for_search(position),
             personnel_no,
             normalize_for_search(personnel_no),
+            status,
+            normalize_for_search(status),
             worker_id,
         ),
     )
@@ -78,6 +136,14 @@ def search_workers_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) 
     like = f"{normalize_for_search(prefix)}%"
     cur = conn.execute("SELECT * FROM workers WHERE full_name_norm LIKE ? ORDER BY full_name LIMIT ?", (like, limit))
     return cur.fetchall()
+
+
+def search_workers_by_substring(conn: sqlite3.Connection, term: str, limit: int) -> list[sqlite3.Row]:
+    like = f"%{normalize_for_search(term)}%"
+    return conn.execute(
+        "SELECT * FROM workers WHERE full_name_norm LIKE ? ORDER BY full_name LIMIT ?",
+        (like, limit),
+    ).fetchall()
 
 
 def distinct_depts_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
@@ -145,6 +211,15 @@ def search_job_types_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int
     return conn.execute("SELECT * FROM job_types WHERE name_norm LIKE ? ORDER BY name LIMIT ?", (like, limit)).fetchall()
 
 
+def search_job_types_by_substring(conn: sqlite3.Connection, term: str, limit: int) -> list[sqlite3.Row]:
+    """Search job types by substring (anywhere in the name, case-insensitive)."""
+    like = f"%{normalize_for_search(term)}%"
+    return conn.execute(
+        "SELECT * FROM job_types WHERE name_norm LIKE ? ORDER BY name LIMIT ?",
+        (like, limit),
+    ).fetchall()
+
+
 def distinct_units_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[str]:
     like = f"{normalize_for_search(prefix)}%"
     rows = conn.execute("SELECT DISTINCT unit FROM job_types WHERE unit_norm LIKE ? ORDER BY unit LIMIT ?", (like, limit)).fetchall()
@@ -153,25 +228,31 @@ def distinct_units_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) 
 
 # Products
 
-def insert_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
-    cur = conn.execute("INSERT INTO products(name, name_norm, product_no, product_no_norm) VALUES (?, ?, ?, ?)", (name, normalize_for_search(name), product_no, normalize_for_search(product_no)))
+def insert_product(conn: sqlite3.Connection, name: str, product_no: str, contract_id: int | None = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO products(name, name_norm, product_no, product_no_norm, contract_id) VALUES (?, ?, ?, ?, ?)",
+        (name, normalize_for_search(name), product_no, normalize_for_search(product_no), contract_id),
+    )
     return cur.lastrowid or cur.rowcount
 
 
-def update_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str) -> None:
-    conn.execute("UPDATE products SET name = ?, name_norm=?, product_no = ?, product_no_norm=? WHERE id = ?", (name, normalize_for_search(name), product_no, normalize_for_search(product_no), product_id))
+def update_product(conn: sqlite3.Connection, product_id: int, name: str, product_no: str, contract_id: int | None = None) -> None:
+    conn.execute(
+        "UPDATE products SET name = ?, name_norm=?, product_no = ?, product_no_norm=?, contract_id=? WHERE id = ?",
+        (name, normalize_for_search(name), product_no, normalize_for_search(product_no), contract_id, product_id),
+    )
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
     conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
 
 
-def upsert_product(conn: sqlite3.Connection, name: str, product_no: str) -> int:
+def upsert_product(conn: sqlite3.Connection, name: str, product_no: str, contract_id: int | None = None) -> int:
     sql = """
-    INSERT INTO products(name, name_norm, product_no, product_no_norm) VALUES (?, ?, ?, ?)
-    ON CONFLICT(name) DO UPDATE SET product_no=excluded.product_no, product_no_norm=excluded.product_no_norm
+    INSERT INTO products(name, name_norm, product_no, product_no_norm, contract_id) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(product_no) DO UPDATE SET name=excluded.name, name_norm=excluded.name_norm, contract_id=COALESCE(excluded.contract_id, products.contract_id)
     """
-    cur = conn.execute(sql, (name, normalize_for_search(name), product_no, normalize_for_search(product_no)))
+    cur = conn.execute(sql, (name, normalize_for_search(name), product_no, normalize_for_search(product_no), contract_id))
     return cur.lastrowid or cur.rowcount
 
 
@@ -186,10 +267,18 @@ def get_product_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | No
 def list_products(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
     if prefix:
         like = f"{normalize_for_search(prefix)}%"
-        sql = "SELECT * FROM products WHERE name_norm LIKE ? OR product_no_norm LIKE ? ORDER BY name"
+        sql = (
+            "SELECT p.*, c.code AS contract_code FROM products p "
+            "LEFT JOIN contracts c ON c.id = p.contract_id "
+            "WHERE p.name_norm LIKE ? OR p.product_no_norm LIKE ? ORDER BY p.name"
+        )
         params: Sequence[Any] = (like, like)
     else:
-        sql = "SELECT * FROM products ORDER BY name"
+        sql = (
+            "SELECT p.*, c.code AS contract_code FROM products p "
+            "LEFT JOIN contracts c ON c.id = p.contract_id "
+            "ORDER BY p.name"
+        )
         params = ()
     if limit:
         sql += " LIMIT ?"
@@ -200,37 +289,92 @@ def list_products(conn: sqlite3.Connection, prefix: str | None = None, limit: in
 def search_products_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int) -> list[sqlite3.Row]:
     like = f"{normalize_for_search(prefix)}%"
     return conn.execute(
-        "SELECT * FROM products WHERE name_norm LIKE ? OR product_no_norm LIKE ? ORDER BY name LIMIT ?",
+        "SELECT p.*, c.code AS contract_code FROM products p LEFT JOIN contracts c ON c.id = p.contract_id WHERE p.name_norm LIKE ? OR p.product_no_norm LIKE ? ORDER BY p.name LIMIT ?",
+        (like, like, limit),
+    ).fetchall()
+
+
+def search_products_by_substring(conn: sqlite3.Connection, term: str, limit: int) -> list[sqlite3.Row]:
+    like = f"%{normalize_for_search(term)}%"
+    return conn.execute(
+        "SELECT p.*, c.code AS contract_code FROM products p LEFT JOIN contracts c ON c.id = p.contract_id WHERE p.name_norm LIKE ? OR p.product_no_norm LIKE ? ORDER BY p.name LIMIT ?",
         (like, like, limit),
     ).fetchall()
 
 
 # Contracts
 
-def insert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
-    cur = conn.execute("INSERT INTO contracts(code, code_norm, start_date, end_date, description) VALUES (?, ?, ?, ?, ?)", (code, normalize_for_search(code), start_date, end_date, description))
+def insert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None, 
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None, 
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO contracts(code, code_norm, name, name_norm, contract_type, contract_type_norm, executor, executor_norm, igk, contract_number, bank_account, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        (code, normalize_for_search(code), name, normalize_for_search(name) if name else None, 
+         contract_type, normalize_for_search(contract_type) if contract_type else None,
+         executor, normalize_for_search(executor) if executor else None,
+         igk, contract_number, bank_account, start_date, end_date, description)
+    )
     return cur.lastrowid or cur.rowcount
 
 
-def update_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None) -> None:
-    conn.execute("UPDATE contracts SET code = ?, code_norm=?, start_date = ?, end_date = ?, description = ? WHERE id = ?", (code, normalize_for_search(code), start_date, end_date, description, contract_id))
+def update_contract(conn: sqlite3.Connection, contract_id: int, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> None:
+    conn.execute(
+        "UPDATE contracts SET code = ?, code_norm=?, name = ?, name_norm=?, contract_type = ?, contract_type_norm=?, executor = ?, executor_norm=?, igk = ?, contract_number = ?, bank_account = ?, start_date = ?, end_date = ?, description = ? WHERE id = ?", 
+        (code, normalize_for_search(code), name, normalize_for_search(name) if name else None,
+         contract_type, normalize_for_search(contract_type) if contract_type else None,
+         executor, normalize_for_search(executor) if executor else None,
+         igk, contract_number, bank_account, start_date, end_date, description, contract_id)
+    )
 
 
 def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
     conn.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
 
 
-def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None) -> int:
+def upsert_contract(conn: sqlite3.Connection, code: str, start_date: str | None, end_date: str | None, description: str | None,
+                   name: str | None = None, contract_type: str | None = None, executor: str | None = None,
+                   igk: str | None = None, contract_number: str | None = None, bank_account: str | None = None) -> int:
+    # Save history snapshot when updating existing contract
+    existing = get_contract_by_code(conn, code)
     sql = """
-    INSERT INTO contracts(code, code_norm, start_date, end_date, description) VALUES(?, ?, ?, ?, ?)
-    ON CONFLICT(code) DO UPDATE SET start_date=excluded.start_date, end_date=excluded.end_date, description=excluded.description
+    INSERT INTO contracts(code, code_norm, name, name_norm, contract_type, contract_type_norm, executor, executor_norm, igk, contract_number, bank_account, start_date, end_date, description) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(code) DO UPDATE SET 
+        name=excluded.name, name_norm=excluded.name_norm,
+        contract_type=excluded.contract_type, contract_type_norm=excluded.contract_type_norm,
+        executor=excluded.executor, executor_norm=excluded.executor_norm,
+        igk=excluded.igk, contract_number=excluded.contract_number, bank_account=excluded.bank_account,
+        start_date=excluded.start_date, end_date=excluded.end_date, description=excluded.description
     """
-    cur = conn.execute(sql, (code, normalize_for_search(code), start_date, end_date, description))
+    # If will update existing, snapshot the previous state BEFORE update
+    if existing:
+        prev = existing
+        if prev:
+            conn.execute(
+                """
+                INSERT INTO contract_history(contract_id, code, name, contract_type, executor, igk, contract_number, bank_account, start_date, end_date, description)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(prev["id"]),  # type: ignore[index]
+                    prev["code"], prev["name"], prev["contract_type"], prev["executor"], prev["igk"],
+                    prev["contract_number"], prev["bank_account"], prev["start_date"], prev["end_date"], prev["description"],
+                ),
+            )
+    cur = conn.execute(sql, (code, normalize_for_search(code), name, normalize_for_search(name) if name else None,
+                            contract_type, normalize_for_search(contract_type) if contract_type else None,
+                            executor, normalize_for_search(executor) if executor else None,
+                            igk, contract_number, bank_account, start_date, end_date, description))
     return cur.lastrowid or cur.rowcount
 
 
 def get_contract_by_code(conn: sqlite3.Connection, code: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM contracts WHERE code_norm = ?", (normalize_for_search(code),)).fetchone()
+
+
+def get_contract_by_name(conn: sqlite3.Connection, name: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM contracts WHERE name_norm = ?", (normalize_for_search(name),)).fetchone()
 
 
 def list_contracts(conn: sqlite3.Connection, prefix: str | None = None, limit: int | None = None) -> list[sqlite3.Row]:
@@ -252,6 +396,14 @@ def search_contracts_by_prefix(conn: sqlite3.Connection, prefix: str, limit: int
     return conn.execute("SELECT * FROM contracts WHERE code_norm LIKE ? ORDER BY code LIMIT ?", (like, limit)).fetchall()
 
 
+def search_contracts_by_substring(conn: sqlite3.Connection, term: str, limit: int) -> list[sqlite3.Row]:
+    like = f"%{normalize_for_search(term)}%"
+    return conn.execute(
+        "SELECT * FROM contracts WHERE code_norm LIKE ? OR name_norm LIKE ? OR contract_type_norm LIKE ? OR executor_norm LIKE ? ORDER BY code LIMIT ?",
+        (like, like, like, like, limit),
+    ).fetchall()
+
+
 # Work Orders
 
 def insert_work_order(conn: sqlite3.Connection, order_no: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> int:
@@ -262,10 +414,10 @@ def insert_work_order(conn: sqlite3.Connection, order_no: int, date: str, produc
     return cur.lastrowid
 
 
-def update_work_order_header(conn: sqlite3.Connection, work_order_id: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> None:
+def update_work_order_header(conn: sqlite3.Connection, work_order_id: int, order_no: int, date: str, product_id: int | None, contract_id: int, total_amount: float) -> None:
     conn.execute(
-        "UPDATE work_orders SET date=?, product_id=?, contract_id=?, total_amount=? WHERE id=?",
-        (date, product_id, contract_id, total_amount, work_order_id),
+        "UPDATE work_orders SET order_no=?, date=?, product_id=?, contract_id=?, total_amount=? WHERE id=?",
+        (order_no, date, product_id, contract_id, total_amount, work_order_id),
     )
 
 
@@ -293,16 +445,40 @@ def insert_work_order_item(conn: sqlite3.Connection, work_order_id: int, job_typ
 
 
 def set_work_order_workers(conn: sqlite3.Connection, work_order_id: int, worker_ids: Sequence[int]) -> None:
+    """Backward-compatible setter without amounts: inserts with amount=0.
+
+    Use set_work_order_workers_with_amounts for precise allocation.
+    """
     conn.execute("DELETE FROM work_order_workers WHERE work_order_id = ?", (work_order_id,))
     conn.executemany(
-        "INSERT INTO work_order_workers(work_order_id, worker_id) VALUES (?, ?)",
+        "INSERT INTO work_order_workers(work_order_id, worker_id, amount) VALUES (?, ?, 0)",
         [(work_order_id, wid) for wid in worker_ids],
+    )
+
+
+def set_work_order_workers_with_amounts(conn: sqlite3.Connection, work_order_id: int, allocations: Sequence[tuple[int, float]]) -> None:
+    """Set workers with their allocated amounts.
+
+    allocations: sequence of (worker_id, amount)
+    """
+    conn.execute("DELETE FROM work_order_workers WHERE work_order_id = ?", (work_order_id,))
+    conn.executemany(
+        "INSERT INTO work_order_workers(work_order_id, worker_id, amount) VALUES (?, ?, ?)",
+        [(work_order_id, wid, float(amount)) for (wid, amount) in allocations],
     )
 
 
 def next_order_no(conn: sqlite3.Connection) -> int:
     row = conn.execute("SELECT COALESCE(MAX(order_no), 0) + 1 AS next_no FROM work_orders").fetchone()
     return int(row["next_no"]) if row else 1
+
+
+def order_no_in_use(conn: sqlite3.Connection, order_no: int, exclude_id: int | None = None) -> bool:
+    if exclude_id is not None:
+        row = conn.execute("SELECT 1 FROM work_orders WHERE order_no=? AND id<>?", (order_no, exclude_id)).fetchone()
+    else:
+        row = conn.execute("SELECT 1 FROM work_orders WHERE order_no=?", (order_no,)).fetchone()
+    return bool(row)
 
 
 def fetch_work_orders(conn: sqlite3.Connection, where_sql: str = "", params: Sequence[Any] | None = None) -> list[sqlite3.Row]:
@@ -339,7 +515,7 @@ def get_work_order_items(conn: sqlite3.Connection, work_order_id: int) -> list[s
 def get_work_order_workers(conn: sqlite3.Connection, work_order_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT wow.worker_id, w.full_name
+        SELECT wow.worker_id, w.full_name, COALESCE(wow.amount, 0) AS amount
         FROM work_order_workers wow
         JOIN workers w ON w.id = wow.worker_id
         WHERE wow.work_order_id = ?
@@ -347,3 +523,43 @@ def get_work_order_workers(conn: sqlite3.Connection, work_order_id: int) -> list
         """,
         (work_order_id,),
     ).fetchall()
+
+
+# --- Work order contracts/products (many-to-one helpers) ---
+
+
+
+def set_work_order_products(conn: sqlite3.Connection, work_order_id: int, product_ids: Sequence[int]) -> None:
+    conn.execute("DELETE FROM work_order_products WHERE work_order_id = ?", (work_order_id,))
+    unique: list[int] = []
+    for pid in product_ids:
+        try:
+            pid_int = int(pid)
+        except Exception:
+            continue
+        if pid_int not in unique:
+            unique.append(pid_int)
+    if unique:
+        conn.executemany(
+            "INSERT INTO work_order_products(work_order_id, product_id) VALUES (?, ?)",
+            [(work_order_id, pid) for pid in unique],
+        )
+
+
+
+
+def get_work_order_product_ids(conn: sqlite3.Connection, work_order_id: int) -> list[int]:
+    rows = conn.execute(
+        "SELECT product_id FROM work_order_products WHERE work_order_id = ? ORDER BY product_id",
+        (work_order_id,),
+    ).fetchall()
+    result: list[int] = []
+    for r in rows:
+        try:
+            result.append(int(r["product_id"]))
+        except Exception:
+            try:
+                result.append(int(r[0]))
+            except Exception:
+                pass
+    return result

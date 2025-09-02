@@ -27,3 +27,29 @@ def sanitize_filename(name: str, max_length: int = 100) -> str:
     if len(name) > max_length:
         name = name[:max_length].rstrip(" .")
     return name or "file"
+
+
+def short_fio(full_name: str) -> str:
+    """Format full name to 'Фамилия И.О.' keeping only initials for name and patronymic.
+
+    - Trims spaces, collapses multiple spaces
+    - Handles hyphenated surnames and multi-part names; takes first word as surname
+    - Returns original string if it cannot parse at least a surname
+    """
+    if not full_name:
+        return ""
+    s = " ".join(str(full_name).strip().split())
+    if not s:
+        return ""
+    parts = s.split(" ")
+    if len(parts) == 1:
+        return parts[0]
+    surname = parts[0]
+    initials = []
+    for p in parts[1:3]:  # имя, отчество
+        p = p.strip(" .-")
+        if p:
+            initials.append(p[0].upper())
+    if not initials:
+        return surname
+    return f"{surname} {' '.join(i + '.' for i in initials)}"

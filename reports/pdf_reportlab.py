@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence, List, Tuple, Optional
+from typing import Sequence, List, Tuple, Optional, Any
 import os
 
 import pandas as pd
@@ -160,6 +160,7 @@ def save_pdf(
     font_size: int | None = None,
     font_family: str | None = None,
     margins_mm: Tuple[float, float, float, float] | None = None,
+    context: dict[str, Any] | None = None,
 ) -> Path:
     """Сохраняет DataFrame в PDF с управлением ориентацией/шрифтом/полями.
 
@@ -195,6 +196,14 @@ def save_pdf(
     fallback_overflow = None
     fallback_candidate: Tuple | None = None
 
+    # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы до расчетов ширин
+    if context and context.get("single_worker_short"):
+        try:
+            for c in ("Работник", "Цех"):
+                if c in df.columns:
+                    df = df.drop(columns=[c])
+        except Exception:
+            pass
     cols = list(df.columns)
     # Применяем нормализацию заголовков
     cols = [_normalize_header(c) for c in cols]
@@ -276,6 +285,28 @@ def save_pdf(
                 max(m, w * scale) if _is_long_text_column(str(c)) else w
                 for w, m, c in zip(best_widths, mins, cols)
             ]
+        # Доп. сжатие колонки "Вид работ" (или "Изделие"), если всё ещё шире листа
+        total2 = sum(best_widths)
+        if total2 > avail_w:
+            try:
+                vid_idx = None
+                for idx, name in enumerate(cols):
+                    n = str(name).casefold()
+                    if "вид" in n and "работ" in n:
+                        vid_idx = idx
+                        break
+                if vid_idx is None:
+                    for idx, name in enumerate(cols):
+                        n = str(name).casefold()
+                        if "издел" in n:
+                            vid_idx = idx
+                            break
+                if vid_idx is not None:
+                    need = total2 - avail_w
+                    min_vid = 60.0
+                    best_widths[vid_idx] = max(min_vid, best_widths[vid_idx] - need)
+            except Exception:
+                pass
 
     doc = SimpleDocTemplate(
         str(file_path),
@@ -299,7 +330,8 @@ def save_pdf(
         fontName=regular_font,
         fontSize=best_font,
         leading=int(best_font * 1.2),
-        splitLongWords=False,
+        splitLongWords=True,
+        wordWrap='CJK',
     )
     body_style_nowrap = ParagraphStyle(
         name="ReportBodyNoWrap",
@@ -320,38 +352,131 @@ def save_pdf(
 
     story: list = []
     story.append(Paragraph(f"<b>{title}</b>", title_style))
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 4 * mm))
+    if context:
+        header_lines: List[str] = []
+        created = context.get("created_at")
+        if created:
+            header_lines.append(f"Дата составления: {created}")
+        period = context.get("period")
+        if period:
+            header_lines.append(period)
+        single_worker = context.get("single_worker_short")
+        dept = context.get("dept_name")
+        if single_worker:
+            single_worker_dept = context.get("single_worker_dept")
+            header_lines.append(f"Работник: {single_worker}")
+            if single_worker_dept:
+                header_lines.append(f"Цех: {single_worker_dept}")
+        else:
+            if dept:
+                header_lines.append(f"Цех: {dept}")
+        if header_lines:
+            story.append(Paragraph("<br/>".join(header_lines), body_style_nowrap))
+            story.append(Spacer(1, 4 * mm))
 
-    # Данные: разрешаем перенос только в длинных текстовых колонках; в остальных заменяем пробелы на неразрывные
+    # Данные: переносим длинные тексты; дополнительно режем слишком высокие строки на несколько строк таблицы
     header_row = [Paragraph(str(c), header_style) for c in cols]
     data_rows: List[List] = [header_row]
+    wrap_idxes = [i for i, c in enumerate(cols) if _is_long_text_column(str(c))]
+    frame_h = (best_page[1] - (top_mm + bottom_mm) * mm)
+    max_row_h = max(200.0, frame_h * 0.65)
     for _, row in df.iterrows():
-        r: List = []
-        for c in cols:
+        # Сформировать параграфы по колонкам
+        cells: List[Any] = []
+        par_heights: List[float] = []
+        for j, c in enumerate(cols):
             text = str(row[c])
-            if _is_long_text_column(str(c)):
-                r.append(Paragraph(text, body_style_wrap))
+            if j in wrap_idxes:
+                p = Paragraph(text, body_style_wrap)
+                w = best_widths[j]
+                _wr, h = p.wrap(w, 100000)
+                cells.append(p)
+                par_heights.append(h)
             else:
                 safe = text.replace(" ", "\u00A0")
-                r.append(Paragraph(safe, body_style_nowrap))
-        data_rows.append(r)
+                p = Paragraph(safe, body_style_nowrap)
+                w = best_widths[j]
+                _wr, h = p.wrap(w, 100000)
+                cells.append(p)
+                par_heights.append(h)
+        row_h = max(par_heights) if par_heights else 0.0
+        if row_h <= max_row_h or not wrap_idxes:
+            data_rows.append(cells)
+        else:
+            # Разбить содержимое переносимых колонок на несколько параграфов, чтобы каждая подстрока помещалась по высоте
+            split_map: dict[int, List[Paragraph]] = {}
+            max_parts = 1
+            for j in wrap_idxes:
+                p: Paragraph = cells[j]
+                parts = p.split(best_widths[j], max_row_h)
+                if not parts:
+                    parts = [p]
+                split_map[j] = parts
+                if len(parts) > max_parts:
+                    max_parts = len(parts)
+            # Сконструировать несколько строк таблицы
+            for k in range(max_parts):
+                sub: List[Any] = []
+                for j, c in enumerate(cols):
+                    if j in wrap_idxes:
+                        parts = split_map.get(j) or []
+                        sub.append(parts[k] if k < len(parts) else Paragraph("", body_style_wrap))
+                    else:
+                        # Неврапящие колонки показываем только в первой подстроке, далее пусто
+                        if k == 0:
+                            sub.append(cells[j])
+                        else:
+                            sub.append(Paragraph("", body_style_nowrap))
+                data_rows.append(sub)
 
-    table = Table(data_rows, colWidths=best_widths, repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (-1, -1), regular_font),
-                ("FONTNAME", (0, 0), (-1, 0), bold_font),
-                ("FONTSIZE", (0, 0), (-1, -1), best_font),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.beige]),
-            ]
+    # Для очень больших таблиц бьём на части, чтобы избежать LayoutError
+    chunk_size = 50
+    rows = data_rows[1:]
+    for start in range(0, len(rows), chunk_size):
+        block = [header_row] + rows[start:start + chunk_size]
+        table = Table(block, colWidths=best_widths, repeatRows=1, splitByRow=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, -1), regular_font),
+                    ("FONTNAME", (0, 0), (-1, 0), bold_font),
+                    ("FONTSIZE", (0, 0), (-1, -1), best_font),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.beige]),
+                ]
+            )
         )
-    )
+        story.append(table)
+        story.append(Spacer(1, 2 * mm))
 
-    story.append(table)
+    # Footer: totals and signatures
+    if context:
+        story.append(Spacer(1, 4 * mm))
+        total = context.get("total_amount")
+        if total is not None:
+            story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style))
+            story.append(Spacer(1, 2 * mm))
+        workers = context.get("worker_signatures") or []
+        single_worker = context.get("single_worker_short")
+        if single_worker:
+            story.append(Paragraph("<b>Подписи:</b>", header_style))
+            story.append(Paragraph(f"{single_worker} _____________", body_style_nowrap))
+            story.append(Spacer(1, 2 * mm))
+        elif workers:
+            story.append(Paragraph("<b>Подписи работников:</b>", header_style))
+            story.append(Paragraph(", \u00A0".join(workers), body_style_nowrap))
+            story.append(Spacer(1, 2 * mm))
+        dept_head = context.get("dept_head")
+        hr_head = context.get("hr_head")
+        lines: List[List] = []
+        lines.append([Paragraph(f"Начальник цеха: {dept_head or ''} _____________", body_style_nowrap)])
+        lines.append([Paragraph(f"Начальник отдела кадров: {hr_head or ''} _____________", body_style_nowrap)])
+        sign_table = Table(lines, colWidths=[sum(best_widths)])
+        sign_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "LEFT")]))
+        story.append(sign_table)
     doc.build(story)
     return file_path

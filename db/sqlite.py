@@ -65,6 +65,15 @@ def get_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Conne
         yield conn
         if not is_readonly():
             conn.commit()
+    except sqlite3.OperationalError as exc:
+        conn.rollback()
+        # Подавляем шум в логах для попыток записи в режиме 'Просмотр'
+        msg = str(exc).lower()
+        if "readonly" in msg or "read-only" in msg:
+            # Не логируем stacktrace, чтобы не засорять лог
+            raise
+        logger.exception("Откат транзакции из-за ошибки")
+        raise
     except Exception:
         conn.rollback()
         logger.exception("Откат транзакции из-за ошибки")

@@ -8,9 +8,12 @@ import sys
 import subprocess
 
 from config.settings import CONFIG
+import tkinter as tk
+from pathlib import Path
+from utils.text import normalize_for_search
 from db.sqlite import get_connection
 from services import suggestions
-from reports.report_builders import work_orders_report_df
+from reports.report_builders import work_orders_report_df, work_orders_report_context
 from reports.html_export import save_html
 from reports.pdf_reportlab import save_pdf
 from utils.usage_history import record_use, get_recent
@@ -27,6 +30,7 @@ class ReportsView(ctk.CTkFrame):
         self._selected_worker_id: int | None = None
         self._selected_job_type_id: int | None = None
         self._selected_product_id: int | None = None
+        self.product_entry_text: ctk.StringVar | None = None
         self._selected_contract_id: int | None = None
         self._df: pd.DataFrame | None = None
 
@@ -113,6 +117,7 @@ class ReportsView(ctk.CTkFrame):
         ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
         ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Экспорт в 1С (JSON)", command=self._export_1c_json).pack(side="left", padx=4)
 
         # Простая табличка предпросмотра списка (не обязательна для печати)
         self.tree = ttk.Treeview(self, show="headings")
@@ -280,7 +285,11 @@ class ReportsView(ctk.CTkFrame):
         self._schedule_auto_hide(self.sg_job, [self.job_entry])
 
     def _pick_job(self, job_type_id: int, label: str) -> None:
-        self._selected_job_type_id = job_type_id if job_type_id else self._selected_job_type_id
+        # Если выбран конкретный id — запоминаем, иначе сбрасываем id и используем текстовый фильтр по названию
+        if job_type_id:
+            self._selected_job_type_id = job_type_id
+        else:
+            self._selected_job_type_id = None
         self.job_entry.delete(0, "end")
         self.job_entry.insert(0, label)
         record_use("reports.job_type", label)
@@ -321,7 +330,11 @@ class ReportsView(ctk.CTkFrame):
         self._schedule_auto_hide(self.sg_product, [self.product_entry])
 
     def _pick_product(self, product_id: int, label: str) -> None:
-        self._selected_product_id = product_id if product_id else self._selected_product_id
+        # Если нет id (выбор из истории/текста) — сбросить id и использовать текстовый фильтр
+        if product_id:
+            self._selected_product_id = product_id
+        else:
+            self._selected_product_id = None
         self.product_entry.delete(0, "end")
         self.product_entry.insert(0, label)
         record_use("reports.product", label)
@@ -406,17 +419,63 @@ class ReportsView(ctk.CTkFrame):
 
     def _build_report(self) -> None:
         with get_connection() as conn:
+            # Определим product_id для фильтра: либо выбранный id, либо по тексту из поля
+            p_id = self._selected_product_id
+            prod_text = self.product_entry.get().strip() or None
+            if (not p_id) and prod_text:
+                try:
+                    row = conn.execute("SELECT id FROM products WHERE product_no = ? OR name = ?", (prod_text, prod_text)).fetchone()
+                    if not row:
+                        norm = normalize_for_search(prod_text)
+                        row = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (norm, norm)).fetchone()
+                    if not row:
+                        like = f"%{prod_text}%"
+                        row = conn.execute("SELECT id FROM products WHERE product_no LIKE ? OR name LIKE ? LIMIT 1", (like, like)).fetchone()
+                    if row:
+                        p_id = int(row[0])
+                except Exception:
+                    p_id = self._selected_product_id
+            # Если поле очищено — сбрасываем id
+            if not (prod_text):
+                p_id = None
+                self._selected_product_id = None
             df = work_orders_report_df(
                 conn,
                 date_from=self.date_from.get().strip() or None,
                 date_to=self.date_to.get().strip() or None,
                 worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
                 dept=self.dept_var.get().strip() or None,
                 job_type_id=self._selected_job_type_id,
-                product_id=self._selected_product_id,
+                product_id=p_id,
                 contract_id=self._selected_contract_id,
             )
         self._df = self._localize_df_columns(df)
+        # Уберем технические колонки из таблицы
+        for c in ("Сумма_строки", "Количество", "Кол-во", "Цена"):
+            if c in self._df.columns:
+                try:
+                    self._df = self._df.drop(columns=[c])
+                except Exception:
+                    pass
+        # Если отчет фактически по одному работнику или выбран фильтр по работнику — скрыть столбцы Работник и Цех
+        try:
+            single_worker_mode = False
+            if "Работник" in self._df.columns:
+                unique_workers = [str(x) for x in self._df["Работник"].dropna().unique().tolist()]
+                if len(unique_workers) == 1:
+                    single_worker_mode = True
+            if self._selected_worker_id or (self.worker_entry.get().strip()):
+                single_worker_mode = True
+            if single_worker_mode:
+                for c in ("Работник", "Цех"):
+                    if c in self._df.columns:
+                        try:
+                            self._df = self._df.drop(columns=[c])
+                        except Exception:
+                            pass
+        except Exception:
+            pass
         # Применим локализацию заголовков в превью
         cols = list(self._df.columns)
         self.tree["columns"] = cols
@@ -430,25 +489,27 @@ class ReportsView(ctk.CTkFrame):
 
     def _render_preview(self, df: pd.DataFrame) -> None:
         # Clear previous
-        for col in self.tree.get_children():
-            self.tree.delete(col)
-        self.tree["columns"] = []
+        for iid in self.tree.get_children():
+            self.tree.delete(iid)
+        # Reset columns
         for c in self.tree["columns"]:
             self.tree.heading(c, text="")
+            self.tree.column(c, width=50)
+        self.tree["columns"] = []
 
         if df is None or df.empty:
             self.tree["columns"] = ["msg"]
             self.tree.heading("msg", text="Нет данных")
+            self.tree.column("msg", width=200)
             return
 
         cols = list(df.columns)
         self.tree["columns"] = cols
+
         # сортировка по заголовкам
         def sort_by(col: str):
-            # toggle dir
             d = getattr(self, "_report_sort_dir", {})
             new_dir = "desc" if d.get(col) == "asc" else "asc"
-            # собрать текущие значения в список и отсортировать
             rows = []
             for iid in self.tree.get_children(""):
                 vals = self.tree.item(iid, "values")
@@ -456,7 +517,6 @@ class ReportsView(ctk.CTkFrame):
             idx = cols.index(col)
             def key_func(item):
                 v = item[1][idx]
-                # попытка числовой сортировки
                 try:
                     return float(str(v).replace(" ", "").replace(",", "."))
                 except Exception:
@@ -467,14 +527,43 @@ class ReportsView(ctk.CTkFrame):
             if not hasattr(self, "_report_sort_dir"):
                 self._report_sort_dir = {}
             self._report_sort_dir[col] = new_dir
+
+        # Fill data
+        vals_cache = df.astype(str).values.tolist()
+        for r in vals_cache[:200]:
+            self.tree.insert("", "end", values=r)
         for c in cols:
             self.tree.heading(c, text=str(c), command=lambda cc=c: sort_by(cc))
-            self.tree.column(c, width=120)
 
-        # Limit rows in preview
-        for _, row in df.head(200).iterrows():
-            values = [row[c] for c in cols]
-            self.tree.insert("", "end", values=values)
+        # Auto-size columns to fit content (header + visible rows) and fit into window width
+        try:
+            font = tkfont.nametofont("TkDefaultFont")
+        except Exception:
+            font = tkfont.Font()
+        pad = 24
+        min_w = 60
+        # First pass: measure desired widths
+        desired = []
+        for j, c in enumerate(cols):
+            header_w = font.measure(str(c))
+            max_w = header_w
+            for r in vals_cache[:200]:
+                w = font.measure(str(r[j]))
+                if w > max_w:
+                    max_w = w
+            desired.append(max(min_w, max_w + pad))
+        # Compute available width of tree widget
+        try:
+            avail = max(200, int(self.tree.winfo_width()) - 32)
+        except Exception:
+            avail = sum(desired)
+        total_desired = sum(desired)
+        # Scale down if overflow, but not below min_w
+        if total_desired > 0 and avail < total_desired:
+            scale = avail / total_desired
+            desired = [max(min_w, int(w * scale)) for w in desired]
+        for c, w in zip(cols, desired):
+            self.tree.column(c, width=int(w))
 
     def _build_filename_suffix(self) -> str:
         from datetime import datetime
@@ -512,7 +601,17 @@ class ReportsView(ctk.CTkFrame):
         path = self._ask_save_path("Сохранить HTML", ".html", [("HTML", "*.html")])
         if not path:
             return
-        save_html(self._df, title="Отчет", path=path)
+        with get_connection() as conn:
+            ctx = work_orders_report_context(
+                conn,
+                self._df,
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
+            )
+        save_html(self._df, title="Отчет", path=path, context=ctx)
         self._open_file(path)
 
     def _export_pdf(self) -> None:
@@ -523,7 +622,17 @@ class ReportsView(ctk.CTkFrame):
         if not path:
             return
         # Портрет по умолчанию, но авто-подбор в save_pdf переключит, если не влезает
-        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None)
+        with get_connection() as conn:
+            ctx = work_orders_report_context(
+                conn,
+                self._df,
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
+            )
+        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None, context=ctx)
         self._open_file(path)
 
     def _export_excel(self) -> None:
@@ -534,11 +643,90 @@ class ReportsView(ctk.CTkFrame):
         if not path:
             return
         try:
-            self._df.to_excel(path, index=False)
+            # Сохранение с шапкой/футером: простой вариант — отдельные листы
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                with get_connection() as conn:
+                    ctx = work_orders_report_context(
+                        conn,
+                        self._df,
+                        date_from=self.date_from.get().strip() or None,
+                        date_to=self.date_to.get().strip() or None,
+                        dept=self.dept_var.get().strip() or None,
+                    )
+                # Лист с данными
+                self._df.to_excel(writer, sheet_name="Данные", index=False)
+                # Лист с итогами и подписями
+                summary_rows = []
+                summary_rows.append(["Отчет по нарядам"])    
+                if ctx.get("created_at"):
+                    summary_rows.append([f"Дата составления: {ctx['created_at']}"])
+                if ctx.get("period"):
+                    summary_rows.append([ctx["period"]])
+                if ctx.get("dept_name"):
+                    summary_rows.append([f"Цех: {ctx['dept_name']}"])
+                summary_rows.append([""])
+                summary_rows.append([f"Итого по отчету: {ctx.get('total_amount', 0.0):.2f}"])
+                workers = ctx.get("worker_signatures") or []
+                if workers:
+                    summary_rows.append(["Подписи работников:"])
+                    # по 3 в ряд
+                    row = []
+                    for i, w in enumerate(workers, 1):
+                        row.append(w)
+                        if i % 3 == 0:
+                            summary_rows.append(row); row = []
+                    if row:
+                        summary_rows.append(row)
+                if ctx.get("dept_head"):
+                    summary_rows.append([f"Начальник цеха: {ctx['dept_head']} _____________"]) 
+                if ctx.get("hr_head"):
+                    summary_rows.append([f"Начальник отдела кадров: {ctx['hr_head']} _____________"]) 
+                pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Итоги", index=False, header=False)
         except Exception as e:
             messagebox.showerror("Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}")
             return
         self._open_file(path)
+
+    def _export_1c_json(self) -> None:
+        # Экспорт в 1С: единый формат JSON
+        from reports.export_1c import build_orders_unified, save_1c_json
+        base_path = filedialog.asksaveasfilename(
+            title="Сохранить JSON для 1С",
+            defaultextension=".json",
+            initialfile="выгрузка_1с.json",
+            filetypes=[("JSON", "*.json")],
+        )
+        if not base_path:
+            return
+        # Собрать данные
+        with get_connection() as conn:
+            kwargs = dict(
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                product_id=self._selected_product_id,
+                contract_id=self._selected_contract_id,
+                worker_id=self._selected_worker_id,
+                worker_name=self.worker_entry.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
+                job_type_id=self._selected_job_type_id,
+            )
+            orders = build_orders_unified(conn, **kwargs)
+        meta = {
+            "date_from": self.date_from.get().strip() or None,
+            "date_to": self.date_to.get().strip() or None,
+            "product_id": self._selected_product_id,
+            "contract_id": self._selected_contract_id,
+            "worker_id": self._selected_worker_id,
+            "worker_name": self.worker_entry.get().strip() or None,
+            "dept": self.dept_var.get().strip() or None,
+            "job_type_id": self._selected_job_type_id,
+        }
+        try:
+            save_1c_json(path=base_path, orders=orders, meta=meta, encoding="utf-8")
+        except Exception as e:
+            messagebox.showerror("Экспорт 1С", f"Ошибка экспорта: {e}")
+            return
+        self._open_file(str(base_path))
 
     def _open_date_picker(self, var, anchor=None) -> None:
         from gui.widgets.date_picker import open_for_anchor

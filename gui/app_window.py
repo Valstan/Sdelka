@@ -22,7 +22,7 @@ class AppWindow(ctk.CTk):
         try:
             ver = get_version()
         except Exception:
-            ver = "2.0.0.1"
+            ver = get_version()
         self._version = ver
         self._app_title = f"СДЕЛКА РМЗ {ver}"
         self.title(self._app_title)
@@ -32,6 +32,13 @@ class AppWindow(ctk.CTk):
         self._tabview = None
         self._segmented_button = None
         self._title_badge = None
+        # Отслеживание запланированных after-задач для корректного завершения
+        self._after_ids: set[str] = set()
+        self._closing: bool = False
+        try:
+            self.protocol("WM_DELETE_WINDOW", self._on_close)
+        except Exception:
+            pass
         # Применить пользовательские шрифты для остального UI
         try:
             prefs = load_prefs()
@@ -88,7 +95,38 @@ class AppWindow(ctk.CTk):
         except Exception:
             pass
         # Первичное размещение
-        self.after(50, self._place_title_badge)
+        self._schedule_after(50, self._place_title_badge)
+
+        # Малый бейдж "Режим просмотра" справа от сегментированных кнопок
+        try:
+            seg = getattr(self._tabview, "_segmented_button", None)
+            self._readonly_badge = ctk.CTkLabel(self, text="Режим просмотра", text_color="#dc2626")
+            def place_badge():
+                try:
+                    if seg is None or not seg.winfo_exists():
+                        self._readonly_badge.place_forget()
+                        return
+                    # Показывать бейдж только в режиме readonly
+                    if not is_readonly():
+                        self._readonly_badge.place_forget()
+                        return
+                    self.update_idletasks(); seg.update_idletasks(); self._readonly_badge.update_idletasks()
+                    x = seg.winfo_rootx() - self.winfo_rootx()
+                    y = seg.winfo_rooty() - self.winfo_rooty()
+                    w = seg.winfo_width()
+                    self._readonly_badge.place(x=x + w + 16, y=y + 6)
+                    self._readonly_badge.lift()
+                except Exception:
+                    try:
+                        self._readonly_badge.place_forget()
+                    except Exception:
+                        pass
+            self.bind("<Configure>", lambda e: place_badge(), add="+")
+            if seg is not None:
+                seg.bind("<Configure>", lambda e: place_badge(), add="+")
+            self._schedule_after(60, place_badge)
+        except Exception:
+            pass
 
     def _create_title_badge(self) -> None:
         # Фиксированный шрифт ~8pt в пикселях (не зависит от scaling/настроек)
@@ -109,7 +147,7 @@ class AppWindow(ctk.CTk):
         line_h = 12  # px
 
         # Строки названия без межстрочных отступов
-        short = ctk.CTkLabel(inner, text=f"СДЕЛКА РМЗ v{self._version}", font=fixed_font_small_bold, anchor="w", justify="left", height=line_h)
+        short = ctk.CTkLabel(inner, text=f"СДЕЛКА РМЗ {self._version}", font=fixed_font_small_bold, anchor="w", justify="left", height=line_h)
         short.pack(anchor="w", pady=0)
         line2 = ctk.CTkLabel(inner, text="Программа учёта нарядов и контрактов", font=fixed_font_small, anchor="w", justify="left", height=line_h)
         line2.pack(anchor="w", pady=0)
@@ -203,6 +241,8 @@ class AppWindow(ctk.CTk):
         try:
             seg._last_tab_caption = None
             def _watch():
+                if self._closing:
+                    return
                 try:
                     current = tabview.get()
                 except Exception:
@@ -210,8 +250,37 @@ class AppWindow(ctk.CTk):
                 if getattr(seg, "_last_tab_caption", None) != current:
                     seg._last_tab_caption = current
                     apply_fonts()
-                tabview.after(120, _watch)
-            tabview.after(80, _watch)
+                self._schedule_after(120, _watch)
+            self._schedule_after(80, _watch)
         except Exception:
             pass
-        tabview.after(50, apply_fonts)
+        self._schedule_after(50, apply_fonts)
+
+    def _schedule_after(self, delay_ms: int, callback) -> None:
+        if self._closing:
+            return
+        try:
+            aid = self.after(delay_ms, callback)
+            try:
+                self._after_ids.add(aid)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_close(self) -> None:
+        self._closing = True
+        # Отменить все запланированные after
+        for aid in list(self._after_ids):
+            try:
+                self.after_cancel(aid)
+            except Exception:
+                pass
+            try:
+                self._after_ids.discard(aid)
+            except Exception:
+                pass
+        try:
+            super().destroy()
+        except Exception:
+            pass

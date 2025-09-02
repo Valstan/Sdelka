@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 import customtkinter as ctk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
+from utils.readonly_ui import guard_readonly
+from utils.export_ui import create_export_button
 from services import reference_data as ref
 from db import queries as q
 from services import suggestions
@@ -25,8 +27,16 @@ class JobTypesForm(ctk.CTkFrame):
         self._snapshot: tuple[str, str, str] | None = None
         self._build_ui()
         self._load()
+        # Обновлять список при импорте
+        try:
+            self.bind("<<DataImported>>", lambda e: self._load())
+            self.winfo_toplevel().bind("<<DataImported>>", lambda e: self._load(), add="+")
+        except Exception:
+            pass
 
     def _build_ui(self) -> None:
+        # No top spacer/banners to avoid empty gaps
+
         form = ctk.CTkFrame(self)
         form.pack(fill="x", padx=10, pady=10)
 
@@ -59,6 +69,8 @@ class JobTypesForm(ctk.CTkFrame):
         del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
+        export_btn = create_export_button(btns, "job_types", "Экспорт видов работ")
+        export_btn.pack(side="right")
         if self._readonly:
             for w in (self.name_entry, self.unit_entry):
                 try:
@@ -263,7 +275,8 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
-        if getattr(self, "_readonly", False):
+        from utils.readonly_ui import guard_readonly
+        if not guard_readonly("сохранение"):
             return
         name = self.name_var.get().strip()
         unit = self.unit_var.get().strip()
@@ -298,7 +311,8 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
-        if getattr(self, "_readonly", False):
+        from utils.readonly_ui import guard_readonly
+        if not guard_readonly("удаление"):
             return
         if not self._selected_id:
             return
@@ -312,3 +326,6 @@ class JobTypesForm(ctk.CTkFrame):
             return
         self._load()
         self._clear()
+
+    def _export_job_types(self) -> None:
+        pass
