@@ -18,6 +18,17 @@ class UserPrefs:
     enable_wal: bool | None = None
     # Таймаут ожидания блокировок SQLite в миллисекундах
     busy_timeout_ms: int | None = 10000
+    # Яндекс.Диск (WebDAV)
+    yandex_remote_dir: str | None = None
+    # Метод аутентификации: "oauth" или "basic"
+    yandex_auth_method: str | None = "oauth"
+    # OAuth токен
+    yandex_oauth_token: str | None = None
+    # Basic: логин и пароль приложения
+    yandex_username: str | None = None
+    yandex_app_password: str | None = None
+    # Публичная ссылка на папку с базой (для скачивания без токена)
+    yandex_public_folder_url: str | None = None
 
 
 def load_prefs() -> UserPrefs:
@@ -31,6 +42,12 @@ def load_prefs() -> UserPrefs:
                 db_path=data.get("db_path") or None,
                 enable_wal=data.get("enable_wal") if data.get("enable_wal") is not None else None,
                 busy_timeout_ms=int(data.get("busy_timeout_ms", 10000)) if data.get("busy_timeout_ms") is not None else 10000,
+                yandex_remote_dir=data.get("yandex_remote_dir") or (CONFIG.yandex_default_remote_dir or "/SdelkaBackups"),
+                yandex_auth_method=(data.get("yandex_auth_method") or "oauth"),
+                yandex_oauth_token=data.get("yandex_oauth_token") or None,
+                yandex_username=data.get("yandex_username") or None,
+                yandex_app_password=data.get("yandex_app_password") or None,
+                yandex_public_folder_url=data.get("yandex_public_folder_url") or None,
             )
     except Exception:
         pass

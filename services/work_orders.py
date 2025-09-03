@@ -45,6 +45,9 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     validate_date(data.date)
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
+    # Требуем обязательный выбор изделия из БД
+    if (data.product_id is None) and (not data.extra_product_ids):
+        raise ValueError("Выберите изделие из списка (из базы данных)")
     # Провалидируем наличие контракта и изделия, чтобы не ловить FK ошибку
     # Валидация контракта (только один)
     if data.contract_id is None:
@@ -124,9 +127,10 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         logger.warning("Обнаружены дублирующиеся ID работников: %s -> %s", 
                       [w.worker_id for w in data.workers], [w.worker_id for w in unique_workers])
     
-    # Разделяем работников на существующих (положительные ID) и ручно добавленных (отрицательные ID)
-    existing_workers = [w for w in unique_workers if w.worker_id > 0]
-    manual_workers = [w for w in unique_workers if w.worker_id < 0]
+    # Разрешаем только работников из базы (положительные ID)
+    if any(w.worker_id <= 0 for w in unique_workers):
+        raise ValueError("Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'.")
+    existing_workers = unique_workers
     
     # Проверяем корректность ID
     for worker in unique_workers:
@@ -152,9 +156,8 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         if fired_ids:
             raise ValueError(f"Нельзя добавить уволенных работников в наряд: {fired_ids}")
     
-    # Для ручно добавленных работников (отрицательные ID) создаем/находим записи в базе
+    # Сохраняем заданные суммы по исходному ID (все они положительные)
     final_worker_ids: list[int] = []
-    # Сохраняем заданные суммы по исходному ID (положительному или отрицательному)
     specified_by_orig: dict[int, Decimal] = {}
     for w in unique_workers:
         if w.amount is not None:
@@ -169,35 +172,13 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     # Добавляем существующих работников
     final_worker_ids.extend([w.worker_id for w in existing_workers])
 
-    # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
-    orig_to_new: dict[int, int] = {}
-    if manual_workers:
-        counter = 1
-        for worker in manual_workers:
-            # Сначала ищем существующего по ФИО (без учета регистра)
-            found = q.get_worker_by_full_name(conn, worker.worker_name)
-            if found:
-                wid = int(found["id"])
-                orig_to_new[worker.worker_id] = wid
-                final_worker_ids.append(wid)
-                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, wid)
-                continue
-            # Создаем нового с уникальным табельным номером, привязанным к наряду
-            personnel_no = f"TEMP_{work_order_id}_{counter}"
-            counter += 1
-            temp_worker_id = int(q.insert_worker(conn, worker.worker_name, None, None, personnel_no))
-            orig_to_new[worker.worker_id] = temp_worker_id
-            final_worker_ids.append(temp_worker_id)
-            logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
-
     # Исключаем возможные дубликаты id
     final_worker_ids = list(dict.fromkeys(final_worker_ids))
 
     # Построим итоговую карту заданных сумм по финальным ID
     specified_by_final: dict[int, Decimal] = {}
     for orig_id, amount in specified_by_orig.items():
-        final_id = orig_to_new.get(orig_id, orig_id)
-        specified_by_final[final_id] = amount
+        specified_by_final[orig_id] = amount
 
     # Распределим суммы: заданные берем как есть, остаток равномерно по незаданным
     sum_specified = sum(specified_by_final.values(), Decimal("0"))
@@ -263,6 +244,11 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     validate_date(data.date)
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
+    # Требуем обязательный выбор изделия и контракта
+    if (data.product_id is None) and (not data.extra_product_ids):
+        raise ValueError("Выберите изделие из списка (из базы данных)")
+    if data.contract_id is None:
+        raise ValueError("Выберите контракт из списка")
 
     total = Decimal("0")
     line_values: list[tuple[int, float, float, float]] = []
@@ -294,6 +280,23 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
             product_ids = [int(data.product_id)]
 
     head_product = (product_ids[0] if product_ids else None)
+
+    # Проверим соответствие изделия и контракта, как при создании
+    if head_product is not None:
+        p_row = conn.execute("SELECT id, contract_id FROM products WHERE id = ?", (head_product,)).fetchone()
+        if not p_row:
+            raise ValueError("Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле.")
+        try:
+            prod_contract_id = p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+        except Exception:
+            prod_contract_id = None
+        if prod_contract_id is None:
+            default_cid = q.get_or_create_default_contract(conn)
+            q.set_product_contract(conn, int(head_product), int(default_cid))
+            prod_contract_id = default_cid
+        if int(prod_contract_id) != int(data.contract_id):
+            raise ValueError("Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту.")
+
     q.update_work_order_header(conn, work_order_id, new_no, data.date, head_product, data.contract_id, float(total))
     # Пересохраним изделия (контракты — один)
     q.set_work_order_products(conn, work_order_id, product_ids)
@@ -302,33 +305,22 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     for (job_type_id, quantity, unit_price, line_amount) in line_values:
         q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
 
-    # Обрабатываем работников аналогично create_work_order
-    # Разделяем на существующих и ручно добавленных
-    existing_workers = [w for w in data.workers if w.worker_id > 0]
-    manual_workers = [w for w in data.workers if w.worker_id < 0]
-
-    final_worker_ids: list[int] = []
-    final_worker_ids.extend([w.worker_id for w in existing_workers])
-
-    # Для ручно добавленных работников пытаемся найти по ФИО, иначе создаем нового
-    orig_to_new: dict[int, int] = {}
-    if manual_workers:
-        # Привязываем счетчик к work_order_id, чтобы получить уникальные personnel_no
-        counter = 1
-        for worker in manual_workers:
-            found = q.get_worker_by_full_name(conn, worker.worker_name)
-            if found:
-                wid = int(found["id"])
-                orig_to_new[worker.worker_id] = wid
-                final_worker_ids.append(wid)
-                logger.info("Найден существующий работник по имени '%s': id=%s", worker.worker_name, wid) 
-                continue
-            personnel_no = f"TEMP_{work_order_id}_{counter}"
-            counter += 1
-            temp_worker_id = int(q.insert_worker(conn, worker.worker_name, None, None, personnel_no))
-            orig_to_new[worker.worker_id] = temp_worker_id
-            final_worker_ids.append(temp_worker_id)
-            logger.info("Создан временный работник: %s (id=%s)", worker.worker_name, temp_worker_id)
+    # Обрабатываем работников: допускаются только работники из базы
+    if not data.workers:
+        raise ValueError("Добавьте работников в бригаду")
+    if any((w.worker_id is None) or (w.worker_id <= 0) for w in data.workers):
+        raise ValueError("Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'.")
+    existing_ids = [int(w.worker_id) for w in data.workers]
+    placeholders = ",".join(["?"] * len(existing_ids))
+    found = conn.execute(
+        f"SELECT id FROM workers WHERE id IN ({placeholders})",
+        tuple(existing_ids),
+    ).fetchall()
+    found_ids = {int(r["id"]) if isinstance(r, dict) else int(r[0]) for r in found}
+    missing = set(existing_ids) - found_ids
+    if missing:
+        raise ValueError(f"Работники с ID {sorted(missing)} не найдены в базе данных")
+    final_worker_ids: list[int] = list(dict.fromkeys(existing_ids))
 
     # Исключаем возможные дубликаты id
     final_worker_ids = list(dict.fromkeys(final_worker_ids))
@@ -344,8 +336,7 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
             raise ValueError("Некорректная сумма распределения для работника")
         if val < 0:
             raise ValueError("Сумма для работника не может быть отрицательной")
-        final_id = orig_to_new.get(w.worker_id, w.worker_id)
-        specified_by_final[final_id] = val
+        specified_by_final[int(w.worker_id)] = val
 
     sum_specified = sum(specified_by_final.values(), Decimal("0"))
     if sum_specified > total:

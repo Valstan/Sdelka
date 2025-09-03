@@ -48,7 +48,9 @@ def work_orders_report_df(
         where.append("w.dept = ?")
         params_where.append(dept)
     if product_id:
-        where.append("wo.product_id = ?")
+        # Учитываем как основной продукт заголовка, так и дополнительные изделия наряда
+        where.append("(wo.product_id = ? OR EXISTS (SELECT 1 FROM work_order_products wop WHERE wop.work_order_id = wo.id AND wop.product_id = ?))")
+        params_where.append(product_id)
         params_where.append(product_id)
     if contract_id:
         where.append("wo.contract_id = ?")
@@ -56,9 +58,8 @@ def work_orders_report_df(
     # Текстовый фильтр по изделию: если id не задан, но текст присутствует (в GUI), фильтруем по имени/номеру
     # Для этого ожидается, что GUI передает текст в product_name через worker_name или иной параметр.
 
-    exists_job_filter = ""
     if job_type_id:
-        exists_job_filter = " AND EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)"
+        where.append("EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)")
         params_where.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
@@ -85,7 +86,7 @@ def work_orders_report_df(
     ) agg ON agg.work_order_id = wo.id
     JOIN work_order_workers wow ON wow.work_order_id = wo.id
     JOIN workers w ON w.id = wow.worker_id
-    {where_sql}{exists_job_filter}
+    {where_sql}
     ORDER BY wo.date DESC, wo.order_no DESC, w.full_name
     """
 

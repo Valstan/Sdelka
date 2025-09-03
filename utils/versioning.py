@@ -84,4 +84,4 @@ def _get_month_name(month: int) -> str:
 
 def get_version() -> str:
 	"""Фиксированная версия приложения."""
-	return "3.9"
+	return "3.10"

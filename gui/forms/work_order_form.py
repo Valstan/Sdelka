@@ -1285,7 +1285,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         )
         if where:
             sql += "WHERE " + " AND ".join(where) + " "
-        sql += "ORDER BY wo.date DESC, wo.order_no DESC LIMIT ? OFFSET ?"
+        # По умолчанию сортируем по номеру наряда по убыванию
+        sql += "ORDER BY wo.order_no DESC, wo.date DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         with get_connection() as conn:
             return conn.execute(sql, params).fetchall()
@@ -1480,14 +1481,12 @@ class WorkOrdersForm(ctk.CTkFrame):
         if not self.item_rows:
             messagebox.showwarning("Проверка", "Добавьте хотя бы одну строку работ")
             return None
-        # Собираем контракты: основной + дополнительные (по тексту ищем/создаем)
-        contract_labels: list[str] = []
-        head_contract = (self.contract_entry.get() or "").strip()
-        if head_contract:
-            contract_labels.append(head_contract)
-        # Контракт только один
-        if not contract_labels:
-            messagebox.showwarning("Проверка", "Выберите контракт из подсказок")
+        # Строгая проверка: изделие и контракт должны быть выбраны из базы (по подсказке)
+        if not self.selected_product_id:
+            messagebox.showwarning("Проверка", "Выберите изделие из подсказок (значение из базы)")
+            return None
+        if not self.selected_contract_id:
+            messagebox.showwarning("Проверка", "Контракт не определён. Выберите изделие из подсказок, чтобы подтянулся контракт")
             return None
         date_str = self.date_var.get().strip()
         try:
@@ -1506,11 +1505,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             except Exception:
                 messagebox.showwarning("Проверка", "Номер наряда должен быть положительным числом")
                 return None
-        # Собираем изделие (только одно)
-        product_labels: list[str] = []
-        head_product = (self.product_entry.get() or "").strip()
-        if head_product:
-            product_labels.append(head_product)
+        # Изделие строго из БД — берём выбранный ID
 
         # Проверяем работников
         worker_ids = list(self.selected_workers.keys())
@@ -1523,15 +1518,14 @@ class WorkOrdersForm(ctk.CTkFrame):
             messagebox.showwarning("Проверка", "Обнаружены дублирующиеся работники в бригаде")
             return None
         for worker_id in unique_worker_ids:
-            if not isinstance(worker_id, int):
-                messagebox.showwarning("Проверка", f"Некорректный ID работника: {worker_id}")
+            if not isinstance(worker_id, int) or worker_id <= 0:
+                messagebox.showwarning("Проверка", "Все работники должны быть выбраны из подсказки (из базы)")
                 return None
-            if worker_id > 0:
-                with get_connection() as conn:
-                    exists = conn.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,)).fetchone()
-                    if not exists:
-                        messagebox.showwarning("Проверка", f"Работник с ID {worker_id} не найден в базе данных")
-                        return None
+            with get_connection() as conn:
+                exists = conn.execute("SELECT 1 FROM workers WHERE id = ?", (worker_id,)).fetchone()
+                if not exists:
+                    messagebox.showwarning("Проверка", f"Работник с ID {worker_id} не найден в базе данных")
+                    return None
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
         for i in self.item_rows:
@@ -1544,46 +1538,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         for worker_id, worker_name in self.selected_workers.items():
             amount = self.worker_amounts.get(worker_id)
             workers.append(WorkOrderWorkerInput(worker_id=worker_id, worker_name=worker_name, amount=amount))
-        # Разрешение контрактов и изделий в ID
-        extra_contract_ids: list[int] = []
-        with get_connection() as conn:
-            for label in contract_labels:
-                row = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (label.casefold(),)).fetchone()
-                if row:
-                    extra_contract_ids.append(int(row["id"]))
-                else:
-                    # Создадим контракт без дат/описания
-                    new_id = q.upsert_contract(conn, label, None, None, None)
-                    # upsert_contract может вернуть lastrowid|rowcount; достанем id по коду
-                    row2 = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (label.casefold(),)).fetchone()
-                    if row2:
-                        extra_contract_ids.append(int(row2["id"]))
-        extra_product_ids: list[int] = []
-        with get_connection() as conn:
-            for label in product_labels:
-                # Пытаемся распарсить "номер — имя" или просто номер/имя
-                text = label
-                product_no = text.split("—", 1)[0].strip()
-                row = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (product_no.casefold(), text.casefold())).fetchone()
-                if row:
-                    extra_product_ids.append(int(row["id"]))
-                else:
-                    # Создадим продукт: если удалось выделить номер, используем его; иначе номер = имя
-                    name = text
-                    no = product_no if product_no else text
-                    # Привязка нового изделия к текущему выбранному контракту
-                    head_contract_id = extra_contract_ids[0] if extra_contract_ids else None
-                    try:
-                        q.upsert_product(conn, name, no, int(head_contract_id) if head_contract_id is not None else None)
-                    except Exception:
-                        q.upsert_product(conn, name, no)
-                    row2 = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (no.casefold(), name.casefold())).fetchone()
-                    if row2:
-                        extra_product_ids.append(int(row2["id"]))
 
-        # Первый контракт/изделие считаем основными для заголовка
-        head_contract_id = extra_contract_ids[0] if extra_contract_ids else None
-        head_product_id = extra_product_ids[0] if extra_product_ids else None
+        # Разрешение ID без автосоздания сущностей
+        head_contract_id = int(self.selected_contract_id) if self.selected_contract_id else None
+        head_product_id = int(self.selected_product_id) if self.selected_product_id else None
+        # Контроль существования сущностей
+        with get_connection() as conn:
+            c_row = conn.execute("SELECT 1 FROM contracts WHERE id=?", (head_contract_id,)).fetchone()
+            if not c_row:
+                messagebox.showwarning("Проверка", "Выбранный контракт не найден в базе. Повторите выбор из подсказки")
+                return None
+            p_row = conn.execute("SELECT 1 FROM products WHERE id=?", (head_product_id,)).fetchone()
+            if not p_row:
+                messagebox.showwarning("Проверка", "Выбранное изделие не найдено в базе. Повторите выбор из подсказки")
+                return None
+
+        extra_product_ids: list[int] = [head_product_id] if head_product_id is not None else []
 
         return WorkOrderInput(
             order_no=order_no_val,

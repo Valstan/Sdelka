@@ -55,6 +55,44 @@ class SettingsView(ctk.CTkFrame):
         self._btn_import_unified = ctk.CTkButton(btns, text="Импорт данных", command=self._import_unified)
         self._btn_import_unified.pack(side="left", padx=6)
 
+        # Бэкап на Яндекс-диск (секция будет добавлена в конце формы)
+        self._yadisk_section = ctk.CTkFrame(box)
+        ctk.CTkLabel(self._yadisk_section, text="Бэкап на Яндекс-диск").pack(anchor="w", padx=6, pady=(8, 4))
+        row_token = ctk.CTkFrame(self._yadisk_section)
+        row_token.pack(fill="x")
+        ctk.CTkLabel(row_token, text="OAuth токен").pack(side="left", padx=6)
+        # Заполнение токена: приоритет пользовательского, иначе из CONFIG
+        default_token = self._prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or ""
+        self._yd_token_var = ctk.StringVar(value=default_token)
+        self._yd_token_entry = ctk.CTkEntry(row_token, textvariable=self._yd_token_var, show="*")
+        self._yd_token_entry.pack(side="left", fill="x", expand=True, padx=6)
+        ctk.CTkButton(row_token, text="Сохранить", command=self._save_yadisk_settings).pack(side="left", padx=6)
+        ctk.CTkButton(row_token, text="Вставить из буфера", command=self._paste_yd_token).pack(side="left", padx=6)
+        ctk.CTkButton(row_token, text="Очистить", command=self._clear_yd_token).pack(side="left", padx=6)
+        row_dir = ctk.CTkFrame(self._yadisk_section)
+        row_dir.pack(fill="x", pady=(2, 6))
+        ctk.CTkLabel(row_dir, text="Папка на диске").pack(side="left", padx=6)
+        self._yd_dir_var = ctk.StringVar(value=self._prefs.yandex_remote_dir or CONFIG.yandex_default_remote_dir or "/SdelkaBackups")
+        self._yd_dir_entry = ctk.CTkEntry(row_dir, textvariable=self._yd_dir_var)
+        self._yd_dir_entry.pack(side="left", fill="x", expand=True, padx=6)
+        self._btn_upload_yadisk = ctk.CTkButton(row_dir, text="Выгрузить бэкап на Яндекс.Диск", command=self._upload_latest_backup_to_yadisk)
+        self._btn_upload_yadisk.pack(side="left", padx=6)
+        ctk.CTkButton(row_dir, text="Проверить токен", command=self._check_yadisk_token).pack(side="left", padx=6)
+
+        # Строка загрузки базы с Яндекс-диска
+        row_dl = ctk.CTkFrame(self._yadisk_section)
+        row_dl.pack(fill="x", pady=(2, 6))
+        ctk.CTkLabel(row_dl, text="Ссылка на Яндекс-папку с базой:").pack(side="left", padx=6)
+        # Значение по умолчанию берем из пользовательских настроек, иначе дефолтное
+        default_remote_file = self._prefs.yandex_public_folder_url or "https://disk.yandex.ru/"
+        self._yd_remote_file_var = ctk.StringVar(value=default_remote_file)
+        self._btn_paste_public = ctk.CTkButton(row_dl, text="Вставить из буфера", command=lambda: self._yd_remote_file_var.set((self.clipboard_get() or "").strip()))
+        self._btn_paste_public.pack(side="left", padx=6)
+        self._yd_remote_file_entry = ctk.CTkEntry(row_dl, textvariable=self._yd_remote_file_var)
+        self._yd_remote_file_entry.pack(side="left", fill="x", expand=True, padx=6)
+        ctk.CTkButton(row_dl, text="Загрузить базу с Яндекс.Диска", command=self._download_db_from_yadisk).pack(side="left", padx=6)
+        # Подсказка убрана
+
         # Путь к БД (перенесено сюда)
         row_db = ctk.CTkFrame(box)
         row_db.pack(fill="x", pady=(2, 6))
@@ -85,10 +123,14 @@ class SettingsView(ctk.CTkFrame):
             self._refresh_backup_list()
         except Exception:
             pass
+        # Вставить секцию Яндекс-диска в самый низ окна
+        try:
+            self._yadisk_section.pack(fill="x", padx=10, pady=10)
+        except Exception:
+            pass
 
-        # Статусная строка
+        # Статусная строка убрана из интерфейса (оставляем объект без pack для совместимости)
         self.status = ctk.CTkLabel(self, text="")
-        self.status.pack(fill="x", padx=10, pady=10)
 
         # ---- Пароль пользователя ----
         pw_box = ctk.CTkFrame(self)
@@ -127,6 +169,12 @@ class SettingsView(ctk.CTkFrame):
                 self._btn_merge_db,
                 self._db_path_entry,
                 self._btn_import_unified,
+                self._yd_token_entry,
+                self._yd_dir_entry,
+                self._btn_upload_yadisk,
+                # Кнопки управления токеном
+                # По умолчанию также блокируем вспомогательные кнопки
+                # чтобы в режиме просмотра ничего не менялось
                 self._opt_list_font,
                 self._opt_ui_font,
                 # пароль менять нельзя в readonly
@@ -263,6 +311,207 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showerror("Экспорт", f"Не удалось сохранить копию: {exc}")
             return
         messagebox.showinfo("Экспорт", "Копия базы успешно сохранена")
+
+    # ---- Yandex.Disk integration ----
+    def _save_yadisk_settings(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Яндекс.Диск", "Режим только для чтения — действие недоступно")
+            return
+        prefs = load_prefs()
+        prefs.yandex_auth_method = "oauth"
+        prefs.yandex_oauth_token = (self._yd_token_var.get() or "").strip() or None
+        prefs.yandex_remote_dir = (self._yd_dir_var.get() or "/SdelkaBackups").strip() or "/SdelkaBackups"
+        try:
+            save_prefs(prefs)
+            self.status.configure(text="Настройки Яндекс.Диска сохранены.")
+        except Exception as exc:
+            self.status.configure(text=f"Ошибка сохранения настроек Яндекс.Диска: {exc}")
+
+    def _upload_latest_backup_to_yadisk(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Яндекс.Диск", "Режим только для чтения — действие недоступно")
+            return
+        prefs = load_prefs()
+        remote_dir = (prefs.yandex_remote_dir or "/SdelkaBackups").strip()
+        token = (prefs.yandex_oauth_token or "").strip()
+        if not token:
+            messagebox.showwarning("Яндекс.Диск", "Укажите OAuth токен и нажмите 'Сохранить'.")
+            return
+        # Создадим свежий бэкап и отправим его
+        try:
+            src_db = Path(get_current_db_path())
+            backup_path = backup_sqlite_db(src_db)
+            if not backup_path:
+                messagebox.showerror("Яндекс.Диск", "Не удалось создать бэкап базы.")
+                return
+        except Exception as exc:
+            messagebox.showerror("Яндекс.Диск", f"Не удалось создать бэкап: {exc}")
+            return
+
+        def run():
+            try:
+                from utils.yadisk import YaDiskClient, YaDiskConfig
+                # Имя на диске фиксируем как sdelka_base (без расширения), для совместимости оставим .db
+                client = YaDiskClient(YaDiskConfig(oauth_token=(prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip(), remote_dir=remote_dir))
+                remote_path = client.upload_file(Path(backup_path), remote_name="sdelka_base.db", overwrite=True)
+                def _ok():
+                    try:
+                        messagebox.showinfo("Яндекс.Диск", f"Бэкап загружен: {remote_path}")
+                        self.status.configure(text=f"Выгрузка на Яндекс.Диск завершена: {remote_path}")
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _ok)
+                except Exception:
+                    pass
+            except Exception as exc:
+                def _err():
+                    try:
+                        messagebox.showerror("Яндекс.Диск", f"Ошибка выгрузки: {exc}")
+                        self.status.configure(text=f"Ошибка выгрузки на Яндекс.Диск: {exc}")
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _err)
+                except Exception:
+                    pass
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _check_yadisk_token(self) -> None:
+        prefs = load_prefs()
+        remote_dir = (prefs.yandex_remote_dir or "/SdelkaBackups").strip()
+        token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
+        if not token:
+            messagebox.showwarning("Яндекс.Диск", "Укажите OAuth токен и нажмите 'Сохранить'.")
+            return
+        def run():
+            try:
+                from utils.yadisk import YaDiskClient, YaDiskConfig
+                client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
+                ok, msg = client.test_connection()
+                def _res():
+                    try:
+                        if ok:
+                            messagebox.showinfo("Яндекс.Диск", f"Проверка пройдена: {msg}")
+                        else:
+                            messagebox.showerror("Яндекс.Диск", f"Проверка не пройдена: {msg}")
+                    except Exception:
+                        pass
+                self.after(0, _res)
+            except Exception as exc:
+                def _err():
+                    try:
+                        messagebox.showerror("Яндекс.Диск", f"Ошибка проверки: {exc}")
+                    except Exception:
+                        pass
+                self.after(0, _err)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _download_db_from_yadisk(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Яндекс.Диск", "Режим только для чтения — действие недоступно")
+            return
+        # Подтверждение
+        if not messagebox.askyesno(
+            "Загрузка базы",
+            "Заменить текущую базу данных содержимым из Яндекс.Диска?\nТекущая база будет сохранена в бэкап автоматически.",
+        ):
+            return
+        prefs = load_prefs()
+        public_url = (self._yd_remote_file_var.get() or "").strip()
+        # Сохраним ссылку в пользовательские настройки для будущих запусков
+        try:
+            prefs.yandex_public_folder_url = public_url
+            save_prefs(prefs)
+        except Exception:
+            pass
+        # Пути
+        cur_db = Path(get_current_db_path())
+        tmp_download = cur_db.parent / "_yadisk_download.db"
+        def run():
+            try:
+                # Скачиваем в temp файл: поддержка публичной ссылки (без токена) и приватного пути (с токеном)
+                from utils.yadisk import YaDiskClient, YaDiskConfig
+                import logging
+                log = logging.getLogger(__name__)
+                log.info("Yadisk import start: url=%s", public_url)
+                if public_url.startswith("http://") or public_url.startswith("https://"):
+                    # Публичная ссылка на папку. Всегда передаем токен (если есть) для обхода антибота
+                    eff_token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
+                    client = YaDiskClient(YaDiskConfig(oauth_token=eff_token))
+                    # Авто-поиск sdelka_base.db или первого .db
+                    client.download_public_file(public_url=public_url, dest_path=tmp_download, item_name=None)
+                else:
+                    token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
+                    if not token:
+                        raise RuntimeError("Ожидается ссылка на папку Яндекс.Диска. Для приватного пути требуется OAuth токен в настройках.")
+                    client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=prefs.yandex_remote_dir or CONFIG.yandex_default_remote_dir or "/SdelkaBackups"))
+                    # Приватный путь: ожидаем вид "/path/to/sdelka_base.db"
+                    private_path = public_url if public_url.startswith("/") else "/" + public_url
+                    client.download_file(private_path, tmp_download)
+                # Доп. валидация: проверим что файл — SQLite
+                try:
+                    head = tmp_download.read_bytes()[:16]
+                    if not (len(head) >= 16 and head[:16] == b"SQLite format 3\x00"):
+                        log.error("Downloaded file is not SQLite: %s", tmp_download)
+                        raise RuntimeError("Загруженный файл не является базой SQLite. Проверьте содержимое папки.")
+                except FileNotFoundError:
+                    log.error("Temp download not found: %s", tmp_download)
+                    raise RuntimeError("Файл не был загружен. Повторите попытку.")
+
+                # Бэкап текущей базы
+                log.info("Backing up current DB: %s", cur_db)
+                backup_sqlite_db(cur_db)
+                # Замена базы атомарно
+                import shutil
+                log.info("Replacing DB with downloaded file")
+                shutil.copy2(tmp_download, cur_db)
+                def _ok():
+                    try:
+                        messagebox.showinfo("Загрузка базы", "База данных успешно загружена и заменена. Перезапустите приложение для применения во всех окнах.", parent=self)
+                    except Exception:
+                        pass
+                self.after(0, _ok)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).exception("Yadisk import failed")
+                def _err():
+                    try:
+                        messagebox.showerror("Загрузка базы", f"Ошибка: {exc}", parent=self)
+                    except Exception:
+                        pass
+                self.after(0, _err)
+            finally:
+                try:
+                    if tmp_download.exists():
+                        tmp_download.unlink()
+                except Exception:
+                    pass
+        threading.Thread(target=run, daemon=True).start()
+
+    # Больше не требуется переключение UI — используем только OAuth/REST
+
+    def _paste_yd_token(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Яндекс.Диск", "Режим только для чтения — действие недоступно")
+            return
+        try:
+            text = self.clipboard_get()
+        except Exception:
+            text = ""
+        if not text:
+            self.status.configure(text="Буфер обмена пуст")
+            return
+        self._yd_token_var.set(text.strip())
+        self.status.configure(text="Токен вставлен. Не забудьте нажать 'Сохранить'.")
+
+    def _clear_yd_token(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Яндекс.Диск", "Режим только для чтения — действие недоступно")
+            return
+        self._yd_token_var.set("")
+        self.status.configure(text="Токен очищен. Введите новый и нажмите 'Сохранить'.")
 
     def _merge_db(self) -> None:
         path = filedialog.askopenfilename(

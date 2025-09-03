@@ -56,6 +56,44 @@ def get_recent(key: str, prefix: str | None = None, limit: int = 10) -> List[str
     items = list(by_key.values())
     if prefix:
         pnorm = normalize_for_search(prefix) or ""
-        items = [e for e in items if normalize_for_search(e.get("label", "")) or "".startswith(pnorm)]
+        items = [e for e in items if (normalize_for_search(e.get("label", "")) or "").startswith(pnorm)]
     items.sort(key=lambda e: (int(e.get("count", 0)), int(e.get("last", 0))), reverse=True)
     return [str(e.get("label", "")) for e in items[:limit]]
+
+
+def delete_entry(key: str, label: str) -> None:
+    """Удаляет один элемент истории по ключу и текстовой метке (без учета регистра)."""
+    label_norm = normalize_for_search(label) or ""
+    if not label_norm:
+        return
+    data = _load()
+    by_key = data.get(key)
+    if not by_key:
+        return
+    if label_norm in by_key:
+        try:
+            del by_key[label_norm]
+        except Exception:
+            pass
+        _save(data)
+
+
+def purge_missing(key: str, valid_norms: set[str]) -> int:
+    """Удаляет из истории все записи, которых нет в наборе существующих значений (valid_norms).
+
+    valid_norms — нормализованные строки (normalize_for_search) актуальных значений из БД.
+    Возвращает количество удаленных записей.
+    """
+    data = _load()
+    by_key = data.get(key)
+    if not by_key:
+        return 0
+    to_delete = [norm for norm in list(by_key.keys()) if norm not in valid_norms]
+    for norm in to_delete:
+        try:
+            del by_key[norm]
+        except Exception:
+            pass
+    if to_delete:
+        _save(data)
+    return len(to_delete)

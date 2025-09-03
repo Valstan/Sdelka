@@ -25,6 +25,11 @@ class AppConfig:
     # Backup
     max_backup_files: int = 20
 
+    # Yandex Disk defaults
+    yandex_default_remote_dir: str = "/SdelkaBackups"
+    # Если нужно предустановить токен, задайте здесь (иначе оставить пустым)
+    yandex_default_oauth_token: str = ""
+
     # DB
     enable_wal: bool = True
 
