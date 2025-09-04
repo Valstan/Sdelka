@@ -29,6 +29,8 @@ class UserPrefs:
     yandex_app_password: str | None = None
     # Публичная ссылка на папку с базой (для скачивания без токена)
     yandex_public_folder_url: str | None = None
+    # Приватный полный путь к файлу базы на Диске (например, "/SdelkaBackups/sdelka_base.db")
+    yandex_private_file_path: str | None = None
 
 
 def load_prefs() -> UserPrefs:
@@ -48,6 +50,7 @@ def load_prefs() -> UserPrefs:
                 yandex_username=data.get("yandex_username") or None,
                 yandex_app_password=data.get("yandex_app_password") or None,
                 yandex_public_folder_url=data.get("yandex_public_folder_url") or None,
+                yandex_private_file_path=data.get("yandex_private_file_path") or None,
             )
     except Exception:
         pass
