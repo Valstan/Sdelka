@@ -22,10 +22,11 @@ class LoginDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(btns, text="Полный доступ", command=lambda: self._choose(AppMode.FULL)).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Только просмотр", command=lambda: self._choose(AppMode.READONLY)).pack(side="left", padx=6)
-        # Кнопка режима админа справа от "Только просмотр"
-        ctk.CTkButton(btns, text="Режим админа", command=self._admin_flow).pack(side="left", padx=6)
-        # Подсказка внизу
-        ctk.CTkLabel(self, text="Пароль админа М@2").pack(pady=(10, 8))
+        # Подсказка и кнопка админа внизу (кнопка под надписью)
+        bottom = ctk.CTkFrame(self)
+        bottom.pack(fill="x", padx=10, pady=(10, 8))
+        ctk.CTkLabel(bottom, text="Пароль админа М@2").pack(anchor="w")
+        ctk.CTkButton(bottom, text="Режим админа", command=self._admin_flow).pack(anchor="w", pady=(6, 0))
 
     def _choose(self, mode: AppMode) -> None:
         if mode == AppMode.READONLY:
