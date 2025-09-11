@@ -158,6 +158,12 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkButton(rowps, text="Установить пароль...", command=self._set_user_password).pack(side="left", padx=6)
         ctk.CTkLabel(rowps, text="Если пароль ещё не установлен").pack(side="left", padx=6)
 
+        # Подсказка и вход в режим админа для сброса пароля
+        hint_row = ctk.CTkFrame(pw_box)
+        hint_row.pack(fill="x", pady=(6, 0))
+        ctk.CTkLabel(hint_row, text="Подсказка: Пароль админа М@2").pack(side="left", padx=6)
+        ctk.CTkButton(hint_row, text="Войти в режим админа чтобы сбросить пароль", command=self._admin_reset_password_flow).pack(side="left", padx=6)
+
         # ---- Настройки интерфейса (перенесены ниже пароля) ----
         ui_box = ctk.CTkFrame(self)
         ui_box.pack(fill="x", padx=10, pady=10)
@@ -777,10 +783,10 @@ class SettingsView(ctk.CTkFrame):
         if user_password_is_set():
             messagebox.showinfo("Пароль", "Пароль уже установлен. Используйте 'Сменить пароль...'.")
             return
-        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль:", parent=self, show="*")
+        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль:", parent=self, show="*")
+        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
@@ -799,16 +805,16 @@ class SettingsView(ctk.CTkFrame):
         if not user_password_is_set():
             messagebox.showinfo("Пароль", "Пароль ещё не установлен. Используйте 'Установить пароль...'.")
             return
-        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:", parent=self, show="*")
+        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
         if cur is None:
             return
         if not verify_user_password(cur):
             messagebox.showerror("Пароль", "Текущий пароль неверен.")
             return
-        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:", parent=self, show="*")
+        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:", parent=self, show="*")
+        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
@@ -819,6 +825,53 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showinfo("Пароль", "Пароль изменён.")
         except Exception as exc:
             messagebox.showerror("Пароль", f"Ошибка сохранения: {exc}")
+
+    def _admin_reset_password_flow(self) -> None:
+        if self._readonly:
+            messagebox.showwarning("Режим админа", "Режим 'Просмотр' — операция недоступна")
+            return
+        from utils.security import verify_admin_password
+        from utils.runtime_mode import AppMode, set_mode
+        attempts = 0
+        while attempts < 3:
+            attempts += 1
+            pw = simpledialog.askstring(
+                "Режим администратора",
+                f"Введите пароль администратора (попытка {attempts} из 3):\nПодсказка: Пароль админа М@2",
+                parent=self,
+                show="*",
+            )
+            if pw is None:
+                return
+            if verify_admin_password(pw):
+                # Ввести новый пользовательский пароль без проверки текущего
+                new1 = simpledialog.askstring("Сброс пароля пользователя", "Введите новый пароль пользователя:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+                if new1 is None or new1.strip() == "":
+                    return
+                new2 = simpledialog.askstring("Сброс пароля пользователя", "Повторите новый пароль пользователя:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+                if new2 is None:
+                    return
+                if new1 != new2:
+                    messagebox.showerror("Пароль", "Пароли не совпадают.")
+                    return
+                try:
+                    save_user_password(new1)
+                    messagebox.showinfo("Пароль", "Пароль пользователя сброшен.")
+                except Exception as exc:
+                    messagebox.showerror("Пароль", f"Ошибка сохранения: {exc}")
+                return
+        # Неуспех после 3 попыток — показать окно с кнопкой открыть в режиме просмотра
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Доступ ограничен")
+        dlg.geometry("420x140")
+        ctk.CTkLabel(dlg, text="Вы не можете вносить изменения в базу данных!").pack(pady=(16, 10))
+        def _open_ro():
+            try:
+                set_mode(AppMode.READONLY)
+            except Exception:
+                pass
+            dlg.destroy()
+        ctk.CTkButton(dlg, text="Открыть программу в режиме просмотра.", command=_open_ro).pack(pady=(6, 10))
 
     # --- Backups list/restore ---
     def _parse_backup_timestamp(self, path: Path) -> datetime | None:
