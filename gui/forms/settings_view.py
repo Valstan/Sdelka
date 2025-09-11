@@ -181,35 +181,32 @@ class SettingsView(ctk.CTkFrame):
 
         # Применить ограничения режима только просмотра
         if self._readonly:
-            # Вспомогательная функция: серый стиль + предупреждение вместо действия
-            def _make_button_readonly(btn: ctk.CTkButton | None) -> None:
-                if btn is None:
+            # Вспомогательная функция: отключить виджет (disabled + визуальное затухание)
+            def _disable_widget(w) -> None:
+                if w is None:
                     return
                 try:
-                    # Переназначить действие
-                    btn.configure(command=lambda: messagebox.showwarning("Режим просмотра", "В режиме просмотра это действие недоступно"))
-                    # Визуально затушить
-                    try:
-                        btn.configure(fg_color=("#a3a3a3", "#3a3a3a"), hover=False)
-                    except Exception:
-                        pass
+                    w.configure(state="disabled")
+                except Exception:
+                    pass
+                try:
+                    # Доп. визуально затушить кнопки
+                    if isinstance(w, ctk.CTkButton):
+                        w.configure(fg_color=("#a3a3a3", "#3a3a3a"), hover=False)
                 except Exception:
                     pass
 
             # 1) Кнопки верхнего ряда
-            _make_button_readonly(getattr(self, "_btn_merge_db", None))
-            _make_button_readonly(getattr(self, "_btn_import_unified", None))
+            _disable_widget(getattr(self, "_btn_merge_db", None))
+            _disable_widget(getattr(self, "_btn_import_unified", None))
 
             # 2) Путь к БД — запрет редактирования, кнопки выбора/создания/применения/теста с предупреждением
-            try:
-                self._db_path_entry.configure(state="disabled")
-            except Exception:
-                pass
+            _disable_widget(getattr(self, "_db_path_entry", None))
             try:
                 for child in list(btns_db.winfo_children()):  # type: ignore[name-defined]
                     try:
                         if child.cget("text") in {"Выбрать...", "Создать...", "Применить", "Проверить подключение"}:
-                            _make_button_readonly(child)  # type: ignore[arg-type]
+                            _disable_widget(child)
                     except Exception:
                         pass
             except Exception:
@@ -220,7 +217,10 @@ class SettingsView(ctk.CTkFrame):
                 for child in list(self._backups_row.winfo_children()):
                     try:
                         if isinstance(child, ctk.CTkButton) and child.cget("text") == "Перейти на эту версию данных":
-                            _make_button_readonly(child)
+                            _disable_widget(child)
+                        # Также запретим выбор версии в OptionMenu, чтобы нельзя было "выбрать базу из бэкапа"
+                        if isinstance(child, ctk.CTkOptionMenu):
+                            _disable_widget(child)
                     except Exception:
                         pass
             except Exception:
