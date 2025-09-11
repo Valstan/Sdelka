@@ -85,28 +85,25 @@ def main() -> None:
     with get_connection() as conn:
         initialize_schema(conn)
 
-    # Сначала показать диалог выбора режима (по центру), затем создать основное окно
+    # Единый root: создаём основное окно, скрываем, показываем диалог, затем раскрываем окно
     from utils.runtime_mode import set_mode, AppMode
-    try:
-        # Отдельный временный root для диалога
-        login_root = ctk.CTk()
-        try:
-            login_root.withdraw()
-        except Exception:
-            pass
-        dlg = LoginDialog(login_root)
-        login_root.wait_window(dlg)
-    except Exception:
-        set_mode(AppMode.FULL)
-    finally:
-        try:
-            login_root.destroy()  # type: ignore[name-defined]
-        except Exception:
-            pass
-
-    # Теперь создаём основное окно (оно само разворачивается на весь экран в AppWindow)
     app = AppWindow()
     try:
+        try:
+            app.withdraw()
+        except Exception:
+            pass
+        try:
+            dlg = LoginDialog(app)
+            app.wait_window(dlg)
+        except Exception:
+            set_mode(AppMode.FULL)
+        # Показать и развернуть
+        try:
+            app.deiconify()
+            app.state("zoomed")
+        except Exception:
+            pass
         app.mainloop()
     finally:
         # Безопасно отменяем отложенные коллбеки, чтобы не было ошибок after script на первом старте

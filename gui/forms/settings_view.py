@@ -181,26 +181,50 @@ class SettingsView(ctk.CTkFrame):
 
         # Применить ограничения режима только просмотра
         if self._readonly:
-            # Запретить изменяющие БД и системные действия
-            for b in (
-                self._btn_merge_db,
-                self._db_path_entry,
-                self._btn_import_unified,
-                self._yd_token_entry,
-                self._yd_dir_entry,
-                self._btn_upload_yadisk,
-                self._yd_private_entry,
-                getattr(self, "_btn_dl_private", None),
-                # Кнопки управления токеном
-                # По умолчанию также блокируем вспомогательные кнопки
-                # чтобы в режиме просмотра ничего не менялось
-                self._opt_list_font,
-                self._opt_ui_font,
-                # пароль менять нельзя в readonly
-                # кнопки оставляем активными только при полном доступе
-            ):
+            # Запретить строго оговорённые действия:
+            # - "Слить с другой базой"
+            # - "Импорт данных"
+            # - менять путь к базе/создавать новую/применять путь/проверять подключение
+            # - откат к бэкапу (перейти на эту версию)
+            # Остальное (включая вход в админ-режим, шрифты, Я.Диск операции, проверка токена) — доступно.
+            to_disable = [
+                getattr(self, "_btn_merge_db", None),
+                getattr(self, "_btn_import_unified", None),
+                getattr(self, "_db_path_entry", None),
+            ]
+            # Кнопки, связанные с путём к БД
+            try:
+                for w in ("_btn_export_db",):
+                    pass  # экспорт разрешён
+            except Exception:
+                pass
+            # Найти кнопки "Выбрать...", "Создать...", "Применить", "Проверить подключение"
+            try:
+                # Они находятся в контейнере btns_db
+                for child in list(btns_db.winfo_children()):  # type: ignore[name-defined]
+                    try:
+                        txt = child.cget("text")
+                        if txt in {"Выбрать...", "Создать...", "Применить", "Проверить подключение"}:
+                            to_disable.append(child)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Откат к бэкапу
+            try:
+                for child in list(self._backups_row.winfo_children()):
+                    try:
+                        if isinstance(child, ctk.CTkButton) and child.cget("text") == "Перейти на эту версию данных":
+                            to_disable.append(child)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            # Применить disable
+            for b in to_disable:
                 try:
-                    b.configure(state="disabled")
+                    if b is not None:
+                        b.configure(state="disabled")
                 except Exception:
                     pass
 
