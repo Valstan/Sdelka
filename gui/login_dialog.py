@@ -11,8 +11,8 @@ class LoginDialog(ctk.CTkToplevel):
     def __init__(self, master) -> None:
         super().__init__(master)
         self.title("Режим работы")
-        self.geometry("440x220")
-        self.resizable(False, False)
+        # Размер окна подстраивается под содержимое ниже
+        self.resizable(True, True)
         self.attributes("-topmost", True)
         self.grab_set()
 
@@ -26,7 +26,7 @@ class LoginDialog(ctk.CTkToplevel):
         # Квадратные кнопки с двумя строками текста
         ctk.CTkButton(
             btns,
-            text="Внесение и\nРедактирование данных",
+            text="Внесение и\nредактирование\nданных",
             width=btn_width,
             height=btn_height,
             font=bold_font,
@@ -44,6 +44,12 @@ class LoginDialog(ctk.CTkToplevel):
         bottom.pack(fill="x", padx=10, pady=(14, 8))
         ctk.CTkLabel(bottom, text="Пароль админа М@2").pack(anchor="center")
         ctk.CTkButton(bottom, text="Режим админа", width=btn_width, command=self._admin_flow).pack(anchor="center", pady=(8, 0))
+        # Обновить минимальный размер по рассчитанному содержимому
+        try:
+            self.update_idletasks()
+            self.minsize(self.winfo_reqwidth() + 20, self.winfo_reqheight() + 20)
+        except Exception:
+            pass
 
     def _choose(self, mode: AppMode) -> None:
         if mode == AppMode.READONLY:
