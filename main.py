@@ -98,10 +98,25 @@ def main() -> None:
             app.wait_window(dlg)
         except Exception:
             set_mode(AppMode.FULL)
-        # Показать и развернуть
+        # Показать и развернуть главное окно
         try:
             app.deiconify()
-            app.state("zoomed")
+            app.update_idletasks()
+            try:
+                app.lift()
+                app.focus_force()
+            except Exception:
+                pass
+            # Небольшая задержка перед разворачиванием, чтобы избежать мигания
+            def _zoom():
+                try:
+                    app.state("zoomed")
+                except Exception:
+                    pass
+            try:
+                app.after(50, _zoom)
+            except Exception:
+                _zoom()
         except Exception:
             pass
         app.mainloop()
