@@ -26,37 +26,16 @@ class AppWindow(ctk.CTk):
         self._version = ver
         self._app_title = f"СДЕЛКА РМЗ {ver}"
         self.title(self._app_title)
-        # Стартовать развёрнутым на весь экран (Windows: state('zoomed'))
+        # Стартовать развёрнутым на весь экран (Windows: state('zoomed')).
+        # Оставляем системную панель задач и кнопки заголовка.
         try:
             self.state("zoomed")
         except Exception:
             # Запасной вариант: задать крупный размер
             self.geometry("1600x900")
-        # Запретить последующие изменения размера окна пользователем/менеджером компоновки
+        # Разрешить изменение размера пользователем
         try:
-            self.resizable(False, False)
-        except Exception:
-            pass
-        # На некоторых системах Tk может один раз "откатить" из zoomed после построения UI.
-        # Коротко усилим состояние на первых событиях Configure и затем снимем слежение.
-        self._enforce_max_tries = 3
-        def _enforce_zoomed(_e=None):
-            try:
-                if self._enforce_max_tries <= 0:
-                    try:
-                        self.unbind("<Configure>", _enforce_zoomed)  # type: ignore[arg-type]
-                    except Exception:
-                        pass
-                    return
-                self.state("zoomed")
-                self._enforce_max_tries -= 1
-            except Exception:
-                pass
-        try:
-            self.bind("<Configure>", _enforce_zoomed, add="+")
-            # И дополнительное подтверждение через after
-            self.after(200, _enforce_zoomed)
-            self.after(600, _enforce_zoomed)
+            self.resizable(True, True)
         except Exception:
             pass
         self._tab_font_normal = None
