@@ -21,8 +21,24 @@ class LoginDialog(ctk.CTkToplevel):
         btns.pack(pady=6)
 
         btn_width = 180
-        ctk.CTkButton(btns, text="Полный доступ", width=btn_width, command=lambda: self._choose(AppMode.FULL)).pack(side="left", padx=8)
-        ctk.CTkButton(btns, text="Только просмотр", width=btn_width, command=lambda: self._choose(AppMode.READONLY)).pack(side="left", padx=8)
+        btn_height = btn_width
+        bold_font = ctk.CTkFont(weight="bold")
+        # Квадратные кнопки с двумя строками текста
+        ctk.CTkButton(
+            btns,
+            text="Внесение и\nРедактирование данных",
+            width=btn_width,
+            height=btn_height,
+            font=bold_font,
+            command=lambda: self._choose(AppMode.FULL),
+        ).pack(side="left", padx=8)
+        ctk.CTkButton(
+            btns,
+            text="Просмотр и\nотчёты",
+            width=btn_width,
+            height=btn_height,
+            command=lambda: self._choose(AppMode.READONLY),
+        ).pack(side="left", padx=8)
         # Подсказка и кнопка админа внизу (кнопка под надписью)
         bottom = ctk.CTkFrame(self, fg_color="transparent")
         bottom.pack(fill="x", padx=10, pady=(14, 8))
