@@ -11,22 +11,23 @@ class LoginDialog(ctk.CTkToplevel):
     def __init__(self, master) -> None:
         super().__init__(master)
         self.title("Режим работы")
-        self.geometry("360x160")
+        self.geometry("440x220")
         self.resizable(False, False)
         self.attributes("-topmost", True)
         self.grab_set()
 
-        ctk.CTkLabel(self, text="Выберите режим работы:").pack(pady=(14, 10))
+        ctk.CTkLabel(self, text="Выберите режим работы:").pack(pady=(16, 12))
         btns = ctk.CTkFrame(self)
         btns.pack(pady=6)
 
-        ctk.CTkButton(btns, text="Полный доступ", command=lambda: self._choose(AppMode.FULL)).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Только просмотр", command=lambda: self._choose(AppMode.READONLY)).pack(side="left", padx=6)
+        btn_width = 180
+        ctk.CTkButton(btns, text="Полный доступ", width=btn_width, command=lambda: self._choose(AppMode.FULL)).pack(side="left", padx=8)
+        ctk.CTkButton(btns, text="Только просмотр", width=btn_width, command=lambda: self._choose(AppMode.READONLY)).pack(side="left", padx=8)
         # Подсказка и кнопка админа внизу (кнопка под надписью)
         bottom = ctk.CTkFrame(self)
-        bottom.pack(fill="x", padx=10, pady=(10, 8))
-        ctk.CTkLabel(bottom, text="Пароль админа М@2").pack(anchor="w")
-        ctk.CTkButton(bottom, text="Режим админа", command=self._admin_flow).pack(anchor="w", pady=(6, 0))
+        bottom.pack(fill="x", padx=10, pady=(14, 8))
+        ctk.CTkLabel(bottom, text="Пароль админа М@2").pack(anchor="center")
+        ctk.CTkButton(bottom, text="Режим админа", width=btn_width, command=self._admin_flow).pack(anchor="center", pady=(8, 0))
 
     def _choose(self, mode: AppMode) -> None:
         if mode == AppMode.READONLY:
