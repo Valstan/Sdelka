@@ -26,7 +26,12 @@ class AppWindow(ctk.CTk):
         self._version = ver
         self._app_title = f"СДЕЛКА РМЗ {ver}"
         self.title(self._app_title)
-        self.geometry("1200x760")
+        # Стартовать развёрнутым на весь экран (Windows: state('zoomed'))
+        try:
+            self.state("zoomed")
+        except Exception:
+            # Запасной вариант: задать крупный размер
+            self.geometry("1600x900")
         self._tab_font_normal = None
         self._tab_font_active = None
         self._tabview = None

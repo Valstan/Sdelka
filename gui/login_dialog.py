@@ -50,6 +50,18 @@ class LoginDialog(ctk.CTkToplevel):
             self.minsize(self.winfo_reqwidth() + 20, self.winfo_reqheight() + 20)
         except Exception:
             pass
+        # Центрировать окно на экране
+        try:
+            self.update_idletasks()
+            sw = self.winfo_screenwidth()
+            sh = self.winfo_screenheight()
+            w = max(self.winfo_width(), self.winfo_reqwidth())
+            h = max(self.winfo_height(), self.winfo_reqheight())
+            x = int((sw - w) / 2)
+            y = int((sh - h) / 2)
+            self.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
 
     def _choose(self, mode: AppMode) -> None:
         if mode == AppMode.READONLY:
