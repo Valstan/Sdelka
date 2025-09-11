@@ -181,52 +181,50 @@ class SettingsView(ctk.CTkFrame):
 
         # Применить ограничения режима только просмотра
         if self._readonly:
-            # Запретить строго оговорённые действия:
-            # - "Слить с другой базой"
-            # - "Импорт данных"
-            # - менять путь к базе/создавать новую/применять путь/проверять подключение
-            # - откат к бэкапу (перейти на эту версию)
-            # Остальное (включая вход в админ-режим, шрифты, Я.Диск операции, проверка токена) — доступно.
-            to_disable = [
-                getattr(self, "_btn_merge_db", None),
-                getattr(self, "_btn_import_unified", None),
-                getattr(self, "_db_path_entry", None),
-            ]
-            # Кнопки, связанные с путём к БД
+            # Вспомогательная функция: серый стиль + предупреждение вместо действия
+            def _make_button_readonly(btn: ctk.CTkButton | None) -> None:
+                if btn is None:
+                    return
+                try:
+                    # Переназначить действие
+                    btn.configure(command=lambda: messagebox.showwarning("Режим просмотра", "В режиме просмотра это действие недоступно"))
+                    # Визуально затушить
+                    try:
+                        btn.configure(fg_color=("#a3a3a3", "#3a3a3a"), hover=False)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+            # 1) Кнопки верхнего ряда
+            _make_button_readonly(getattr(self, "_btn_merge_db", None))
+            _make_button_readonly(getattr(self, "_btn_import_unified", None))
+
+            # 2) Путь к БД — запрет редактирования, кнопки выбора/создания/применения/теста с предупреждением
             try:
-                for w in ("_btn_export_db",):
-                    pass  # экспорт разрешён
+                self._db_path_entry.configure(state="disabled")
             except Exception:
                 pass
-            # Найти кнопки "Выбрать...", "Создать...", "Применить", "Проверить подключение"
             try:
-                # Они находятся в контейнере btns_db
                 for child in list(btns_db.winfo_children()):  # type: ignore[name-defined]
                     try:
-                        txt = child.cget("text")
-                        if txt in {"Выбрать...", "Создать...", "Применить", "Проверить подключение"}:
-                            to_disable.append(child)
+                        if child.cget("text") in {"Выбрать...", "Создать...", "Применить", "Проверить подключение"}:
+                            _make_button_readonly(child)  # type: ignore[arg-type]
                     except Exception:
                         pass
             except Exception:
                 pass
-            # Откат к бэкапу
+
+            # 3) Откат к бэкапу — только кнопка перехода
             try:
                 for child in list(self._backups_row.winfo_children()):
                     try:
                         if isinstance(child, ctk.CTkButton) and child.cget("text") == "Перейти на эту версию данных":
-                            to_disable.append(child)
+                            _make_button_readonly(child)
                     except Exception:
                         pass
             except Exception:
                 pass
-            # Применить disable
-            for b in to_disable:
-                try:
-                    if b is not None:
-                        b.configure(state="disabled")
-                except Exception:
-                    pass
 
     def _save_prefs(self) -> None:
         try:
