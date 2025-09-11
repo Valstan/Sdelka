@@ -22,13 +22,10 @@ class LoginDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(btns, text="Полный доступ", command=lambda: self._choose(AppMode.FULL)).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="Только просмотр", command=lambda: self._choose(AppMode.READONLY)).pack(side="left", padx=6)
-
-        ctk.CTkLabel(self, text="Для смены режима перезапустите программу.").pack(pady=(10, 8))
-        # Подсказка админ-пароля и быстрый вход в админ-режим для сброса
-        hint = ctk.CTkFrame(self)
-        hint.pack(fill="x", padx=10)
-        ctk.CTkLabel(hint, text="Подсказка: Пароль админа М@2").pack(side="left")
-        ctk.CTkButton(hint, text="Войти в режим админа чтобы сбросить пароль", command=self._admin_flow).pack(side="left", padx=8)
+        # Кнопка режима админа справа от "Только просмотр"
+        ctk.CTkButton(btns, text="Режим админа", command=self._admin_flow).pack(side="left", padx=6)
+        # Подсказка внизу
+        ctk.CTkLabel(self, text="Пароль админа М@2").pack(pady=(10, 8))
 
     def _choose(self, mode: AppMode) -> None:
         if mode == AppMode.READONLY:
@@ -66,7 +63,7 @@ class LoginDialog(ctk.CTkToplevel):
         is_admin_login = False
         while attempts < 3 and not granted:
             attempts += 1
-            pw = simpledialog.askstring("Пароль", f"Введите пароль (попытка {attempts} из 3):\nПодсказка: Пароль админа М@2", parent=self, show="*")
+            pw = simpledialog.askstring("Пароль", f"Введите пароль (попытка {attempts} из 3):", parent=self, show="*")
             if pw is None:
                 # Отмена — сразу в просмотр
                 break
@@ -102,17 +99,17 @@ class LoginDialog(ctk.CTkToplevel):
     def _change_user_password(self) -> None:
         # Требует действующего пароля пользователя или админа
         # 1) Проверка текущего
-        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:", parent=self, show="*")
         if cur is None:
             return
         if not (verify_user_password(cur) or verify_admin_password(cur)):
             messagebox.showerror("Смена пароля", "Текущий пароль неверен.", parent=self)
             return
         # 2) Новый дважды
-        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
@@ -126,10 +123,10 @@ class LoginDialog(ctk.CTkToplevel):
 
     def _set_user_password_new(self) -> None:
         # Установка нового пользовательского пароля (без проверки старого)
-        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль пользователя:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль пользователя:", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль пользователя:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль пользователя:", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
@@ -146,7 +143,7 @@ class LoginDialog(ctk.CTkToplevel):
         attempts = 0
         while attempts < 3:
             attempts += 1
-            pw = simpledialog.askstring("Режим администратора", f"Введите пароль администратора (попытка {attempts} из 3):\nПодсказка: Пароль админа М@2", parent=self, show="*")
+            pw = simpledialog.askstring("Режим администратора", f"Введите пароль администратора (попытка {attempts} из 3):", parent=self, show="*")
             if pw is None:
                 return
             if verify_admin_password(pw):

@@ -783,10 +783,10 @@ class SettingsView(ctk.CTkFrame):
         if user_password_is_set():
             messagebox.showinfo("Пароль", "Пароль уже установлен. Используйте 'Сменить пароль...'.")
             return
-        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new1 = simpledialog.askstring("Установка пароля", "Введите новый пароль:", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new2 = simpledialog.askstring("Установка пароля", "Повторите новый пароль:", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
@@ -805,16 +805,16 @@ class SettingsView(ctk.CTkFrame):
         if not user_password_is_set():
             messagebox.showinfo("Пароль", "Пароль ещё не установлен. Используйте 'Установить пароль...'.")
             return
-        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        cur = simpledialog.askstring("Смена пароля", "Введите текущий пароль:", parent=self, show="*")
         if cur is None:
             return
         if not verify_user_password(cur):
             messagebox.showerror("Пароль", "Текущий пароль неверен.")
             return
-        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new1 = simpledialog.askstring("Смена пароля", "Введите новый пароль:", parent=self, show="*")
         if new1 is None or new1.strip() == "":
             return
-        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:\nПодсказка: Пароль админа М@2", parent=self, show="*")
+        new2 = simpledialog.askstring("Смена пароля", "Повторите новый пароль:", parent=self, show="*")
         if new2 is None:
             return
         if new1 != new2:
