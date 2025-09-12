@@ -69,29 +69,21 @@ class AppWindow(ctk.CTk):
         self.tab_reports = tabview.add("Отчеты")
         self.tab_settings = tabview.add("Настройки")
 
-        # Формы
-        WorkOrdersForm(self.tab_orders, readonly=is_readonly()).pack(expand=True, fill="both")
-
-        refs_tabs = ctk.CTkTabview(self.tab_refs)
-        refs_tabs.pack(expand=True, fill="both", padx=10, pady=(0, 0))
-        tab_workers = refs_tabs.add("Работники")
-        tab_jobs = refs_tabs.add("Виды работ")
-        tab_products = refs_tabs.add("Изделия")
-        tab_contracts = refs_tabs.add("Контракты")
-
-        WorkersForm(tab_workers, readonly=is_readonly()).pack(expand=True, fill="both")
-        JobTypesForm(tab_jobs, readonly=is_readonly()).pack(expand=True, fill="both")
-        ProductsForm(tab_products, readonly=is_readonly()).pack(expand=True, fill="both")
-        ContractsForm(tab_contracts, readonly=is_readonly()).pack(expand=True, fill="both")
-
-        ReportsView(self.tab_reports).pack(expand=True, fill="both")
-        SettingsView(self.tab_settings, readonly=is_readonly()).pack(expand=True, fill="both")
+        # Формы (первичная сборка)
+        self._build_forms_for_current_mode()
 
         # Фиксированные шрифты вкладок (не зависят от настроек пользователя)
         self._setup_tab_fonts(self._tabview)
-        self._setup_tab_fonts(refs_tabs)
         try:
-            self.bind("<<UIFontsChanged>>", lambda e: [self._setup_tab_fonts(self._tabview), self._setup_tab_fonts(refs_tabs)])
+            if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None:
+                self._setup_tab_fonts(self._refs_tabs)  # type: ignore[arg-type]
+        except Exception:
+            pass
+        try:
+            self.bind("<<UIFontsChanged>>", lambda e: [
+                self._setup_tab_fonts(self._tabview),
+                (self._setup_tab_fonts(self._refs_tabs) if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None else None)
+            ])
         except Exception:
             pass
 
@@ -266,6 +258,59 @@ class AppWindow(ctk.CTk):
         except Exception:
             pass
         self._schedule_after(50, apply_fonts)
+
+    def _clear_children(self, widget) -> None:
+        try:
+            for child in list(widget.winfo_children()):
+                try:
+                    child.destroy()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _build_forms_for_current_mode(self) -> None:
+        # Очистить вкладки и пересоздать формы согласно текущему режиму
+        try:
+            self._clear_children(self.tab_orders)
+            self._clear_children(self.tab_refs)
+            self._clear_children(self.tab_reports)
+            self._clear_children(self.tab_settings)
+        except Exception:
+            pass
+
+        # Наряды
+        WorkOrdersForm(self.tab_orders, readonly=is_readonly()).pack(expand=True, fill="both")
+
+        # Справочники (внутренние вкладки)
+        refs_tabs = ctk.CTkTabview(self.tab_refs)
+        self._refs_tabs = refs_tabs
+        refs_tabs.pack(expand=True, fill="both", padx=10, pady=(0, 0))
+        tab_workers = refs_tabs.add("Работники")
+        tab_jobs = refs_tabs.add("Виды работ")
+        tab_products = refs_tabs.add("Изделия")
+        tab_contracts = refs_tabs.add("Контракты")
+
+        WorkersForm(tab_workers, readonly=is_readonly()).pack(expand=True, fill="both")
+        JobTypesForm(tab_jobs, readonly=is_readonly()).pack(expand=True, fill="both")
+        ProductsForm(tab_products, readonly=is_readonly()).pack(expand=True, fill="both")
+        ContractsForm(tab_contracts, readonly=is_readonly()).pack(expand=True, fill="both")
+
+        # Отчеты
+        ReportsView(self.tab_reports).pack(expand=True, fill="both")
+
+        # Настройки
+        SettingsView(self.tab_settings, readonly=is_readonly()).pack(expand=True, fill="both")
+
+    def rebuild_forms_for_mode(self) -> None:
+        # Публичный метод для пересборки после смены режима (после диалога входа)
+        self._build_forms_for_current_mode()
+        try:
+            self._setup_tab_fonts(self._tabview)
+            if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None:
+                self._setup_tab_fonts(self._refs_tabs)  # type: ignore[arg-type]
+        except Exception:
+            pass
 
     def _schedule_after(self, delay_ms: int, callback) -> None:
         if self._closing:
