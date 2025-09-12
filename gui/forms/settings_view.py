@@ -1038,10 +1038,22 @@ class SettingsView(ctk.CTkFrame):
         self._backup_choice = ctk.StringVar(value=options[0])
         self._opt_backups = ctk.CTkOptionMenu(row, values=options, variable=self._backup_choice)
         self._opt_backups.pack(side="left", padx=6)
+        # Если режим только просмотра — сразу запретим выбор версии
+        try:
+            if getattr(self, "_readonly", False):
+                self._opt_backups.configure(state="disabled")
+        except Exception:
+            pass
         # Вернуть кнопки справа
         for b in right_buttons:
             try:
                 b.pack(side="left", padx=6)
+                # В readonly заблокировать кнопку перехода на версию
+                try:
+                    if getattr(self, "_readonly", False) and isinstance(b, ctk.CTkButton) and b.cget("text") == "Перейти на эту версию данных":
+                        b.configure(state="disabled", fg_color=("#a3a3a3", "#3a3a3a"), hover=False)
+                except Exception:
+                    pass
             except Exception:
                 pass
 
