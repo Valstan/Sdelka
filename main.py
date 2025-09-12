@@ -107,6 +107,11 @@ def main() -> None:
                 app.focus_force()
             except Exception:
                 pass
+            # Пересобрать формы под итоговый режим (readonly/full)
+            try:
+                app.rebuild_forms_for_mode()
+            except Exception:
+                pass
             # Небольшая задержка перед разворачиванием, чтобы избежать мигания
             def _zoom():
                 try:
