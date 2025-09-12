@@ -90,4 +90,4 @@ def _get_month_name(month: int) -> str:
 
 def get_version() -> str:
 	# Обновляйте только эту строку при выпуске релиза
-	return "3.10.0"
+	return "3.10.1"
