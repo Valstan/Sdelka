@@ -849,9 +849,6 @@ class SettingsView(ctk.CTkFrame):
             messagebox.showerror("Пароль", f"Ошибка сохранения: {exc}")
 
     def _admin_reset_password_flow(self) -> None:
-        if self._readonly:
-            messagebox.showwarning("Режим админа", "Режим 'Просмотр' — операция недоступна")
-            return
         from utils.security import verify_admin_password
         from utils.runtime_mode import AppMode, set_mode
         attempts = 0
