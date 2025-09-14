@@ -1,8 +1,8 @@
 {
-  "list_font_size": 12,
-  "ui_font_size": 12,
-  "db_path": "D:\\PycharmProject\\Sdelka\\data\\base_sdelka_rmz.db",
-  "enable_wal": null,
+  "list_font_size": 14,
+  "ui_font_size": 14,
+  "db_path": "D:\\111111111111\\base_sdelka.db",
+  "enable_wal": true,
   "busy_timeout_ms": 10000,
   "yandex_remote_dir": "/SdelkaBackups",
   "yandex_auth_method": "oauth",
