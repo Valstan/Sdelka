@@ -468,6 +468,18 @@ class SettingsView(ctk.CTkFrame):
             return
         prefs = load_prefs()
         public_url = (self._yd_remote_file_var.get() or "").strip()
+        # Валидация публичной ссылки: требуется реальная расшаренная папка/файл Яндекс.Диска
+        try:
+            bad_defaults = {"https://disk.yandex.ru", "https://disk.yandex.ru/", "http://disk.yandex.ru", "http://disk.yandex.ru/"}
+            if (not public_url) or (public_url.strip().rstrip("/") in bad_defaults) or ("disk.yandex.ru" in public_url and ("/d/" not in public_url and "/i/" not in public_url)):
+                messagebox.showwarning(
+                    "Загрузка базы",
+                    "Укажите ссылку на расшаренную папку Яндекс.Диска вида https://disk.yandex.ru/d/…",
+                    parent=self,
+                )
+                return
+        except Exception:
+            pass
         # Сохраним ссылку в пользовательские настройки для будущих запусков
         try:
             prefs.yandex_public_folder_url = public_url

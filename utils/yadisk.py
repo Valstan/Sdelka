@@ -116,13 +116,27 @@ class YaDiskClient:
                     try:
                         conn_list = self._conn_api()
                         list_url = f"/v1/disk/public/resources?public_key={pk}&limit=1000"
-                        conn_list.putrequest("GET", list_url)
-                        if self.cfg.oauth_token:
-                            h, v = self._auth_header()
-                            conn_list.putheader(h, v)
-                        conn_list.endheaders()
-                        rlist = conn_list.getresponse()
-                        listing = rlist.read()
+                        # Простая ретрай-логика для временных 5xx
+                        attempt = 0
+                        while True:
+                            attempt += 1
+                            conn_list.putrequest("GET", list_url)
+                            if self.cfg.oauth_token:
+                                h, v = self._auth_header()
+                                conn_list.putheader(h, v)
+                            conn_list.endheaders()
+                            rlist = conn_list.getresponse()
+                            listing = rlist.read()
+                            if rlist.status == 200:
+                                break
+                            if 500 <= rlist.status < 600 and attempt < 3:
+                                try:
+                                    conn_list.close()
+                                except Exception:
+                                    pass
+                                conn_list = self._conn_api()
+                                continue
+                            raise RuntimeError(f"List public folder failed: {rlist.status} {rlist.reason}")
                         if rlist.status == 200:
                             meta = json.loads(listing.decode("utf-8", errors="ignore"))
                             items = ((meta.get("_embedded") or {}).get("items") or [])
@@ -273,7 +287,7 @@ class YaDiskClient:
                 conn.close()
             except Exception:
                 pass
-    def upload_file(self, local_path: Path, remote_name: Optional[str] = None, overwrite: bool = True) -> str:
+    def upload_file(self, local_path: Path, remote_name: Optional[str] = None, overwrite: bool: bool = True) -> str:
         local_path = Path(local_path)
         if not local_path.exists():
             raise FileNotFoundError(local_path)
