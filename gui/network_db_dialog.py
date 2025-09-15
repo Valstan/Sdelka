@@ -33,13 +33,10 @@ class NetworkDbDialog(ctk.CTkToplevel):
             font=ctk.CTkFont(size=16, weight="bold")
         ).pack(pady=(20, 10))
         
-        # Информация о сетевой папке
+        # Сведения о сетевой папке (без раскрытия конфиденциальных данных)
         info_frame = ctk.CTkFrame(self)
         info_frame.pack(fill="x", padx=20, pady=10)
-        
-        ctk.CTkLabel(info_frame, text="Сетевая папка: \\\\SRV3\\sdelka\\").pack(anchor="w", padx=10, pady=5)
-        ctk.CTkLabel(info_frame, text="Пользователь: sdelka_user").pack(anchor="w", padx=10, pady=5)
-        ctk.CTkLabel(info_frame, text="Файл БД: base_sdelka_rmz.db").pack(anchor="w", padx=10, pady=5)
+        ctk.CTkLabel(info_frame, text="Подключение к защищенной сетевой папке...").pack(anchor="w", padx=10, pady=5)
         
         # Статус подключения
         self._status_label = ctk.CTkLabel(self, text="Проверка подключения...")
@@ -93,7 +90,7 @@ class NetworkDbDialog(ctk.CTkToplevel):
                 # Тестируем подключение к БД
                 if test_network_connection():
                     self._status_label.configure(
-                        text=f"✓ Подключение успешно!\nБД: {self._db_path}",
+                        text="✓ Подключение успешно!",
                         text_color="#16a34a"
                     )
                     self._retry_btn.configure(state="disabled")
@@ -111,7 +108,7 @@ class NetworkDbDialog(ctk.CTkToplevel):
                 
         except Exception as exc:
             self._status_label.configure(
-                text=f"✗ Ошибка подключения: {str(exc)[:100]}...",
+                text="✗ Ошибка подключения. Проверьте доступ к сети и права.",
                 text_color="#dc2626"
             )
     
@@ -127,7 +124,7 @@ class NetworkDbDialog(ctk.CTkToplevel):
         # Иначе открываем диалог выбора файла
         path = filedialog.askopenfilename(
             title="Выберите файл базы данных",
-            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+            filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
             initialdir=str(Path.cwd())
         )
         
@@ -152,14 +149,14 @@ class NetworkDbDialog(ctk.CTkToplevel):
             
             messagebox.showinfo(
                 "Настройка БД", 
-                f"Путь к БД сохранен: {db_path}\nПриложение будет перезапущено."
+                "Параметры подключения сохранены. Приложение будет перезапущено."
             )
             
             self.grab_release()
             self.destroy()
             
-        except Exception as exc:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить настройки: {exc}")
+        except Exception:
+            messagebox.showerror("Ошибка", "Не удалось сохранить настройки.")
     
     def _exit_app(self) -> None:
         """Выход из приложения"""
