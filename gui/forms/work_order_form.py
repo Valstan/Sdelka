@@ -2004,10 +2004,10 @@ class WorkOrdersForm(ctk.CTkFrame):
                     "SELECT 1 FROM products WHERE id=?", (product_id,)
                 ).fetchone()
             if not p_row:
-                    messagebox.showwarning(
-                        "Проверка",
-                        f"Изделие с ID {product_id} не найдено в базе. Повторите выбор из подсказки",
-                    )
+                messagebox.showwarning(
+                    "Проверка",
+                    f"Изделие с ID {product_id} не найдено в базе. Повторите выбор из подсказки",
+                )
                 return None
 
         return WorkOrderInput(

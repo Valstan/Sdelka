@@ -827,16 +827,16 @@ class ReportsView(ctk.CTkFrame):
                 self._update_stats()
             except Exception as exc:
                 self.stats_var.set("")
-        # Применим локализацию заголовков в превью
-        cols = list(self._df.columns)
-        self.tree["columns"] = cols
-        for c in cols:
-            self.tree.heading(c, text=str(c))
-        # Заполнить данными
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        for row in self._df.itertuples(index=False):
-            self.tree.insert("", "end", values=tuple(row))
+            # Применим локализацию заголовков в превью
+            cols = list(self._df.columns)
+            self.tree["columns"] = cols
+            for c in cols:
+                self.tree.heading(c, text=str(c))
+            # Заполнить данными
+            for i in self.tree.get_children():
+                self.tree.delete(i)
+            for row in self._df.itertuples(index=False):
+                self.tree.insert("", "end", values=tuple(row))
             # Автоподгон ширин, чтобы не было горизонтального скролла/обрезки
             self._autosize_preview_columns()
         except Exception as e:
