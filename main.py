@@ -14,6 +14,7 @@ from utils.network_db import get_network_db_path
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from utils.auto_yadisk import start_yadisk_upload_scheduler
 
 
 def main() -> None:
@@ -67,7 +68,7 @@ def main() -> None:
                             title="Создать новую базу данных",
                             defaultextension=".db",
                             initialfile=initial,
-                            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+                            filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
                         )
                         if chosen:
                             from pathlib import Path as _P
@@ -83,7 +84,7 @@ def main() -> None:
                         chosen = filedialog.askopenfilename(
                             parent=tmp,
                             title="Выберите файл базы данных",
-                            filetypes=[("SQLite DB", "*.db"), ("Все файлы", "*.*")],
+                            filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
                         )
                         if chosen:
                             from pathlib import Path as _P
@@ -148,6 +149,11 @@ def main() -> None:
                 app.after(50, _zoom)
             except Exception:
                 _zoom()
+            # Старт планировщика автовыгрузки на Яндекс.Диск (08,10,12,14,16,18)
+            try:
+                start_yadisk_upload_scheduler()
+            except Exception:
+                logging.getLogger(__name__).exception("Не удалось запустить планировщик Yandex Диска")
         except Exception:
             pass
         app.mainloop()
