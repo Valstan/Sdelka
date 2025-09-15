@@ -551,7 +551,7 @@ class YaDiskClient:
                 conn.close()
             except Exception:
                 pass
-        # Step 2: GET from href
+        # Step 2: GET from href (follow one redirect if needed)
         parsed = urlparse(href)
         dl_conn = HTTPSConnection(parsed.hostname, 443, context=ssl.create_default_context())
         try:
@@ -560,6 +560,36 @@ class YaDiskClient:
             dl_conn.endheaders()
             dl_resp = dl_conn.getresponse()
             log.info("download GET resp: %s %s", dl_resp.status, dl_resp.reason)
+            # Follow one redirect (302/303/307/308)
+            if dl_resp.status in (302, 303, 307, 308):
+                try:
+                    location = dict(dl_resp.getheaders()).get("Location")
+                except Exception:
+                    location = None
+                try:
+                    _ = dl_resp.read()
+                except Exception:
+                    pass
+                if not location:
+                    raise RuntimeError(f"Download failed: {dl_resp.status} {dl_resp.reason}")
+                redir = urlparse(location)
+                rd_conn = HTTPSConnection(redir.hostname, 443, context=ssl.create_default_context())
+                try:
+                    rd_path = redir.path + (f"?{redir.query}" if redir.query else "")
+                    rd_conn.putrequest("GET", rd_path)
+                    rd_conn.endheaders()
+                    rd_resp = rd_conn.getresponse()
+                    log.info("download redirect resp: %s %s", rd_resp.status, rd_resp.reason)
+                    if rd_resp.status != 200:
+                        raise RuntimeError(f"Download failed: {rd_resp.status} {rd_resp.reason}")
+                    content = rd_resp.read()
+                    dest_path.write_bytes(content)
+                    return
+                finally:
+                    try:
+                        rd_conn.close()
+                    except Exception:
+                        pass
             if dl_resp.status != 200:
                 raise RuntimeError(f"Download failed: {dl_resp.status} {dl_resp.reason}")
             content = dl_resp.read()

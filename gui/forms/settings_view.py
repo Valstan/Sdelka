@@ -487,7 +487,28 @@ class SettingsView(ctk.CTkFrame):
                 remote_dir = (prefs.yandex_remote_dir or CONFIG.yandex_default_remote_dir or "/SdelkaBackups").strip()
                 if token:
                     client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
-                    private_path = (prefs.yandex_private_file_path or f"{remote_dir.rstrip('/')}/sdelka_base.db").strip()
+                    # Пробуем несколько кандидатов имён
+                    candidates = []
+                    try:
+                        if prefs.yandex_private_file_path:
+                            candidates.append(prefs.yandex_private_file_path.strip())
+                    except Exception:
+                        pass
+                    candidates.append(f"{remote_dir.rstrip('/')}/sdelka_base.db")
+                    candidates.append(f"{remote_dir.rstrip('/')}/base_sdelka_rmz.db")
+                    last_err: Exception | None = None
+                    for cand in candidates:
+                        private_path = cand if cand.startswith("/") else "/" + cand
+                        try:
+                            client.download_file(private_path, tmp_download)
+                            log.info("Yadisk import private OK: %s", private_path)
+                            last_err = None
+                            break
+                        except Exception as e_priv:
+                            last_err = e_priv
+                            log.warning("Yadisk private candidate failed: %s (%s)", private_path, e_priv)
+                    if last_err is not None:
+                        raise last_err
                     private_path = private_path if private_path.startswith("/") else "/" + private_path
                     try:
                         client.download_file(private_path, tmp_download)
