@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tkinter as tk
@@ -50,27 +49,41 @@ class BuildApp(tk.Tk):
         # Name
         ttk.Label(frm, text="Имя exe:").grid(row=0, column=0, sticky="w")
         self.var_name = tk.StringVar()
-        ttk.Entry(frm, textvariable=self.var_name, width=40).grid(row=0, column=1, sticky="we")
+        ttk.Entry(frm, textvariable=self.var_name, width=40).grid(
+            row=0, column=1, sticky="we"
+        )
 
         # Icon
         ttk.Label(frm, text="Иконка (.ico):").grid(row=1, column=0, sticky="w")
         self.var_icon = tk.StringVar()
         row1 = ttk.Frame(frm)
         row1.grid(row=1, column=1, sticky="we")
-        ttk.Entry(row1, textvariable=self.var_icon, width=34).pack(side="left", fill="x", expand=True)
-        ttk.Button(row1, text="...", width=3, command=self._pick_icon).pack(side="left", padx=(4, 0))
+        ttk.Entry(row1, textvariable=self.var_icon, width=34).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(row1, text="...", width=3, command=self._pick_icon).pack(
+            side="left", padx=(4, 0)
+        )
 
         # Dist
         ttk.Label(frm, text="Папка вывода:").grid(row=2, column=0, sticky="w")
-        self.var_dist = tk.StringVar(value=str(Path(__file__).resolve().parent / "dist"))
+        self.var_dist = tk.StringVar(
+            value=str(Path(__file__).resolve().parent / "dist")
+        )
         row2 = ttk.Frame(frm)
         row2.grid(row=2, column=1, sticky="we")
-        ttk.Entry(row2, textvariable=self.var_dist, width=34).pack(side="left", fill="x", expand=True)
-        ttk.Button(row2, text="...", width=3, command=self._pick_dist).pack(side="left", padx=(4, 0))
+        ttk.Entry(row2, textvariable=self.var_dist, width=34).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(row2, text="...", width=3, command=self._pick_dist).pack(
+            side="left", padx=(4, 0)
+        )
 
         # Mode
         self.mode_onedir = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frm, text="Собирать в папку (onedir)", variable=self.mode_onedir).grid(row=3, column=1, sticky="w")
+        ttk.Checkbutton(
+            frm, text="Собирать в папку (onedir)", variable=self.mode_onedir
+        ).grid(row=3, column=1, sticky="w")
 
         # Buttons
         btns = ttk.Frame(frm)
@@ -81,7 +94,9 @@ class BuildApp(tk.Tk):
         frm.columnconfigure(1, weight=1)
 
     def _pick_icon(self) -> None:
-        p = filedialog.askopenfilename(title="Выберите .ico", filetypes=[["ICO", "*.ico"], ["Все файлы", "*.*"]])
+        p = filedialog.askopenfilename(
+            title="Выберите .ico", filetypes=[["ICO", "*.ico"], ["Все файлы", "*.*"]]
+        )
         if p:
             self.var_icon.set(p)
 

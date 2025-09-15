@@ -7,7 +7,12 @@ from db import queries as q
 from utils.text import normalize_for_search
 
 
-def upsert_job_types(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
+import logging
+
+
+def upsert_job_types(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> tuple[int, int]:
     added = 0
     updated = 0
     for r in rows:
@@ -24,7 +29,9 @@ def upsert_job_types(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -
     return added, updated
 
 
-def upsert_products(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
+def upsert_products(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> tuple[int, int]:
     added = 0
     updated = 0
     for r in rows:
@@ -49,7 +56,9 @@ def upsert_products(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) ->
     return added, updated
 
 
-def upsert_contracts(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
+def upsert_contracts(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> tuple[int, int]:
     added = 0
     updated = 0
     for r in rows:
@@ -76,15 +85,19 @@ def upsert_contracts(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -
     return added, updated
 
 
-def upsert_workers(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
+def upsert_workers(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> tuple[int, int]:
     added = 0
     updated = 0
     for r in rows:
         fio = (r.get("full_name") or "").strip()
         if not fio:
             continue
-        personnel_no = (r.get("personnel_no") or f"AUTO-{normalize_for_search(fio)}").strip()
-        dept = (r.get("dept") or None)
+        personnel_no = (
+            r.get("personnel_no") or f"AUTO-{normalize_for_search(fio)}"
+        ).strip()
+        dept = r.get("dept") or None
         # Нормализация цеха: сохраняем цифру. Поддержка значений вида "1", 1, 1.0, "цех № 1" и т.п.
         try:
             if dept is not None:
@@ -98,25 +111,26 @@ def upsert_workers(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> 
                             dept = str(int(val))
                         else:
                             import re as _re
+
                             m = _re.search(r"(\d+)", s)
                             dept = m.group(1) if m else None
                     except Exception:
                         import re as _re
+
                         m = _re.search(r"(\d+)", s)
                         dept = m.group(1) if m else None
         except Exception:
             try:
                 dept = None
-            except Exception:
-                pass
-        position = (r.get("position") or None)
-        status = (r.get("status") or None)
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+        position = r.get("position") or None
+        status = r.get("status") or None
         res = q.upsert_worker(conn, fio, dept, position, personnel_no, status)
         if res:
             added += 1
         else:
             updated += 0
     return added, updated
-
-
-

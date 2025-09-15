@@ -22,5 +22,3 @@ def get_mode() -> AppMode:
 
 def is_readonly() -> bool:
     return _CURRENT_MODE == AppMode.READONLY
-
-

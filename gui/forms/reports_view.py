@@ -21,8 +21,9 @@ from utils.usage_history import record_use, get_recent
 from utils.autocomplete_positioning import (
     place_suggestions_under_entry, 
     create_suggestion_button, 
-    create_suggestions_frame
+    create_suggestions_frame,
 )
+import logging
 
 
 class ReportsView(ctk.CTkFrame):
@@ -44,26 +45,44 @@ class ReportsView(ctk.CTkFrame):
         # Dates
         self.date_from = ctk.StringVar()
         self.date_to = ctk.StringVar()
-        ctk.CTkLabel(filters, text="Период с").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.date_from_entry = ctk.CTkEntry(filters, textvariable=self.date_from, width=120)
+        ctk.CTkLabel(filters, text="Период с").grid(
+            row=0, column=0, padx=5, pady=5, sticky="w"
+        )
+        self.date_from_entry = ctk.CTkEntry(
+            filters, textvariable=self.date_from, width=120
+        )
         self.date_from_entry.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        self.date_from_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_from, self.date_from_entry))
+        self.date_from_entry.bind(
+            "<FocusIn>",
+            lambda e: self._open_date_picker(self.date_from, self.date_from_entry),
+        )
         
-        ctk.CTkLabel(filters, text="по").grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(filters, text="по").grid(
+            row=0, column=2, padx=5, pady=5, sticky="w"
+        )
         self.date_to_entry = ctk.CTkEntry(filters, textvariable=self.date_to, width=120)
         self.date_to_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        self.date_to_entry.bind("<FocusIn>", lambda e: self._open_date_picker(self.date_to, self.date_to_entry))
+        self.date_to_entry.bind(
+            "<FocusIn>",
+            lambda e: self._open_date_picker(self.date_to, self.date_to_entry),
+        )
 
         # Worker
-        ctk.CTkLabel(filters, text="Работник").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(filters, text="Работник").grid(
+            row=1, column=0, padx=5, pady=5, sticky="w"
+        )
         self.worker_entry = ctk.CTkEntry(filters, placeholder_text="ФИО", width=240)
         self.worker_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         self.worker_entry.bind("<KeyRelease>", self._on_worker_key)
         self.worker_entry.bind("<FocusIn>", lambda e: self._on_worker_key())
-        self.worker_entry.bind("<Button-1>", lambda e: self.after(1, self._on_worker_key))
+        self.worker_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_worker_key)
+        )
 
         # Dept
-        ctk.CTkLabel(filters, text="Цех").grid(row=1, column=2, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(filters, text="Цех").grid(
+            row=1, column=2, padx=5, pady=5, sticky="w"
+        )
         self.dept_var = ctk.StringVar()
         self.dept_entry = ctk.CTkEntry(filters, textvariable=self.dept_var, width=120)
         self.dept_entry.grid(row=1, column=3, padx=5, pady=5, sticky="w")
@@ -72,30 +91,46 @@ class ReportsView(ctk.CTkFrame):
         self.dept_entry.bind("<Button-1>", lambda e: self.after(1, self._on_dept_key))
 
         # Job type
-        ctk.CTkLabel(filters, text="Вид работ").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.job_entry = ctk.CTkEntry(filters, placeholder_text="Название вида", width=240)
+        ctk.CTkLabel(filters, text="Вид работ").grid(
+            row=2, column=0, padx=5, pady=5, sticky="w"
+        )
+        self.job_entry = ctk.CTkEntry(
+            filters, placeholder_text="Название вида", width=240
+        )
         self.job_entry.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         self.job_entry.bind("<KeyRelease>", self._on_job_key)
         self.job_entry.bind("<FocusIn>", lambda e: self._on_job_key())
         self.job_entry.bind("<Button-1>", lambda e: self.after(1, self._on_job_key))
 
         # Product
-        ctk.CTkLabel(filters, text="Изделие").grid(row=2, column=2, padx=5, pady=5, sticky="w")
-        self.product_entry = ctk.CTkEntry(filters, placeholder_text="Номер/Название", width=240)
+        ctk.CTkLabel(filters, text="Изделие").grid(
+            row=2, column=2, padx=5, pady=5, sticky="w"
+        )
+        self.product_entry = ctk.CTkEntry(
+            filters, placeholder_text="Номер/Название", width=240
+        )
         self.product_entry.grid(row=2, column=3, padx=5, pady=5, sticky="w")
         self.product_entry.bind("<KeyRelease>", self._on_product_key)
         self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key())
-        self.product_entry.bind("<Button-1>", lambda e: self.after(1, self._on_product_key))
+        self.product_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_product_key)
+        )
 
         # Contract
-        ctk.CTkLabel(filters, text="Контракт").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(filters, text="Контракт").grid(
+            row=3, column=0, padx=5, pady=5, sticky="w"
+        )
         self.contract_entry = ctk.CTkEntry(filters, placeholder_text="Шифр", width=160)
         self.contract_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
         self.contract_entry.bind("<KeyRelease>", self._on_contract_key)
         self.contract_entry.bind("<FocusIn>", lambda e: self._on_contract_key())
-        self.contract_entry.bind("<Button-1>", lambda e: self.after(1, self._on_contract_key))
+        self.contract_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_contract_key)
+        )
 
-        ctk.CTkButton(filters, text="Сформировать", command=self._build_report).grid(row=3, column=3, padx=5, pady=5, sticky="e")
+        ctk.CTkButton(filters, text="Сформировать", command=self._build_report).grid(
+            row=3, column=3, padx=5, pady=5, sticky="e"
+        )
 
         # Suggest frames
         self.sg_worker = create_suggestions_frame(self)
@@ -115,10 +150,18 @@ class ReportsView(ctk.CTkFrame):
         # Панель экспорта (без предпросмотра)
         toolbar = ctk.CTkFrame(self)
         toolbar.pack(fill="x", padx=10, pady=(6, 8))
-        ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Экспорт в 1С (JSON)", command=self._export_1c_json).pack(side="left", padx=4)
+        ctk.CTkButton(toolbar, text="Экспорт HTML", command=self._export_html).pack(
+            side="left", padx=4
+        )
+        ctk.CTkButton(toolbar, text="Экспорт PDF", command=self._export_pdf).pack(
+            side="left", padx=4
+        )
+        ctk.CTkButton(toolbar, text="Экспорт Excel", command=self._export_excel).pack(
+            side="left", padx=4
+        )
+        ctk.CTkButton(
+            toolbar, text="Экспорт в 1С (JSON)", command=self._export_1c_json
+        ).pack(side="left", padx=4)
 
         # Простая табличка предпросмотра списка (не обязательна для печати)
         self.tree = ttk.Treeview(self, show="headings")
@@ -126,16 +169,21 @@ class ReportsView(ctk.CTkFrame):
         hsb = ttk.Scrollbar(self, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        vsb.place_forget(); hsb.place_forget()  # оставим без явных скроллов
+        vsb.place_forget()
+        hsb.place_forget()  # оставим без явных скроллов
         # Автоподгон ширин колонок при изменении размеров
         self._preview_resize_job = None
+
         def _on_tree_resize(_evt=None):
             try:
                 if self._preview_resize_job:
                     self.after_cancel(self._preview_resize_job)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             self._preview_resize_job = self.after(60, self._autosize_preview_columns)
+
         self.tree.bind("<Configure>", _on_tree_resize)
 
         # Полоса статистики под предпросмотром
@@ -157,13 +205,18 @@ class ReportsView(ctk.CTkFrame):
         self.sg_product.place_forget()
         self.sg_contract.place_forget()
 
-    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+    def _schedule_auto_hide(
+        self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]
+    ) -> None:
         job_id = getattr(frame, "_auto_hide_job", None)
         if job_id:
             try:
                 self.after_cancel(job_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+
         def is_focus_within() -> bool:
             focus_w = self.focus_get()
             if not focus_w:
@@ -177,12 +230,14 @@ class ReportsView(ctk.CTkFrame):
                     return True
                 stack.extend(getattr(w, "winfo_children", lambda: [])())
             return False
+
         def check_and_hide():
             if not is_focus_within():
                 frame.place_forget()
                 frame._auto_hide_job = None
             else:
                 frame._auto_hide_job = self.after(5000, check_and_hide)
+
         frame._auto_hide_job = self.after(5000, check_and_hide)
 
     def _on_worker_key(self, _evt=None) -> None:
@@ -199,33 +254,53 @@ class ReportsView(ctk.CTkFrame):
             try:
                 from utils.usage_history import get_recent, purge_missing
                 from utils.text import normalize_for_search
-                valid_norms = {normalize_for_search(lbl.replace(" (Уволен)", "")) for (_id, lbl) in rows}
+
+                valid_norms = {
+                    normalize_for_search(lbl.replace(" (Уволен)", ""))
+                    for (_id, lbl) in rows
+                }
                 history = get_recent("reports.worker", None, CONFIG.autocomplete_limit)
                 purge_missing("reports.worker", valid_norms)
-                cleaned_hist = [h for h in history if normalize_for_search(h) in valid_norms]
-            except Exception:
+                cleaned_hist = [
+                    h for h in history if normalize_for_search(h) in valid_norms
+                ]
+            except Exception as exc:
                 cleaned_hist = []
         
         seen: set[str] = set()
         shown = 0
         for _id, label in rows:
             seen.add(label)
-            create_suggestion_button(self.sg_worker, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.sg_worker,
+                text=label,
+                command=lambda i=_id, l=label: self._pick_worker(i, l),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
         
         for label in cleaned_hist:
             if label not in seen:
-                create_suggestion_button(self.sg_worker, text=label, command=lambda l=label: self._pick_worker(0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_worker,
+                    text=label,
+                    command=lambda l=label: self._pick_worker(0, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         # Если нет данных из БД и истории, показываем всех работников
         if shown == 0:
             with get_connection() as conn:
-                all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
+                all_workers = suggestions.suggest_workers(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for _id, label in all_workers:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.sg_worker, text=label, command=lambda i=_id, l=label: self._pick_worker(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_worker,
+                    text=label,
+                    command=lambda i=_id, l=label: self._pick_worker(i, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         self._schedule_auto_hide(self.sg_worker, [self.worker_entry])
@@ -251,22 +326,32 @@ class ReportsView(ctk.CTkFrame):
         shown = 0
         for v in vals:
             seen.add(v)
-            create_suggestion_button(self.sg_dept, text=v, command=lambda s=v: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.sg_dept, text=v, command=lambda s=v: self._pick_dept(s)
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
         
-        for label in get_recent("reports.dept", text or None, CONFIG.autocomplete_limit):
+        for label in get_recent(
+            "reports.dept", text or None, CONFIG.autocomplete_limit
+        ):
             if label not in seen:
-                create_suggestion_button(self.sg_dept, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_dept, text=label, command=lambda s=label: self._pick_dept(s)
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         # Если нет данных из БД и истории, показываем все цеха
         if shown == 0:
             with get_connection() as conn:
-                all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
+                all_depts = suggestions.suggest_depts(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for dept in all_depts:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.sg_dept, text=dept, command=lambda s=dept: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_dept, text=dept, command=lambda s=dept: self._pick_dept(s)
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         self._schedule_auto_hide(self.sg_dept, [self.dept_entry])
@@ -291,37 +376,54 @@ class ReportsView(ctk.CTkFrame):
             try:
                 from utils.usage_history import get_recent, purge_missing
                 from utils.text import normalize_for_search
+
                 # Список актуальных нормализованных имен из БД (на экране)
                 valid_norms = {normalize_for_search(lbl) for (_id, lbl) in rows}
                 # Возьмем часть истории (без префикса, чтобы чистить глобально)
-                history = get_recent("reports.job_type", None, CONFIG.autocomplete_limit)
+                history = get_recent(
+                    "reports.job_type", None, CONFIG.autocomplete_limit
+                )
                 # Оставим только те, что реально присутствуют в БД
                 cleaned = [h for h in history if normalize_for_search(h) in valid_norms]
                 # Удалим отсутствующие из истории
                 purge_missing("reports.job_type", valid_norms)
-            except Exception:
+            except Exception as exc:
                 cleaned = []
         
         seen = set()
         shown = 0
         for _id, label in rows:
             seen.add(label)
-            create_suggestion_button(self.sg_job, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.sg_job,
+                text=label,
+                command=lambda i=_id, l=label: self._pick_job(i, l),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
         
         for label in cleaned:
             if label not in seen:
-                create_suggestion_button(self.sg_job, text=label, command=lambda l=label: self._pick_job(0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_job,
+                    text=label,
+                    command=lambda l=label: self._pick_job(0, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         # Если нет данных из БД и истории, показываем все виды работ
         if shown == 0:
             with get_connection() as conn:
-                all_job_types = suggestions.suggest_job_types(conn, "", CONFIG.autocomplete_limit)
+                all_job_types = suggestions.suggest_job_types(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for _id, label in all_job_types:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.sg_job, text=label, command=lambda i=_id, l=label: self._pick_job(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_job,
+                    text=label,
+                    command=lambda i=_id, l=label: self._pick_job(i, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         self._schedule_auto_hide(self.sg_job, [self.job_entry])
@@ -350,33 +452,50 @@ class ReportsView(ctk.CTkFrame):
             try:
                 from utils.usage_history import get_recent, purge_missing
                 from utils.text import normalize_for_search
+
                 valid_norms = {normalize_for_search(lbl) for (_id, lbl) in rows}
                 hist = get_recent("reports.product", None, CONFIG.autocomplete_limit)
                 purge_missing("reports.product", valid_norms)
-                cleaned_hist = [h for h in hist if normalize_for_search(h) in valid_norms]
-            except Exception:
+                cleaned_hist = [
+                    h for h in hist if normalize_for_search(h) in valid_norms
+                ]
+            except Exception as exc:
                 cleaned_hist = []
         
         seen = set()
         shown = 0
         for _id, label in rows:
             seen.add(label)
-            create_suggestion_button(self.sg_product, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.sg_product,
+                text=label,
+                command=lambda i=_id, l=label: self._pick_product(i, l),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
         
         for label in cleaned_hist:
             if label not in seen:
-                create_suggestion_button(self.sg_product, text=label, command=lambda l=label: self._pick_product(0, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_product,
+                    text=label,
+                    command=lambda l=label: self._pick_product(0, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         # Если нет данных из БД и истории, показываем все изделия
         if shown == 0:
             with get_connection() as conn:
-                all_products = suggestions.suggest_products(conn, "", CONFIG.autocomplete_limit)
+                all_products = suggestions.suggest_products(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for _id, label in all_products:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.sg_product, text=label, command=lambda i=_id, l=label: self._pick_product(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_product,
+                    text=label,
+                    command=lambda i=_id, l=label: self._pick_product(i, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         self._schedule_auto_hide(self.sg_product, [self.product_entry])
@@ -405,39 +524,58 @@ class ReportsView(ctk.CTkFrame):
             try:
                 from utils.usage_history import get_recent, purge_missing
                 from utils.text import normalize_for_search
+
                 valid_norms = {normalize_for_search(lbl) for (_id, lbl) in rows}
                 hist = get_recent("reports.contract", None, CONFIG.autocomplete_limit)
                 purge_missing("reports.contract", valid_norms)
-                cleaned_hist = [h for h in hist if normalize_for_search(h) in valid_norms]
-            except Exception:
+                cleaned_hist = [
+                    h for h in hist if normalize_for_search(h) in valid_norms
+                ]
+            except Exception as exc:
                 cleaned_hist = []
         
         seen = set()
         shown = 0
         for _id, label in rows:
             seen.add(label)
-            create_suggestion_button(self.sg_contract, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.sg_contract,
+                text=label,
+                command=lambda i=_id, l=label: self._pick_contract(i, l),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
         
         for label in cleaned_hist:
             if label not in seen:
-                create_suggestion_button(self.sg_contract, text=label, command=lambda s=label: self._pick_contract(0, s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_contract,
+                    text=label,
+                    command=lambda s=label: self._pick_contract(0, s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         # Если нет данных из БД и истории, показываем все контракты
         if shown == 0:
             with get_connection() as conn:
-                all_contracts = suggestions.suggest_contracts(conn, "", CONFIG.autocomplete_limit)
+                all_contracts = suggestions.suggest_contracts(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for _id, label in all_contracts:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.sg_contract, text=label, command=lambda i=_id, l=label: self._pick_contract(i, l)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.sg_contract,
+                    text=label,
+                    command=lambda i=_id, l=label: self._pick_contract(i, l),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
         
         self._schedule_auto_hide(self.sg_contract, [self.contract_entry])
 
     def _pick_contract(self, contract_id: int, label: str) -> None:
-        self._selected_contract_id = contract_id if contract_id else self._selected_contract_id
+        self._selected_contract_id = (
+            contract_id if contract_id else self._selected_contract_id
+        )
         self.contract_entry.delete(0, "end")
         self.contract_entry.insert(0, label)
         record_use("reports.contract", label)
@@ -448,7 +586,13 @@ class ReportsView(ctk.CTkFrame):
         if widget is None:
             self._hide_all_suggestions()
             return
-        for frame in (self.sg_worker, self.sg_dept, self.sg_job, self.sg_product, self.sg_contract):
+        for frame in (
+            self.sg_worker,
+            self.sg_dept,
+            self.sg_job,
+            self.sg_product,
+            self.sg_contract,
+        ):
             w = widget
             while w is not None:
                 if w == frame:
@@ -469,6 +613,7 @@ class ReportsView(ctk.CTkFrame):
         }
         # Сначала переименуем по известным ключам
         df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+
         # Универсальные правила поверх: убрать подчёркивания и заменить слова
         def norm(name: str) -> str:
             s = str(name)
@@ -477,6 +622,7 @@ class ReportsView(ctk.CTkFrame):
             s = s.replace("Номер", "№")
             s = s.replace("Количество", "Кол-во")
             return s
+
         return df.rename(columns={c: norm(c) for c in df.columns})
 
     def _build_report(self) -> None:
@@ -488,19 +634,36 @@ class ReportsView(ctk.CTkFrame):
                 job_text = (self.job_entry.get() or "").strip() or None
                 if job_text and not job_id:
                     try:
-                        jrow = conn.execute("SELECT id FROM job_types WHERE name_norm = ?", (normalize_for_search(job_text),)).fetchone()
+                        jrow = conn.execute(
+                            "SELECT id FROM job_types WHERE name_norm = ?",
+                            (normalize_for_search(job_text),),
+                        ).fetchone()
                         if jrow:
                             job_id = int(jrow[0])
                         else:
-                            messagebox.showwarning("Фильтр: Вид работ", "Указанный вид работ не найден в базе. Выберите из подсказки.", parent=self)
+                            messagebox.showwarning(
+                                "Фильтр: Вид работ",
+                                "Указанный вид работ не найден в базе. Выберите из подсказки.",
+                                parent=self,
+                            )
                             return
-                    except Exception:
-                        messagebox.showwarning("Фильтр: Вид работ", "Указанный вид работ не найден в базе. Выберите из подсказки.", parent=self)
+                    except Exception as exc:
+                        messagebox.showwarning(
+                            "Фильтр: Вид работ",
+                            "Указанный вид работ не найден в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
                 if job_id:
-                    exists = conn.execute("SELECT 1 FROM job_types WHERE id=?", (job_id,)).fetchone()
+                    exists = conn.execute(
+                        "SELECT 1 FROM job_types WHERE id=?", (job_id,)
+                    ).fetchone()
                     if not exists:
-                        messagebox.showwarning("Фильтр: Вид работ", "Выбранный вид работ отсутствует в базе. Выберите из подсказки.", parent=self)
+                        messagebox.showwarning(
+                            "Фильтр: Вид работ",
+                            "Выбранный вид работ отсутствует в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
 
                 # 2) Изделие: выбранный id или попытка найти по тексту
@@ -508,25 +671,48 @@ class ReportsView(ctk.CTkFrame):
                 prod_text = (self.product_entry.get() or "").strip() or None
                 if (not p_id) and prod_text:
                     try:
-                        row = conn.execute("SELECT id FROM products WHERE product_no = ? OR name = ?", (prod_text, prod_text)).fetchone()
+                        row = conn.execute(
+                            "SELECT id FROM products WHERE product_no = ? OR name = ?",
+                            (prod_text, prod_text),
+                        ).fetchone()
                         if not row:
                             norm = normalize_for_search(prod_text)
-                            row = conn.execute("SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?", (norm, norm)).fetchone()
+                            row = conn.execute(
+                                "SELECT id FROM products WHERE product_no_norm = ? OR name_norm = ?",
+                                (norm, norm),
+                            ).fetchone()
                         if not row:
                             like = f"%{prod_text}%"
-                            row = conn.execute("SELECT id FROM products WHERE product_no LIKE ? OR name LIKE ? LIMIT 1", (like, like)).fetchone()
+                            row = conn.execute(
+                                "SELECT id FROM products WHERE product_no LIKE ? OR name LIKE ? LIMIT 1",
+                                (like, like),
+                            ).fetchone()
                         if row:
                             p_id = int(row[0])
                         else:
-                            messagebox.showwarning("Фильтр: Изделие", "Указанное изделие не найдено в базе. Выберите из подсказки.", parent=self)
+                            messagebox.showwarning(
+                                "Фильтр: Изделие",
+                                "Указанное изделие не найдено в базе. Выберите из подсказки.",
+                                parent=self,
+                            )
                             return
-                    except Exception:
-                        messagebox.showwarning("Фильтр: Изделие", "Указанное изделие не найдено в базе. Выберите из подсказки.", parent=self)
+                    except Exception as exc:
+                        messagebox.showwarning(
+                            "Фильтр: Изделие",
+                            "Указанное изделие не найдено в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
                 if p_id:
-                    exists = conn.execute("SELECT 1 FROM products WHERE id=?", (p_id,)).fetchone()
+                    exists = conn.execute(
+                        "SELECT 1 FROM products WHERE id=?", (p_id,)
+                    ).fetchone()
                     if not exists:
-                        messagebox.showwarning("Фильтр: Изделие", "Выбранное изделие отсутствует в базе. Выберите из подсказки.", parent=self)
+                        messagebox.showwarning(
+                            "Фильтр: Изделие",
+                            "Выбранное изделие отсутствует в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
                 # Если поле очищено — сбрасываем id
                 if not prod_text:
@@ -538,35 +724,54 @@ class ReportsView(ctk.CTkFrame):
                 cont_text = (self.contract_entry.get() or "").strip() or None
                 if (not c_id) and cont_text:
                     try:
-                        crow = conn.execute("SELECT id FROM contracts WHERE code_norm = ?", (normalize_for_search(cont_text),)).fetchone()
+                        crow = conn.execute(
+                            "SELECT id FROM contracts WHERE code_norm = ?",
+                            (normalize_for_search(cont_text),),
+                        ).fetchone()
                         if crow:
                             c_id = int(crow[0])
                         else:
-                            messagebox.showwarning("Фильтр: Контракт", "Указанный контракт не найден в базе. Выберите из подсказки.", parent=self)
+                            messagebox.showwarning(
+                                "Фильтр: Контракт",
+                                "Указанный контракт не найден в базе. Выберите из подсказки.",
+                                parent=self,
+                            )
                             return
-                    except Exception:
-                        messagebox.showwarning("Фильтр: Контракт", "Указанный контракт не найден в базе. Выберите из подсказки.", parent=self)
+                    except Exception as exc:
+                        messagebox.showwarning(
+                            "Фильтр: Контракт",
+                            "Указанный контракт не найден в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
                 if c_id:
-                    exists = conn.execute("SELECT 1 FROM contracts WHERE id=?", (c_id,)).fetchone()
+                    exists = conn.execute(
+                        "SELECT 1 FROM contracts WHERE id=?", (c_id,)
+                    ).fetchone()
                     if not exists:
-                        messagebox.showwarning("Фильтр: Контракт", "Выбранный контракт отсутствует в базе. Выберите из подсказки.", parent=self)
+                        messagebox.showwarning(
+                            "Фильтр: Контракт",
+                            "Выбранный контракт отсутствует в базе. Выберите из подсказки.",
+                            parent=self,
+                        )
                         return
 
                 # Собрать отчет
-                df = work_orders_report_df(
-                    conn,
-                    date_from=self.date_from.get().strip() or None,
-                    date_to=self.date_to.get().strip() or None,
-                    worker_id=self._selected_worker_id,
+            df = work_orders_report_df(
+                conn,
+                date_from=self.date_from.get().strip() or None,
+                date_to=self.date_to.get().strip() or None,
+                worker_id=self._selected_worker_id,
                     worker_name=self.worker_entry.get().strip() or None,
-                    dept=self.dept_var.get().strip() or None,
+                dept=self.dept_var.get().strip() or None,
                     job_type_id=job_id,
                     product_id=p_id,
                     contract_id=c_id,
                 )
         except Exception as e:
-            messagebox.showerror("Отчеты", f"Ошибка формирования отчета: {e}", parent=self)
+            messagebox.showerror(
+                "Отчеты", f"Ошибка формирования отчета: {e}", parent=self
+            )
             # Очистим превью, чтобы интерфейс не завис
             try:
                 for i in self.tree.get_children():
@@ -575,9 +780,12 @@ class ReportsView(ctk.CTkFrame):
                 self.tree.heading("msg", text="Ошибка формирования отчета")
                 self.tree.column("msg", width=240)
                 import pandas as pd
+
                 self._df = pd.DataFrame()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return
         try:
             self._df = self._localize_df_columns(df)
@@ -586,13 +794,17 @@ class ReportsView(ctk.CTkFrame):
                 if c in self._df.columns:
                     try:
                         self._df = self._df.drop(columns=[c])
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.getLogger(__name__).exception(
+                            "Ignored unexpected error: %s", exc
+                        )
             # Если отчет фактически по одному работнику или выбран фильтр по работнику — скрыть столбцы Работник и Цех
             try:
                 single_worker_mode = False
                 if "Работник" in self._df.columns:
-                    unique_workers = [str(x) for x in self._df["Работник"].dropna().unique().tolist()]
+                    unique_workers = [
+                        str(x) for x in self._df["Работник"].dropna().unique().tolist()
+                    ]
                     if len(unique_workers) == 1:
                         single_worker_mode = True
                 if self._selected_worker_id or (self.worker_entry.get().strip()):
@@ -602,29 +814,35 @@ class ReportsView(ctk.CTkFrame):
                         if c in self._df.columns:
                             try:
                                 self._df = self._df.drop(columns=[c])
-                            except Exception:
-                                pass
-            except Exception:
-                pass
+                            except Exception as exc:
+                                logging.getLogger(__name__).exception(
+                                    "Ignored unexpected error: %s", exc
+                                )
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             # Обновим статистику
             try:
                 self._update_stats()
-            except Exception:
+            except Exception as exc:
                 self.stats_var.set("")
-            # Применим локализацию заголовков в превью
-            cols = list(self._df.columns)
-            self.tree["columns"] = cols
-            for c in cols:
-                self.tree.heading(c, text=str(c))
-            # Заполнить данными
-            for i in self.tree.get_children():
-                self.tree.delete(i)
-            for row in self._df.itertuples(index=False):
-                self.tree.insert("", "end", values=tuple(row))
+        # Применим локализацию заголовков в превью
+        cols = list(self._df.columns)
+        self.tree["columns"] = cols
+        for c in cols:
+            self.tree.heading(c, text=str(c))
+        # Заполнить данными
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        for row in self._df.itertuples(index=False):
+            self.tree.insert("", "end", values=tuple(row))
             # Автоподгон ширин, чтобы не было горизонтального скролла/обрезки
             self._autosize_preview_columns()
         except Exception as e:
-            messagebox.showerror("Отчеты", f"Ошибка отображения отчета: {e}", parent=self)
+            messagebox.showerror(
+                "Отчеты", f"Ошибка отображения отчета: {e}", parent=self
+            )
             try:
                 for i in self.tree.get_children():
                     self.tree.delete(i)
@@ -632,9 +850,12 @@ class ReportsView(ctk.CTkFrame):
                 self.tree.heading("msg", text="Ошибка отображения отчета")
                 self.tree.column("msg", width=280)
                 import pandas as pd
+
                 self._df = pd.DataFrame()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return
 
     def _render_preview(self, df: pd.DataFrame) -> None:
@@ -653,8 +874,10 @@ class ReportsView(ctk.CTkFrame):
             self.tree.column("msg", width=200)
             try:
                 self.stats_var.set("Строк: 0   Период: —   Сумма: 0.00")
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return
 
         cols = list(df.columns)
@@ -669,12 +892,14 @@ class ReportsView(ctk.CTkFrame):
                 vals = self.tree.item(iid, "values")
                 rows.append((iid, vals))
             idx = cols.index(col)
+
             def key_func(item):
                 v = item[1][idx]
                 try:
                     return float(str(v).replace(" ", "").replace(",", "."))
-                except Exception:
+                except Exception as exc:
                     return str(v)
+
             rows.sort(key=key_func, reverse=(new_dir == "desc"))
             for pos, (iid, _vals) in enumerate(rows):
                 self.tree.move(iid, "", pos)
@@ -692,7 +917,7 @@ class ReportsView(ctk.CTkFrame):
         # Auto-size columns to fit content (header + visible rows) and fit into window width
         try:
             font = tkfont.nametofont("TkDefaultFont")
-        except Exception:
+        except Exception as exc:
             font = tkfont.Font()
         pad = 24
         min_w = 60
@@ -709,7 +934,7 @@ class ReportsView(ctk.CTkFrame):
         # Compute available width of tree widget
         try:
             avail = max(200, int(self.tree.winfo_width()) - 32)
-        except Exception:
+        except Exception as exc:
             avail = sum(desired)
         total_desired = sum(desired)
         # Scale down if overflow, but not below min_w
@@ -722,8 +947,8 @@ class ReportsView(ctk.CTkFrame):
         try:
             self._df = df
             self._update_stats()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _update_stats(self) -> None:
         df = getattr(self, "_df", None)
@@ -747,18 +972,22 @@ class ReportsView(ctk.CTkFrame):
                     dmin = s.min().strftime("%d.%m.%Y")
                     dmax = s.max().strftime("%d.%m.%Y")
                     period_text = f"{dmin} — {dmax}"
-            except Exception:
+            except Exception as exc:
                 period_text = "—"
         # Сумма: попробуем несколько колонок
         total = 0.0
         for cand in ("Начислено", "Сумма", "Итог", "Итого", "total_amount", "total"):
             if cand in df.columns:
                 try:
-                    total = float(pd.to_numeric(df[cand], errors="coerce").fillna(0).sum())
+                    total = float(
+                        pd.to_numeric(df[cand], errors="coerce").fillna(0).sum()
+                    )
                     break
-                except Exception:
+                except Exception as exc:
                     continue
-        self.stats_var.set(f"Строк: {rows}   Период: {period_text}   Сумма: {total:.2f}")
+        self.stats_var.set(
+            f"Строк: {rows}   Период: {period_text}   Сумма: {total:.2f}"
+        )
 
     def _autosize_preview_columns(self) -> None:
         """Подгоняет ширины колонок превью: фиксированные по содержимому, 'Вид работ'/'Работник' — резиновые.
@@ -787,7 +1016,7 @@ class ReportsView(ctk.CTkFrame):
         # Измеряем желаемые ширины по содержимому
         try:
             font = tkfont.nametofont("TkDefaultFont")
-        except Exception:
+        except Exception as exc:
             font = tkfont.Font()
         pad = 24
         min_fixed = 60
@@ -800,7 +1029,7 @@ class ReportsView(ctk.CTkFrame):
             for r in sample:
                 try:
                     w = font.measure(str(r[j]))
-                except Exception:
+                except Exception as exc:
                     w = header_w
                 if w > max_w:
                     max_w = w
@@ -814,7 +1043,7 @@ class ReportsView(ctk.CTkFrame):
                 return
             # Небольшой запас на внутренние отступы
             avail = max(200, avail - 16)
-        except Exception:
+        except Exception as exc:
             avail = sum(desired.values())
 
         nonflex_cols = [c for c in cols if c not in flex_cols]
@@ -838,7 +1067,9 @@ class ReportsView(ctk.CTkFrame):
                         break
             # Если всё ещё не влезает — пропорционально ужмём остальные до min_fixed
             if shrink_left > 0:
-                can_shrink_fixed = sum(max(0, desired[c] - min_fixed) for c in nonflex_cols)
+                can_shrink_fixed = sum(
+                    max(0, desired[c] - min_fixed) for c in nonflex_cols
+                )
                 if can_shrink_fixed > 0:
                     ratio = min(1.0, shrink_left / can_shrink_fixed)
                     consumed = 0
@@ -868,15 +1099,22 @@ class ReportsView(ctk.CTkFrame):
         # Применяем ширины и stretch-поведение
         for c in cols:
             try:
-                self.tree.column(c, width=int(widths.get(c, desired.get(c, 80))), stretch=(c in flex_cols))
-            except Exception:
+                self.tree.column(
+                    c,
+                    width=int(widths.get(c, desired.get(c, 80))),
+                    stretch=(c in flex_cols),
+                )
+            except Exception as exc:
                 try:
                     self.tree.column(c, width=int(widths.get(c, 80)))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
 
     def _build_filename_suffix(self) -> str:
         from datetime import datetime
+
         parts: list[str] = []
         dfrom = (self.date_from.get() or "").strip()
         dto = (self.date_to.get() or "").strip()
@@ -897,12 +1135,20 @@ class ReportsView(ctk.CTkFrame):
         suffix = "_".join(filter(None, parts))
         return suffix
 
-    def _ask_save_path(self, title: str, defaultextension: str, filetypes: list[tuple[str, str]]):
+    def _ask_save_path(
+        self, title: str, defaultextension: str, filetypes: list[tuple[str, str]]
+    ):
         from utils.text import sanitize_filename
+
         base = "отчет_по_нарядам"
         suffix = self._build_filename_suffix()
         initial = sanitize_filename(f"{base}_{suffix}") + defaultextension
-        return filedialog.asksaveasfilename(title=title, defaultextension=defaultextension, initialfile=initial, filetypes=filetypes)
+        return filedialog.asksaveasfilename(
+            title=title,
+            defaultextension=defaultextension,
+            initialfile=initial,
+            filetypes=filetypes,
+        )
 
     def _export_html(self) -> None:
         if self._df is None or self._df.empty:
@@ -942,7 +1188,15 @@ class ReportsView(ctk.CTkFrame):
                 worker_id=self._selected_worker_id,
                 worker_name=self.worker_entry.get().strip() or None,
             )
-        save_pdf(self._df, file_path=path, title="Отчет", orientation=None, font_size=None, font_family=None, context=ctx)
+        save_pdf(
+            self._df,
+            file_path=path,
+            title="Отчет",
+            orientation=None,
+            font_size=None,
+            font_family=None,
+            context=ctx,
+        )
         self._open_file(path)
 
     def _export_excel(self) -> None:
@@ -975,7 +1229,9 @@ class ReportsView(ctk.CTkFrame):
                 if ctx.get("dept_name"):
                     summary_rows.append([f"Цех: {ctx['dept_name']}"])
                 summary_rows.append([""])
-                summary_rows.append([f"Итого по отчету: {ctx.get('total_amount', 0.0):.2f}"])
+                summary_rows.append(
+                    [f"Итого по отчету: {ctx.get('total_amount', 0.0):.2f}"]
+                )
                 workers = ctx.get("worker_signatures") or []
                 if workers:
                     summary_rows.append(["Подписи работников:"])
@@ -984,22 +1240,32 @@ class ReportsView(ctk.CTkFrame):
                     for i, w in enumerate(workers, 1):
                         row.append(w)
                         if i % 3 == 0:
-                            summary_rows.append(row); row = []
+                            summary_rows.append(row)
+                            row = []
                     if row:
                         summary_rows.append(row)
                 if ctx.get("dept_head"):
-                    summary_rows.append([f"Начальник цеха: {ctx['dept_head']} _____________"]) 
+                    summary_rows.append(
+                        [f"Начальник цеха: {ctx['dept_head']} _____________"]
+                    )
                 if ctx.get("hr_head"):
-                    summary_rows.append([f"Начальник отдела кадров: {ctx['hr_head']} _____________"]) 
-                pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Итоги", index=False, header=False)
+                    summary_rows.append(
+                        [f"Начальник отдела кадров: {ctx['hr_head']} _____________"]
+                    )
+                pd.DataFrame(summary_rows).to_excel(
+                    writer, sheet_name="Итоги", index=False, header=False
+                )
         except Exception as e:
-            messagebox.showerror("Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}")
+            messagebox.showerror(
+                "Экспорт Excel", f"Ошибка сохранения: {e}\n{type(e).__name__}"
+            )
             return
         self._open_file(path)
 
     def _export_1c_json(self) -> None:
         # Экспорт в 1С: единый формат JSON
         from reports.export_1c import build_orders_unified, save_1c_json
+
         base_path = filedialog.asksaveasfilename(
             title="Сохранить JSON для 1С",
             defaultextension=".json",
@@ -1040,6 +1306,7 @@ class ReportsView(ctk.CTkFrame):
 
     def _open_date_picker(self, var, anchor=None) -> None:
         from gui.widgets.date_picker import open_for_anchor
+
         self._hide_all_suggestions()
         if anchor is None:
             return
@@ -1053,5 +1320,5 @@ class ReportsView(ctk.CTkFrame):
                 subprocess.Popen(["open", path])
             else:
                 subprocess.Popen(["xdg-open", path])
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)

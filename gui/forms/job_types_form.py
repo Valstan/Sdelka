@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import customtkinter as ctk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 
 from config.settings import CONFIG
 from db.sqlite import get_connection
@@ -10,13 +10,13 @@ from utils.readonly_ui import guard_readonly
 from utils.export_ui import create_export_button
 from services import reference_data as ref
 from db import queries as q
-from services import suggestions
 from utils.usage_history import record_use, get_recent
 from utils.autocomplete_positioning import (
-    place_suggestions_under_entry, 
-    create_suggestion_button, 
-    create_suggestions_frame
+    place_suggestions_under_entry,
+    create_suggestion_button,
+    create_suggestions_frame,
 )
+import logging
 
 
 class JobTypesForm(ctk.CTkFrame):
@@ -30,9 +30,11 @@ class JobTypesForm(ctk.CTkFrame):
         # Обновлять список при импорте
         try:
             self.bind("<<DataImported>>", lambda e: self._load())
-            self.winfo_toplevel().bind("<<DataImported>>", lambda e: self._load(), add="+")
-        except Exception:
-            pass
+            self.winfo_toplevel().bind(
+                "<<DataImported>>", lambda e: self._load(), add="+"
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _build_ui(self) -> None:
         # No top spacer/banners to avoid empty gaps
@@ -44,29 +46,45 @@ class JobTypesForm(ctk.CTkFrame):
         self.unit_var = ctk.StringVar()
         self.price_var = ctk.StringVar()
 
-        ctk.CTkLabel(form, text="Наименование").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(form, text="Наименование").grid(
+            row=0, column=0, sticky="w", padx=5, pady=5
+        )
         self.name_entry = ctk.CTkEntry(form, textvariable=self.name_var, width=320)
         self.name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.name_entry.bind("<KeyRelease>", self._on_name_key)
         self.name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
         self.name_entry.bind("<Button-1>", lambda e: self.after(1, self._on_name_key))
 
-        ctk.CTkLabel(form, text="Ед. изм.").grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(form, text="Ед. изм.").grid(
+            row=0, column=2, sticky="w", padx=5, pady=5
+        )
         self.unit_entry = ctk.CTkEntry(form, textvariable=self.unit_var, width=120)
         self.unit_entry.grid(row=0, column=3, sticky="w", padx=5, pady=5)
         self.unit_entry.bind("<KeyRelease>", self._on_unit_key)
         self.unit_entry.bind("<FocusIn>", lambda e: self._on_unit_key())
         self.unit_entry.bind("<Button-1>", lambda e: self.after(1, self._on_unit_key))
 
-        ctk.CTkLabel(form, text="Цена").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        ctk.CTkEntry(form, textvariable=self.price_var, width=120).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        ctk.CTkLabel(form, text="Цена").grid(
+            row=1, column=0, sticky="w", padx=5, pady=5
+        )
+        ctk.CTkEntry(form, textvariable=self.price_var, width=120).grid(
+            row=1, column=1, sticky="w", padx=5, pady=5
+        )
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=10)
         save_btn = ctk.CTkButton(btns, text="Сохранить", command=self._save)
-        cancel_btn = ctk.CTkButton(btns, text="Отмена", command=self._cancel, fg_color="#6b7280")
+        cancel_btn = ctk.CTkButton(
+            btns, text="Отмена", command=self._cancel, fg_color="#6b7280"
+        )
         clear_btn = ctk.CTkButton(btns, text="Очистить", command=self._clear)
-        del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
+        del_btn = ctk.CTkButton(
+            btns,
+            text="Удалить",
+            fg_color="#b91c1c",
+            hover_color="#7f1d1d",
+            command=self._delete,
+        )
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
         export_btn = create_export_button(btns, "job_types", "Экспорт видов работ")
@@ -75,8 +93,10 @@ class JobTypesForm(ctk.CTkFrame):
             for w in (self.name_entry, self.unit_entry):
                 try:
                     w.configure(state="disabled")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
             for b in (save_btn, cancel_btn, clear_btn, del_btn):
                 b.configure(state="disabled")
 
@@ -85,7 +105,9 @@ class JobTypesForm(ctk.CTkFrame):
         table_frame.grid_rowconfigure(0, weight=1)
         table_frame.grid_columnconfigure(0, weight=1)
 
-        self.tree = ttk.Treeview(table_frame, columns=("name", "unit", "price"), show="headings")
+        self.tree = ttk.Treeview(
+            table_frame, columns=("name", "unit", "price"), show="headings"
+        )
         self.tree.heading("name", text="Наименование")
         self.tree.heading("unit", text="Ед. изм.")
         self.tree.heading("price", text="Цена")
@@ -116,13 +138,18 @@ class JobTypesForm(ctk.CTkFrame):
     def _place_under(self, entry: ctk.CTkEntry, frame: ctk.CTkFrame) -> None:
         place_suggestions_under_entry(entry, frame, self)
 
-    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+    def _schedule_auto_hide(
+        self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]
+    ) -> None:
         job_id = getattr(frame, "_auto_hide_job", None)
         if job_id:
             try:
                 self.after_cancel(job_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+
         def is_focus_within() -> bool:
             focus_w = self.focus_get()
             if not focus_w:
@@ -136,12 +163,14 @@ class JobTypesForm(ctk.CTkFrame):
                     return True
                 stack.extend(getattr(w, "winfo_children", lambda: [])())
             return False
+
         def check_and_hide():
             if not is_focus_within():
                 frame.place_forget()
                 frame._auto_hide_job = None
             else:
                 frame._auto_hide_job = self.after(5000, check_and_hide)
+
         frame._auto_hide_job = self.after(5000, check_and_hide)
 
     def _on_name_key(self, event=None) -> None:
@@ -149,30 +178,42 @@ class JobTypesForm(ctk.CTkFrame):
         prefix = self.name_var.get().strip()
         for w in self.suggest_name_frame.winfo_children():
             w.destroy()
-        
+
         place_suggestions_under_entry(self.name_entry, self.suggest_name_frame, self)
-        
+
         # запросы
         if prefix:
             with get_connection() as conn:
-                rows = q.search_job_types_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
+                rows = q.search_job_types_by_prefix(
+                    conn, prefix, CONFIG.autocomplete_limit
+                )
         else:
             with get_connection() as conn:
                 rows = q.list_job_types(conn, None, CONFIG.autocomplete_limit)
-        
+
         names = [r["name"] for r in rows]
         shown = 0
         for val in names:
-            create_suggestion_button(self.suggest_name_frame, text=val, command=lambda s=val: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_name_frame,
+                text=val,
+                command=lambda s=val: self._pick_name(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("job_types.name", prefix or None, CONFIG.autocomplete_limit):
+
+        for label in get_recent(
+            "job_types.name", prefix or None, CONFIG.autocomplete_limit
+        ):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in names:
-                create_suggestion_button(self.suggest_name_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_name_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_name(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все виды работ
         if shown == 0:
             with get_connection() as conn:
@@ -180,9 +221,13 @@ class JobTypesForm(ctk.CTkFrame):
             for row in all_job_types:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_name_frame, text=row["name"], command=lambda s=row["name"]: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_name_frame,
+                    text=row["name"],
+                    command=lambda s=row["name"]: self._pick_name(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_name_frame, [self.name_entry])
 
     def _pick_name(self, val: str) -> None:
@@ -195,34 +240,50 @@ class JobTypesForm(ctk.CTkFrame):
         prefix = self.unit_var.get().strip()
         for w in self.suggest_unit_frame.winfo_children():
             w.destroy()
-        
+
         place_suggestions_under_entry(self.unit_entry, self.suggest_unit_frame, self)
-        
+
         with get_connection() as conn:
             vals = q.distinct_units_by_prefix(conn, prefix, CONFIG.autocomplete_limit)
-        
+
         shown = 0
         for val in vals:
-            create_suggestion_button(self.suggest_unit_frame, text=val, command=lambda s=val: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_unit_frame,
+                text=val,
+                command=lambda s=val: self._pick_unit(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("job_types.unit", prefix or None, CONFIG.autocomplete_limit):
+
+        for label in get_recent(
+            "job_types.unit", prefix or None, CONFIG.autocomplete_limit
+        ):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                create_suggestion_button(self.suggest_unit_frame, text=label, command=lambda s=label: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_unit_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_unit(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все единицы измерения
         if shown == 0:
             with get_connection() as conn:
-                all_units = q.distinct_units_by_prefix(conn, "", CONFIG.autocomplete_limit)
+                all_units = q.distinct_units_by_prefix(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for unit in all_units:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_unit_frame, text=unit, command=lambda s=unit: self._pick_unit(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_unit_frame,
+                    text=unit,
+                    command=lambda s=unit: self._pick_unit(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_unit_frame, [self.unit_entry])
 
     def _pick_unit(self, val: str) -> None:
@@ -249,7 +310,9 @@ class JobTypesForm(ctk.CTkFrame):
         with get_connection() as conn:
             rows = ref.list_job_types(conn)
         for r in rows:
-            self.tree.insert("", "end", iid=str(r["id"]), values=(r["name"], r["unit"], r["price"]))
+            self.tree.insert(
+                "", "end", iid=str(r["id"]), values=(r["name"], r["unit"], r["price"])
+            )
 
     def _on_select(self, _evt=None) -> None:
         sel = self.tree.selection()
@@ -275,7 +338,7 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _save(self) -> None:
-        from utils.readonly_ui import guard_readonly
+
         if not guard_readonly("сохранение"):
             return
         name = self.name_var.get().strip()
@@ -292,7 +355,9 @@ class JobTypesForm(ctk.CTkFrame):
             if price < 0:
                 raise ValueError
         except Exception:
-            messagebox.showwarning("Проверка", "Цена должна быть неотрицательным числом")
+            messagebox.showwarning(
+                "Проверка", "Цена должна быть неотрицательным числом"
+            )
             return
         try:
             with get_connection() as conn:
@@ -301,7 +366,10 @@ class JobTypesForm(ctk.CTkFrame):
                 else:
                     # Запретить добавление дубликата по name
                     if q.get_job_type_by_name(conn, name):
-                        messagebox.showwarning("Дубликат", "Вид работ уже существует. Выберите его для редактирования.")
+                        messagebox.showwarning(
+                            "Дубликат",
+                            "Вид работ уже существует. Выберите его для редактирования.",
+                        )
                         return
                     ref.create_job_type(conn, name, unit, price)
         except sqlite3.IntegrityError as exc:
@@ -311,7 +379,7 @@ class JobTypesForm(ctk.CTkFrame):
         self._clear()
 
     def _delete(self) -> None:
-        from utils.readonly_ui import guard_readonly
+
         if not guard_readonly("удаление"):
             return
         if not self._selected_id:
@@ -321,7 +389,7 @@ class JobTypesForm(ctk.CTkFrame):
         try:
             with get_connection() as conn:
                 ref.delete_job_type(conn, self._selected_id)
-        except sqlite3.IntegrityError as exc:
+        except (sqlite3.IntegrityError, ValueError) as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")
             return
         self._load()

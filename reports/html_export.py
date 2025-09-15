@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 from typing import Any
 
+import logging
+
 _ABBR = {
     "Количество": "Кол-во",
     "Номер": "№",
@@ -14,6 +16,7 @@ _ABBR = {
 def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
     # Сначала применим известные сокращения
     df1 = df.rename(columns={c: _ABBR.get(str(c), c) for c in df.columns})
+
     # Затем общий постпроцессинг: подчеркивания -> пробелы, слова -> аббревиатуры
     def norm(name: str) -> str:
         s = str(name).replace("_", " ")
@@ -21,10 +24,13 @@ def normalize_headers(df: pd.DataFrame) -> pd.DataFrame:
         s = s.replace("Номер", "№")
         s = s.replace("Количество", "Кол-во")
         return s
+
     return df1.rename(columns={c: norm(c) for c in df1.columns})
 
 
-def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[str, Any] | None = None) -> str:
+def dataframe_to_html(
+    df: pd.DataFrame, title: str | None = None, context: dict[str, Any] | None = None
+) -> str:
     df2 = normalize_headers(df)
     # Если отчет по одному работнику — убираем колонки Работник/Цех из таблицы
     if context and context.get("single_worker_short"):
@@ -32,8 +38,10 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
             if c in df2.columns:
                 try:
                     df2 = df2.drop(columns=[c])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
     html = df2.to_html(index=False)
     parts: list[str] = []
     if title:
@@ -80,7 +88,12 @@ def dataframe_to_html(df: pd.DataFrame, title: str | None = None, context: dict[
     return "\n".join(parts)
 
 
-def save_html(df: pd.DataFrame, title: str | None, path: str, context: dict[str, Any] | None = None) -> str:
+def save_html(
+    df: pd.DataFrame,
+    title: str | None,
+    path: str,
+    context: dict[str, Any] | None = None,
+) -> str:
     df2 = normalize_headers(df)
     html = dataframe_to_html(df2, title=title, context=context)
     with open(path, "w", encoding="utf-8") as f:

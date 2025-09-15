@@ -4,7 +4,9 @@ import customtkinter as ctk
 
 
 class AutocompleteEntry(ctk.CTkFrame):
-    def __init__(self, master, fetch_suggestions, placeholder: str = "", width: int = 250):
+    def __init__(
+        self, master, fetch_suggestions, placeholder: str = "", width: int = 250
+    ):
         super().__init__(master)
         self.fetch_suggestions = fetch_suggestions  # callable(prefix)->list[(id,str)]
 
@@ -37,7 +39,9 @@ class AutocompleteEntry(ctk.CTkFrame):
             return
         self.listbox.pack(side="top", fill="x")
         for _id, label in results:
-            btn = ctk.CTkButton(self.listbox, text=label, command=lambda val=label: self._select(val))
+            btn = ctk.CTkButton(
+                self.listbox, text=label, command=lambda val=label: self._select(val)
+            )
             btn.pack(fill="x", pady=2)
 
     def _select(self, value: str) -> None:

@@ -12,7 +12,9 @@ def test_initialize_schema(tmp_path: Path) -> None:
     with get_connection(db_path) as conn:
         initialize_schema(conn)
         # таблица должна существовать
-        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='workers'").fetchall()
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='workers'"
+        ).fetchall()
         assert rows
 
 

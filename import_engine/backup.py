@@ -8,6 +8,9 @@ from utils.user_prefs import get_current_db_path
 from config.settings import CONFIG
 
 
+import logging
+
+
 def make_backup_copy(dest_dir: str | Path | None = None) -> str:
     src = Path(get_current_db_path())
     if not src.exists():
@@ -19,10 +22,8 @@ def make_backup_copy(dest_dir: str | Path | None = None) -> str:
     target_dir = Path(dest_dir) if dest_dir else CONFIG.backups_dir
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     target = target_dir / backup_name
     shutil.copy2(src, target)
     return str(target)
-
-

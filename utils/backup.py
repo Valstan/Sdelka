@@ -12,7 +12,11 @@ from db.sqlite import get_connection
 logger = logging.getLogger(__name__)
 
 
-def backup_sqlite_db(db_path: Path | str, backups_dir: Path | str | None = None, max_backups: int | None = None) -> Path | None:
+def backup_sqlite_db(
+    db_path: Path | str,
+    backups_dir: Path | str | None = None,
+    max_backups: int | None = None,
+) -> Path | None:
     db_path = Path(db_path)
     if not db_path.exists():
         logger.info("Бэкап пропущен: файл БД не найден: %s", db_path)
@@ -36,9 +40,18 @@ def backup_sqlite_db(db_path: Path | str, backups_dir: Path | str | None = None,
     except Exception as exc:
         # Фолбэк на прямое копирование файла (может быть неконсистентно при активном WAL)
         shutil.copy2(db_path, backup_path)
-        logger.warning("Online backup не удался (%s). Выполнено файловое копирование: %s", exc, backup_path)
+        logger.warning(
+            "Online backup не удался (%s). Выполнено файловое копирование: %s",
+            exc,
+            backup_path,
+        )
 
-    rotate_backups(backups_dir, prefix="backup_base_sdelka_", suffix=db_path.suffix, keep=max_backups)
+    rotate_backups(
+        backups_dir,
+        prefix="backup_base_sdelka_",
+        suffix=db_path.suffix,
+        keep=max_backups,
+    )
     return backup_path
 
 

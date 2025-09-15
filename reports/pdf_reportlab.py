@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence, List, Tuple, Optional, Any
-import os
+from typing import List, Tuple, Any
 
 import pandas as pd
 from reportlab.lib import colors
@@ -12,6 +11,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+
+import logging
 
 _ABBR = {
     "Количество": "Кол-во",
@@ -65,13 +66,21 @@ def _find_font_file() -> tuple[str | None, str | None]:
 
 def _ensure_font_registered(prefer_family: str | None = None) -> tuple[str, str]:
     # Если просят конкретное семейство, поддерживаем только шрифты с кириллицей из кандидатов
-    if prefer_family and prefer_family in ("DejaVu Sans", "Noto Sans", "Arial", "Liberation Sans"):
+    if prefer_family and prefer_family in (
+        "DejaVu Sans",
+        "Noto Sans",
+        "Arial",
+        "Liberation Sans",
+    ):
         # Попытаемся найти ttf по имени семейства среди кандидатов
         family_map = {
             "DejaVu Sans": ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
             "Noto Sans": ("NotoSans-Regular.ttf", "NotoSans-Bold.ttf"),
             "Arial": ("Arial.ttf", "Arial Bold.ttf"),
-            "Liberation Sans": ("LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
+            "Liberation Sans": (
+                "LiberationSans-Regular.ttf",
+                "LiberationSans-Bold.ttf",
+            ),
         }
         reg_name, bold_name = "AppFont", "AppFont-Bold"
         reg_path, bold_path = None, None
@@ -113,7 +122,13 @@ def _ensure_font_registered(prefer_family: str | None = None) -> tuple[str, str]
     return "Helvetica", "Helvetica-Bold"
 
 
-def _measure_col_widths(df: pd.DataFrame, font_name: str, font_size: int, padding: float = 8.0, sample_rows: int = 200) -> List[float]:
+def _measure_col_widths(
+    df: pd.DataFrame,
+    font_name: str,
+    font_size: int,
+    padding: float = 8.0,
+    sample_rows: int = 200,
+) -> List[float]:
     cols = list(df.columns)
     values = df.head(sample_rows).astype(str).values.tolist()
     widths: List[float] = []
@@ -133,7 +148,13 @@ def _is_long_text_column(name: str) -> bool:
     return any(k in n for k in ("вид", "работ", "фио", "работник", "издел", "name"))
 
 
-def _min_word_widths_for_wrap_cols(df: pd.DataFrame, cols: list[str], font_name: str, font_size: int, padding: float = 8.0) -> List[float]:
+def _min_word_widths_for_wrap_cols(
+    df: pd.DataFrame,
+    cols: list[str],
+    font_name: str,
+    font_size: int,
+    padding: float = 8.0,
+) -> List[float]:
     """Минимальная ширина для колонок, где разрешен перенос: ширина самого длинного слова + padding.
     Для не-переносимых колонок возвращает 0 (нет минимума кроме общей ширины).
     """
@@ -202,8 +223,8 @@ def save_pdf(
             for c in ("Работник", "Цех"):
                 if c in df.columns:
                     df = df.drop(columns=[c])
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     cols = list(df.columns)
     # Применяем нормализацию заголовков
     cols = [_normalize_header(c) for c in cols]
@@ -215,7 +236,11 @@ def save_pdf(
         if font_size is not None:
             fs_iter = [max(font_min, min(font_size, font_max))]
         else:
-            fs_iter = [font_base] + list(range(font_base + 1, font_max + 1)) + list(range(font_base - 1, font_min - 1, -1))
+            fs_iter = (
+                [font_base]
+                + list(range(font_base + 1, font_max + 1))
+                + list(range(font_base - 1, font_min - 1, -1))
+            )
         for fs in fs_iter:
             widths = _measure_col_widths(df, regular_font, fs)
             total = sum(widths)
@@ -224,9 +249,15 @@ def save_pdf(
                 break
             # Попробуем ужать только длинные текстовые колонки (для переносов по словам), соблюдая минимальную ширину слова
             mins = _min_word_widths_for_wrap_cols(df, cols, regular_font, fs)
-            nonwrap_total = sum(w for w, c in zip(widths, cols) if not _is_long_text_column(str(c)))
-            wrap_total = sum(w for w, c in zip(widths, cols) if _is_long_text_column(str(c)))
-            wrap_min_total = sum(m for m, c in zip(mins, cols) if _is_long_text_column(str(c)))
+            nonwrap_total = sum(
+                w for w, c in zip(widths, cols) if not _is_long_text_column(str(c))
+            )
+            wrap_total = sum(
+                w for w, c in zip(widths, cols) if _is_long_text_column(str(c))
+            )
+            wrap_min_total = sum(
+                m for m, c in zip(mins, cols) if _is_long_text_column(str(c))
+            )
             # доступно под переносимые колонки
             avail_for_wrap = max(0.0, avail_w - nonwrap_total)
             if wrap_total > 0 and avail_for_wrap >= wrap_min_total:
@@ -265,7 +296,9 @@ def save_pdf(
             else:
                 best_page = A4
     if best_font is None:
-        best_font = font_base if font_size is None else max(font_min, min(font_size, font_max))
+        best_font = (
+            font_base if font_size is None else max(font_min, min(font_size, font_max))
+        )
     if best_widths is None:
         best_widths = _measure_col_widths(df, regular_font, best_font)
 
@@ -275,9 +308,15 @@ def save_pdf(
     if total > avail_w:
         # финальный пересчет с учетом минимальной ширины слов
         mins = _min_word_widths_for_wrap_cols(df, cols, regular_font, best_font)
-        nonwrap_total = sum(w for w, c in zip(best_widths, cols) if not _is_long_text_column(str(c)))
-        wrap_total = sum(w for w, c in zip(best_widths, cols) if _is_long_text_column(str(c)))
-        wrap_min_total = sum(m for m, c in zip(mins, cols) if _is_long_text_column(str(c)))
+        nonwrap_total = sum(
+            w for w, c in zip(best_widths, cols) if not _is_long_text_column(str(c))
+        )
+        wrap_total = sum(
+            w for w, c in zip(best_widths, cols) if _is_long_text_column(str(c))
+        )
+        wrap_min_total = sum(
+            m for m, c in zip(mins, cols) if _is_long_text_column(str(c))
+        )
         avail_for_wrap = max(0.0, avail_w - nonwrap_total)
         if wrap_total > 0 and avail_for_wrap >= wrap_min_total:
             scale = min(1.0, avail_for_wrap / wrap_total)
@@ -305,8 +344,10 @@ def save_pdf(
                     need = total2 - avail_w
                     min_vid = 60.0
                     best_widths[vid_idx] = max(min_vid, best_widths[vid_idx] - need)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     doc = SimpleDocTemplate(
         str(file_path),
@@ -331,7 +372,7 @@ def save_pdf(
         fontSize=best_font,
         leading=int(best_font * 1.2),
         splitLongWords=True,
-        wordWrap='CJK',
+        wordWrap="CJK",
     )
     body_style_nowrap = ParagraphStyle(
         name="ReportBodyNoWrap",
@@ -379,7 +420,7 @@ def save_pdf(
     header_row = [Paragraph(str(c), header_style) for c in cols]
     data_rows: List[List] = [header_row]
     wrap_idxes = [i for i, c in enumerate(cols) if _is_long_text_column(str(c))]
-    frame_h = (best_page[1] - (top_mm + bottom_mm) * mm)
+    frame_h = best_page[1] - (top_mm + bottom_mm) * mm
     max_row_h = max(200.0, frame_h * 0.65)
     for _, row in df.iterrows():
         # Сформировать параграфы по колонкам
@@ -421,7 +462,11 @@ def save_pdf(
                 for j, c in enumerate(cols):
                     if j in wrap_idxes:
                         parts = split_map.get(j) or []
-                        sub.append(parts[k] if k < len(parts) else Paragraph("", body_style_wrap))
+                        sub.append(
+                            parts[k]
+                            if k < len(parts)
+                            else Paragraph("", body_style_wrap)
+                        )
                     else:
                         # Неврапящие колонки показываем только в первой подстроке, далее пусто
                         if k == 0:
@@ -434,7 +479,7 @@ def save_pdf(
     chunk_size = 50
     rows = data_rows[1:]
     for start in range(0, len(rows), chunk_size):
-        block = [header_row] + rows[start:start + chunk_size]
+        block = [header_row] + rows[start : start + chunk_size]
         table = Table(block, colWidths=best_widths, repeatRows=1, splitByRow=1)
         table.setStyle(
             TableStyle(
@@ -446,7 +491,12 @@ def save_pdf(
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
                     ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.beige]),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.whitesmoke, colors.beige],
+                    ),
                 ]
             )
         )
@@ -458,7 +508,9 @@ def save_pdf(
         story.append(Spacer(1, 4 * mm))
         total = context.get("total_amount")
         if total is not None:
-            story.append(Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style))
+            story.append(
+                Paragraph(f"<b>Итого по отчету: {float(total):.2f}</b>", header_style)
+            )
             story.append(Spacer(1, 2 * mm))
         workers = context.get("worker_signatures") or []
         single_worker = context.get("single_worker_short")
@@ -473,10 +525,24 @@ def save_pdf(
         dept_head = context.get("dept_head")
         hr_head = context.get("hr_head")
         lines: List[List] = []
-        lines.append([Paragraph(f"Начальник цеха: {dept_head or ''} _____________", body_style_nowrap)])
-        lines.append([Paragraph(f"Начальник отдела кадров: {hr_head or ''} _____________", body_style_nowrap)])
+        lines.append(
+            [
+                Paragraph(
+                    f"Начальник цеха: {dept_head or ''} _____________",
+                    body_style_nowrap,
+                )
+            ]
+        )
+        lines.append(
+            [
+                Paragraph(
+                    f"Начальник отдела кадров: {hr_head or ''} _____________",
+                    body_style_nowrap,
+                )
+            ]
+        )
         sign_table = Table(lines, colWidths=[sum(best_widths)])
-        sign_table.setStyle(TableStyle([("ALIGN", (0,0), (-1,-1), "LEFT")]))
+        sign_table.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "LEFT")]))
         story.append(sign_table)
     doc.build(story)
     return file_path

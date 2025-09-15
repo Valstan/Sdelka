@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Literal
+from typing import Callable, Literal
 
-import sqlite3
 from datetime import datetime
-import os
 
 from db.sqlite import get_connection
-from utils.text import normalize_for_search
 from .readers import read_any_tabular
 from .resolve import split_and_route
 from .parsers import parse_job_types, parse_products, parse_contracts, parse_workers
@@ -18,6 +15,9 @@ from .reporting import write_html_report
 from .backup import make_backup_copy
 from .orders_csv import detect_orders_csv, import_orders_from_csv
 from import_export.products_contracts_import import import_products_from_contracts_csv  # type: ignore
+
+import logging
+
 try:
     from import_export.excel_io import analyze_orders_workbook, import_xlsx_full  # type: ignore
 except Exception:
@@ -63,23 +63,45 @@ def import_data(
         if dry_run:
             # parse and render small HTML summary
             from .orders_csv import parse_orders_csv
+
             parsed = parse_orders_csv(p)
             rows = [
                 f"<p>Обнаружен наряд (CSV). Работников: {len(parsed.workers)}, изделий: {len(parsed.products)}, позиций: {len(parsed.items)}.</p>",
             ]
             Path("data").mkdir(exist_ok=True)
-            report_path = Path("data") / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-            write_html_report(report_path, f"Предварительный отчёт по импорту — {p.name}", rows)
-            return DryRunReport(added=0, updated=0, skipped=0, warnings=None, details_html=str(report_path))
+            report_path = (
+                Path("data")
+                / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            )
+            write_html_report(
+                report_path, f"Предварительный отчёт по импорту — {p.name}", rows
+            )
+            return DryRunReport(
+                added=0,
+                updated=0,
+                skipped=0,
+                warnings=None,
+                details_html=str(report_path),
+            )
         if backup_before:
             make_backup_copy(None)
         res = import_orders_from_csv(p, progress_cb)
-        return ImportResult(added=int(res.get("orders", 0)), updated=0, skipped=0, errors=0, report_html_path=None)
+        return ImportResult(
+            added=int(res.get("orders", 0)),
+            updated=0,
+            skipped=0,
+            errors=0,
+            report_html_path=None,
+        )
 
     # Special-case multi-sheet Excel workbooks with orders
     if p.suffix.lower() in {".xlsx", ".xls", ".ods"}:
         # Спец-обработка нарядов запускается, только если реально обнаружены листы с нарядами
-        if preset in ("orders", "auto") and analyze_orders_workbook is not None and import_xlsx_full is not None:
+        if (
+            preset in ("orders", "auto")
+            and analyze_orders_workbook is not None
+            and import_xlsx_full is not None
+        ):
             summary: list[dict] = []
             has_orders = False
             try:
@@ -93,45 +115,89 @@ def import_data(
                 for entry in summary:
                     sheet = entry.get("sheet")
                     if "date" in entry:
-                        parts.append(f"<div>Лист '{sheet}': наряды (дат: {entry.get('date')}, изделий: {len(entry.get('products') or [])}, работников: {len(entry.get('workers') or [])}, позиций: {len(entry.get('items') or [])})</div>")
+                        parts.append(
+                            f"<div>Лист '{sheet}': наряды (дат: {entry.get('date')}, изделий: {len(entry.get('products') or [])}, работников: {len(entry.get('workers') or [])}, позиций: {len(entry.get('items') or [])})</div>"
+                        )
                     elif "jobtypes_count" in entry:
-                        parts.append(f"<div>Лист '{sheet}': прайс-лист (позиций: {entry.get('jobtypes_count')})</div>")
+                        parts.append(
+                            f"<div>Лист '{sheet}': прайс-лист (позиций: {entry.get('jobtypes_count')})</div>"
+                        )
                     else:
                         parts.append(f"<div>Лист '{sheet}': пропущен</div>")
                 Path("data").mkdir(exist_ok=True)
-                report_path = Path("data") / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-                write_html_report(report_path, f"Предварительный отчёт по импорту — {p.name}", parts)
-                return DryRunReport(added=0, updated=0, skipped=0, warnings=None, details_html=str(report_path))
+                report_path = (
+                    Path("data")
+                    / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                )
+                write_html_report(
+                    report_path, f"Предварительный отчёт по импорту — {p.name}", parts
+                )
+                return DryRunReport(
+                    added=0,
+                    updated=0,
+                    skipped=0,
+                    warnings=None,
+                    details_html=str(report_path),
+                )
             if not dry_run and has_orders:
                 if backup_before:
                     make_backup_copy(None)
                 try:
                     # Если профиль 'orders' — импортируем только наряды, без справочников; в 'auto' включаем оба
-                    include_jobtypes = (preset == "auto")
+                    include_jobtypes = preset == "auto"
                     include_orders = True
-                    jt_count, products_count, orders_count = import_xlsx_full(str(p), progress_cb, include_jobtypes=include_jobtypes, include_orders=include_orders)
+                    jt_count, products_count, orders_count = import_xlsx_full(
+                        str(p),
+                        progress_cb,
+                        include_jobtypes=include_jobtypes,
+                        include_orders=include_orders,
+                    )
                 except Exception as exc:
                     raise RuntimeError(f"Ошибка импорта XLSX: {exc}")
-                return ImportResult(added=int(orders_count), updated=0, skipped=0, errors=0, report_html_path=None)
+                return ImportResult(
+                    added=int(orders_count),
+                    updated=0,
+                    skipped=0,
+                    errors=0,
+                    report_html_path=None,
+                )
 
     # Special-case CSV ledger with products and contracts (Оборотно-сальдовая ведомость 002)
     if p.suffix.lower() == ".csv" and _detect_ledger_csv(p):
         if dry_run:
             rows = _summarize_ledger_csv(p)
             Path("data").mkdir(exist_ok=True)
-            report_path = Path("data") / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-            write_html_report(report_path, f"Предварительный отчёт по импорту — {p.name}", rows)
-            return DryRunReport(added=0, updated=0, skipped=0, warnings=None, details_html=str(report_path))
+            report_path = (
+                Path("data")
+                / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            )
+            write_html_report(
+                report_path, f"Предварительный отчёт по импорту — {p.name}", rows
+            )
+            return DryRunReport(
+                added=0,
+                updated=0,
+                skipped=0,
+                warnings=None,
+                details_html=str(report_path),
+            )
         if backup_before:
             make_backup_copy(None)
         stats = import_products_from_contracts_csv(str(p), progress_cb)
-        return ImportResult(added=int(stats.get("products", 0)), updated=0, skipped=0, errors=int(stats.get("errors", 0)), report_html_path=None)
+        return ImportResult(
+            added=int(stats.get("products", 0)),
+            updated=0,
+            skipped=0,
+            errors=int(stats.get("errors", 0)),
+            report_html_path=None,
+        )
 
     # Generic tabular readers (много листов/таблиц)
     dfs = read_any_tabular(p)
     # Принудительное распознавание листов работников (XLSX/ODS), даже если листов несколько
     forced_workers: list[int] = []
     if dfs:
+
         def _has_worker_markers_df(df) -> bool:
             try:
                 cols_low = [str(c).strip().lower() for c in df.columns]
@@ -140,27 +206,49 @@ def import_data(
             # Сканируем первые строки как текстовую шапку
             try:
                 scan_rows = min(6, len(df))
-                head_text = " ".join([" ".join([str(x).strip().lower() for x in (list(df.iloc[i, :]) if i < len(df) else [])]) for i in range(scan_rows)])
+                head_text = " ".join(
+                    [
+                        " ".join(
+                            [
+                                str(x).strip().lower()
+                                for x in (list(df.iloc[i, :]) if i < len(df) else [])
+                            ]
+                        )
+                        for i in range(scan_rows)
+                    ]
+                )
             except Exception:
                 head_text = ""
+
             def any_marker(s: str) -> bool:
                 s = s or ""
                 return (
-                    ("фио" in s and (
-                        "таб" in s or "табел" in s or "табель" in s or "персонал" in s or
-                        "разряд" in s or "должн" in s or "цех" in s or "отдел" in s or "участок" in s or "бригада" in s
-                    )) or (
-                        "список" in s and ("работник" in s or "сотрудник" in s)
+                    "фио" in s
+                    and (
+                        "таб" in s
+                        or "табел" in s
+                        or "табель" in s
+                        or "персонал" in s
+                        or "разряд" in s
+                        or "должн" in s
+                        or "цех" in s
+                        or "отдел" in s
+                        or "участок" in s
+                        or "бригада" in s
                     )
-                )
+                ) or ("список" in s and ("работник" in s or "сотрудник" in s))
+
             return any_marker(" ".join(cols_low)) or any_marker(head_text)
+
         for idx, df in enumerate(dfs):
             try:
                 # Пропускаем пустые листы без колонок и строк
                 if getattr(df, "shape", (0, 0))[1] == 0 or len(df) == 0:
                     continue
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             if _has_worker_markers_df(df):
                 forced_workers.append(idx)
     # Базовые маршруты детектора
@@ -173,6 +261,7 @@ def import_data(
     detected = None
     try:
         from .detect import detect_file as _detect_file
+
         detected = _detect_file(dfs)
     except Exception:
         detected = None
@@ -182,7 +271,11 @@ def import_data(
     elif preset == "price":
         routes = [(k, i) for (k, i) in routes if k == "job_types"]
     elif preset == "refs":
-        routes = [(k, i) for (k, i) in routes if k in ("workers", "products", "contracts", "job_types")]
+        routes = [
+            (k, i)
+            for (k, i) in routes
+            if k in ("workers", "products", "contracts", "job_types")
+        ]
     adds = 0
     ups = 0
     skips = 0
@@ -202,30 +295,53 @@ def import_data(
                 ct = parse_contracts(dfs[idx])
                 # Подсветим, сколько строк с датой окончания распознано
                 end_marked = sum(1 for r in ct if r.get("end_date"))
-                html_parts.append(f"<div>Контракты: найдено строк: {len(ct)} (с датой окончания: {end_marked})</div>")
+                html_parts.append(
+                    f"<div>Контракты: найдено строк: {len(ct)} (с датой окончания: {end_marked})</div>"
+                )
             elif kind == "workers":
                 wk = parse_workers(dfs[idx])
                 # Подсветим полноту данных
                 with_tn = sum(1 for r in wk if r.get("personnel_no"))
-                html_parts.append(f"<div>Работники: найдено строк: {len(wk)} (с таб. номером: {with_tn})</div>")
+                html_parts.append(
+                    f"<div>Работники: найдено строк: {len(wk)} (с таб. номером: {with_tn})</div>"
+                )
             elif kind == "orders":
-                html_parts.append("<div>Наряды: обнаружен лист (используйте CSV-формат нарядов или XLSX с колонками)</div>")
+                html_parts.append(
+                    "<div>Наряды: обнаружен лист (используйте CSV-формат нарядов или XLSX с колонками)</div>"
+                )
             else:
                 skips += 1
         # Если ничего не распознано
         if not routes and detected is not None:
-            html_parts.append("<div><b>Файл не распознан.</b> Не найдено таблиц со структурами для импорта. Проверьте заголовки и формат.</div>")
+            html_parts.append(
+                "<div><b>Файл не распознан.</b> Не найдено таблиц со структурами для импорта. Проверьте заголовки и формат.</div>"
+            )
         # Подсказки от детектора
-        if detected is not None and any(d.hints for d in detected if d.kind != "unknown"):
+        if detected is not None and any(
+            d.hints for d in detected if d.kind != "unknown"
+        ):
             html_parts.append("<hr><div><b>Подсказки детектора:</b></div>")
             for d in detected:
                 if d.kind == "unknown" or not d.hints:
                     continue
-                html_parts.append(f"<div>Лист #{d.sheet_index+1}: тип {d.kind} (уверенность {d.score}). Подсказки: {d.hints}</div>")
+                html_parts.append(
+                    f"<div>Лист #{d.sheet_index+1}: тип {d.kind} (уверенность {d.score}). Подсказки: {d.hints}</div>"
+                )
         Path("data").mkdir(exist_ok=True)
-        report_path = Path("data") / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        write_html_report(report_path, f"Предварительный отчёт по импорту — {p.name}", html_parts)
-        return DryRunReport(added=adds, updated=ups, skipped=skips, warnings=warn or None, details_html=str(report_path))
+        report_path = (
+            Path("data")
+            / f"import_dryrun_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        )
+        write_html_report(
+            report_path, f"Предварительный отчёт по импорту — {p.name}", html_parts
+        )
+        return DryRunReport(
+            added=adds,
+            updated=ups,
+            skipped=skips,
+            warnings=warn or None,
+            details_html=str(report_path),
+        )
 
     # Real import
     if backup_before:
@@ -253,9 +369,13 @@ def import_data(
                 adds += a
                 ups += u
             elif kind == "orders":
-                warn.append("Импорт нарядов из общих таблиц будет добавлен отдельно. Для CSV используйте текущую поддержку.")
+                warn.append(
+                    "Импорт нарядов из общих таблиц будет добавлен отдельно. Для CSV используйте текущую поддержку."
+                )
 
-    return ImportResult(added=adds, updated=ups, skipped=skips, errors=0, report_html_path=None)
+    return ImportResult(
+        added=adds, updated=ups, skipped=skips, errors=0, report_html_path=None
+    )
 
 
 def _detect_ledger_csv(p: Path) -> bool:
@@ -287,6 +407,8 @@ def _summarize_ledger_csv(p: Path) -> list[str]:
             prod += 1
         if "Договор" in line or "договор" in line:
             contracts += 1
-    return [f"<div>Обнаружена оборотно-сальдовая ведомость.</div>", f"<div>Строк с изделиями: {prod}</div>", f"<div>Строк с договорами: {contracts}</div>"]
-
-
+    return [
+        "<div>Обнаружена оборотно-сальдовая ведомость.</div>",
+        f"<div>Строк с изделиями: {prod}</div>",
+        f"<div>Строк с договорами: {contracts}</div>",
+    ]

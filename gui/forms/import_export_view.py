@@ -3,7 +3,6 @@ from __future__ import annotations
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-from config.settings import CONFIG
 from db.sqlite import get_connection
 from import_export.excel_io import (
     import_workers_from_excel,
@@ -28,33 +27,77 @@ class ImportExportView(ctk.CTkFrame):
         row1 = ctk.CTkFrame(self)
         row1.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(row1, text="Импорт из Excel").pack(anchor="w")
-        ctk.CTkButton(row1, text="Импорт Работников", command=self._import_workers).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products).pack(side="left", padx=5)
-        ctk.CTkButton(row1, text="Импорт Контрактов", command=self._import_contracts).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row1, text="Импорт Работников", command=self._import_workers
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(row1, text="Импорт Видов работ", command=self._import_jobs).pack(
+            side="left", padx=5
+        )
+        ctk.CTkButton(row1, text="Импорт Изделий", command=self._import_products).pack(
+            side="left", padx=5
+        )
+        ctk.CTkButton(
+            row1, text="Импорт Контрактов", command=self._import_contracts
+        ).pack(side="left", padx=5)
 
         row2 = ctk.CTkFrame(self)
         row2.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(row2, text="Экспорт таблиц").pack(anchor="w")
-        ctk.CTkButton(row2, text="Экспорт Работников", command=lambda: self._export_table("workers")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Видов работ", command=lambda: self._export_table("job_types")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Изделий", command=lambda: self._export_table("products")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт Контрактов", command=lambda: self._export_table("contracts")).pack(side="left", padx=5)
-        ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row2,
+            text="Экспорт Работников",
+            command=lambda: self._export_table("workers"),
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row2,
+            text="Экспорт Видов работ",
+            command=lambda: self._export_table("job_types"),
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row2, text="Экспорт Изделий", command=lambda: self._export_table("products")
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row2,
+            text="Экспорт Контрактов",
+            command=lambda: self._export_table("contracts"),
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(row2, text="Экспорт всего набора", command=self._export_all).pack(
+            side="left", padx=5
+        )
 
         row3 = ctk.CTkFrame(self)
         row3.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(row3, text="Шаблоны Excel").pack(anchor="w")
-        ctk.CTkButton(row3, text="Шаблон Работники", command=lambda: self._save_template("workers")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Виды работ", command=lambda: self._save_template("job_types")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Изделия", command=lambda: self._save_template("products")).pack(side="left", padx=5)
-        ctk.CTkButton(row3, text="Шаблон Контракты", command=lambda: self._save_template("contracts")).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row3,
+            text="Шаблон Работники",
+            command=lambda: self._save_template("workers"),
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row3,
+            text="Шаблон Виды работ",
+            command=lambda: self._save_template("job_types"),
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row3, text="Шаблон Изделия", command=lambda: self._save_template("products")
+        ).pack(side="left", padx=5)
+        ctk.CTkButton(
+            row3,
+            text="Шаблон Контракты",
+            command=lambda: self._save_template("contracts"),
+        ).pack(side="left", padx=5)
 
     def _ask_open(self) -> str | None:
-        return filedialog.askopenfilename(title="Выберите файл Excel", filetypes=[("Excel", "*.xlsx;*.xls")])
+        return filedialog.askopenfilename(
+            title="Выберите файл Excel", filetypes=[("Excel", "*.xlsx;*.xls")]
+        )
 
     def _ask_save(self, title: str, default_ext: str, filter_name: str) -> str | None:
-        return filedialog.asksaveasfilename(title=title, defaultextension=default_ext, filetypes=[(filter_name, f"*{default_ext}")])
+        return filedialog.asksaveasfilename(
+            title=title,
+            defaultextension=default_ext,
+            filetypes=[(filter_name, f"*{default_ext}")],
+        )
 
     # Imports
     def _import_workers(self) -> None:
@@ -105,6 +148,7 @@ class ImportExportView(ctk.CTkFrame):
     def _export_table(self, table: str) -> None:
         from datetime import datetime
         from utils.text import sanitize_filename
+
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         table_rus = {
             "workers": "работники",
@@ -113,7 +157,12 @@ class ImportExportView(ctk.CTkFrame):
             "contracts": "контракты",
         }.get(table, table)
         initial = sanitize_filename(f"экспорт_{table_rus}_{stamp}") + ".xlsx"
-        path = filedialog.asksaveasfilename(title=f"Сохранить {table_rus}", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx")])
+        path = filedialog.asksaveasfilename(
+            title=f"Сохранить {table_rus}",
+            defaultextension=".xlsx",
+            initialfile=initial,
+            filetypes=[("Excel", "*.xlsx")],
+        )
         if not path:
             return
         try:
@@ -138,6 +187,7 @@ class ImportExportView(ctk.CTkFrame):
     def _save_template(self, kind: str) -> None:
         from datetime import datetime
         from utils.text import sanitize_filename
+
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         map_rus = {
             "workers": "работники",
@@ -145,8 +195,15 @@ class ImportExportView(ctk.CTkFrame):
             "products": "изделия",
             "contracts": "контракты",
         }
-        initial = sanitize_filename(f"шаблон_{map_rus.get(kind, kind)}_{stamp}") + ".xlsx"
-        path = filedialog.asksaveasfilename(title=f"Шаблон {map_rus.get(kind, kind)}", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx")])
+        initial = (
+            sanitize_filename(f"шаблон_{map_rus.get(kind, kind)}_{stamp}") + ".xlsx"
+        )
+        path = filedialog.asksaveasfilename(
+            title=f"Шаблон {map_rus.get(kind, kind)}",
+            defaultextension=".xlsx",
+            initialfile=initial,
+            filetypes=[("Excel", "*.xlsx")],
+        )
         if not path:
             return
         try:

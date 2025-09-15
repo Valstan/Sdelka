@@ -11,6 +11,8 @@ from pathlib import Path
 from config.settings import CONFIG
 
 
+import logging
+
 # Хранилище пароля пользователя (зашифровано) и вшитый админский пароль
 
 # Админский пароль: "Metro@2000"
@@ -19,6 +21,7 @@ from config.settings import CONFIG
 
 _ADMIN_SECRET_B64 = "bUpiQzZ4d0JURTRrU2VjcmV0S2V5Rm9yQWRtaW4="  # произвольный секрет
 _ADMIN_PASSWORD_PLAIN = "Metro@2000"
+
 
 def _hmac_sha256_hex(key_bytes: bytes, message: str) -> str:
     return hmac.new(key_bytes, message.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -53,7 +56,9 @@ def _pbkdf2_sha256(password: str, salt: bytes, iterations: int = 120_000) -> byt
 
 def verify_admin_password(input_password: str) -> bool:
     # Сравниваем HMAC с зашитым
-    return hmac.compare_digest(_ADMIN_PWHASH, _hmac_sha256_hex(_get_admin_key(), input_password))
+    return hmac.compare_digest(
+        _ADMIN_PWHASH, _hmac_sha256_hex(_get_admin_key(), input_password)
+    )
 
 
 def load_user_password() -> PasswordRecord | None:
@@ -79,8 +84,8 @@ def save_user_password(new_password: str) -> None:
     p = _passwords_file()
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     p.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
 
 
@@ -99,6 +104,3 @@ def verify_user_password(input_password: str) -> bool:
 
 def user_password_is_set() -> bool:
     return load_user_password() is not None
-
-
-

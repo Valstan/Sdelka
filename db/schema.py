@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from typing import Iterable
 
 from utils.text import normalize_for_search
 
@@ -65,11 +64,9 @@ CREATE TABLE IF NOT EXISTS work_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_no INTEGER NOT NULL UNIQUE,
     date TEXT NOT NULL,
-    product_id INTEGER,
-    contract_id INTEGER NOT NULL,
+    contract_id INTEGER,
     total_amount NUMERIC NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
-    FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+    FOREIGN KEY (contract_id) REFERENCES contracts(id) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 
@@ -120,27 +117,132 @@ CREATE TABLE IF NOT EXISTS contract_history (
 """
 
 DDL_INDEXES = (
-    ("idx_workers_full_name", "workers", ("full_name",), "CREATE INDEX IF NOT EXISTS idx_workers_full_name ON workers(full_name)"),
-    ("idx_workers_full_name_norm", "workers", ("full_name_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_full_name_norm ON workers(full_name_norm)"),
-    ("idx_workers_dept_norm", "workers", ("dept_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_dept_norm ON workers(dept_norm)"),
-    ("idx_workers_position_norm", "workers", ("position_norm",), "CREATE INDEX IF NOT EXISTS idx_workers_position_norm ON workers(position_norm)"),
-    ("idx_job_types_name", "job_types", ("name",), "CREATE INDEX IF NOT EXISTS idx_job_types_name ON job_types(name)"),
-    ("idx_job_types_name_norm", "job_types", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_job_types_name_norm ON job_types(name_norm)"),
-    ("idx_job_types_unit_norm", "job_types", ("unit_norm",), "CREATE INDEX IF NOT EXISTS idx_job_types_unit_norm ON job_types(unit_norm)"),
-    ("idx_products_name_no", "products", ("name", "product_no"), "CREATE INDEX IF NOT EXISTS idx_products_name_no ON products(name, product_no)"),
-    ("idx_products_name_norm", "products", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_products_name_norm ON products(name_norm)"),
-    ("idx_products_no_norm", "products", ("product_no_norm",), "CREATE INDEX IF NOT EXISTS idx_products_no_norm ON products(product_no_norm)"),
-    ("idx_products_contract", "products", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_products_contract ON products(contract_id)"),
-    ("idx_contracts_code", "contracts", ("code",), "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)"),
-    ("idx_contracts_code_norm", "contracts", ("code_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)"),
-    ("idx_contracts_name_norm", "contracts", ("name_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_name_norm ON contracts(name_norm)"),
-    ("idx_contracts_type_norm", "contracts", ("contract_type_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_type_norm ON contracts(contract_type_norm)"),
-    ("idx_contracts_executor_norm", "contracts", ("executor_norm",), "CREATE INDEX IF NOT EXISTS idx_contracts_executor_norm ON contracts(executor_norm)"),
-    ("idx_work_orders_date", "work_orders", ("date",), "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)"),
-    ("idx_work_orders_order_no", "work_orders", ("order_no",), "CREATE INDEX IF NOT EXISTS idx_work_orders_order_no ON work_orders(order_no)"),
-    ("idx_wo_products_wo", "work_order_products", ("work_order_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_wo ON work_order_products(work_order_id)"),
-    ("idx_wo_products_product", "work_order_products", ("product_id",), "CREATE INDEX IF NOT EXISTS idx_wo_products_product ON work_order_products(product_id)"),
-    ("idx_contract_history_contract", "contract_history", ("contract_id",), "CREATE INDEX IF NOT EXISTS idx_contract_history_contract ON contract_history(contract_id)"),
+    (
+        "idx_workers_full_name",
+        "workers",
+        ("full_name",),
+        "CREATE INDEX IF NOT EXISTS idx_workers_full_name ON workers(full_name)",
+    ),
+    (
+        "idx_workers_full_name_norm",
+        "workers",
+        ("full_name_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_workers_full_name_norm ON workers(full_name_norm)",
+    ),
+    (
+        "idx_workers_dept_norm",
+        "workers",
+        ("dept_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_workers_dept_norm ON workers(dept_norm)",
+    ),
+    (
+        "idx_workers_position_norm",
+        "workers",
+        ("position_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_workers_position_norm ON workers(position_norm)",
+    ),
+    (
+        "idx_job_types_name",
+        "job_types",
+        ("name",),
+        "CREATE INDEX IF NOT EXISTS idx_job_types_name ON job_types(name)",
+    ),
+    (
+        "idx_job_types_name_norm",
+        "job_types",
+        ("name_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_job_types_name_norm ON job_types(name_norm)",
+    ),
+    (
+        "idx_job_types_unit_norm",
+        "job_types",
+        ("unit_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_job_types_unit_norm ON job_types(unit_norm)",
+    ),
+    (
+        "idx_products_name_no",
+        "products",
+        ("name", "product_no"),
+        "CREATE INDEX IF NOT EXISTS idx_products_name_no ON products(name, product_no)",
+    ),
+    (
+        "idx_products_name_norm",
+        "products",
+        ("name_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_products_name_norm ON products(name_norm)",
+    ),
+    (
+        "idx_products_no_norm",
+        "products",
+        ("product_no_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_products_no_norm ON products(product_no_norm)",
+    ),
+    (
+        "idx_products_contract",
+        "products",
+        ("contract_id",),
+        "CREATE INDEX IF NOT EXISTS idx_products_contract ON products(contract_id)",
+    ),
+    (
+        "idx_contracts_code",
+        "contracts",
+        ("code",),
+        "CREATE INDEX IF NOT EXISTS idx_contracts_code ON contracts(code)",
+    ),
+    (
+        "idx_contracts_code_norm",
+        "contracts",
+        ("code_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_contracts_code_norm ON contracts(code_norm)",
+    ),
+    (
+        "idx_contracts_name_norm",
+        "contracts",
+        ("name_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_contracts_name_norm ON contracts(name_norm)",
+    ),
+    (
+        "idx_contracts_type_norm",
+        "contracts",
+        ("contract_type_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_contracts_type_norm ON contracts(contract_type_norm)",
+    ),
+    (
+        "idx_contracts_executor_norm",
+        "contracts",
+        ("executor_norm",),
+        "CREATE INDEX IF NOT EXISTS idx_contracts_executor_norm ON contracts(executor_norm)",
+    ),
+    (
+        "idx_work_orders_date",
+        "work_orders",
+        ("date",),
+        "CREATE INDEX IF NOT EXISTS idx_work_orders_date ON work_orders(date)",
+    ),
+    (
+        "idx_work_orders_order_no",
+        "work_orders",
+        ("order_no",),
+        "CREATE INDEX IF NOT EXISTS idx_work_orders_order_no ON work_orders(order_no)",
+    ),
+    (
+        "idx_wo_products_wo",
+        "work_order_products",
+        ("work_order_id",),
+        "CREATE INDEX IF NOT EXISTS idx_wo_products_wo ON work_order_products(work_order_id)",
+    ),
+    (
+        "idx_wo_products_product",
+        "work_order_products",
+        ("product_id",),
+        "CREATE INDEX IF NOT EXISTS idx_wo_products_product ON work_order_products(product_id)",
+    ),
+    (
+        "idx_contract_history_contract",
+        "contract_history",
+        ("contract_id",),
+        "CREATE INDEX IF NOT EXISTS idx_contract_history_contract ON contract_history(contract_id)",
+    ),
 )
 
 
@@ -169,6 +271,7 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
 
 
 # --- migrations & helpers ---
+
 
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
     row = conn.execute(
@@ -235,7 +338,17 @@ def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
 
     # Ensure columns
     for table, cols in (
-        ("workers", ("full_name_norm", "dept_norm", "position_norm", "personnel_no_norm", "status", "status_norm")),
+        (
+            "workers",
+            (
+                "full_name_norm",
+                "dept_norm",
+                "position_norm",
+                "personnel_no_norm",
+                "status",
+                "status_norm",
+            ),
+        ),
         ("job_types", ("name_norm", "unit_norm")),
         ("products", ("name_norm", "product_no_norm")),
         ("contracts", ("code_norm",)),
@@ -247,7 +360,9 @@ def add_norm_columns_and_backfill(conn: sqlite3.Connection) -> None:
     # Backfill with Python casefold for Unicode
     # Workers
     if table_exists(conn, "workers"):
-        rows = conn.execute("SELECT id, full_name, dept, position, personnel_no, status FROM workers").fetchall()
+        rows = conn.execute(
+            "SELECT id, full_name, dept, position, personnel_no, status FROM workers"
+        ).fetchall()
         for r in rows:
             status_val = r["status"] if r["status"] else "Работает"
             conn.execute(
@@ -328,7 +443,7 @@ def ensure_contracts_extended_columns(conn: sqlite3.Connection) -> None:
         ("contract_number", "TEXT"),
         ("bank_account", "TEXT"),
     ]
-    
+
     for col_name, col_type in new_columns:
         try:
             conn.execute(f"ALTER TABLE contracts ADD COLUMN {col_name} {col_type}")
@@ -374,7 +489,12 @@ def create_indexes_if_possible(conn: sqlite3.Connection) -> None:
             continue
         cols = set(get_table_columns(conn, table))
         if not set(required_cols).issubset(cols):
-            logger.warning("Пропуск создания индекса %s: нет колонок %s в %s", idx_name, required_cols, table)
+            logger.warning(
+                "Пропуск создания индекса %s: нет колонок %s в %s",
+                idx_name,
+                required_cols,
+                table,
+            )
             continue
         try:
             conn.execute(create_sql)
@@ -393,7 +513,9 @@ def ensure_work_order_workers_amounts(conn: sqlite3.Connection) -> None:
             return
         cols = set(get_table_columns(conn, "work_order_workers"))
         if "amount" not in cols:
-            conn.execute("ALTER TABLE work_order_workers ADD COLUMN amount NUMERIC NOT NULL DEFAULT 0")
+            conn.execute(
+                "ALTER TABLE work_order_workers ADD COLUMN amount NUMERIC NOT NULL DEFAULT 0"
+            )
         # For each work order, if all amounts are zero, distribute equally
         orders = conn.execute("SELECT id, total_amount FROM work_orders").fetchall()
         for o in orders:
@@ -405,7 +527,9 @@ def ensure_work_order_workers_amounts(conn: sqlite3.Connection) -> None:
                 continue
             if all((r["amount"] is None or float(r["amount"]) == 0.0) for r in rows):
                 n = len(rows)
-                total = float(o["total_amount"]) if o["total_amount"] is not None else 0.0
+                total = (
+                    float(o["total_amount"]) if o["total_amount"] is not None else 0.0
+                )
                 per = round((total / n) if n else 0.0, 2)
                 amounts = [per] * n
                 # Adjust last to correct rounding diff

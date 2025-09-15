@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from config.settings import CONFIG
+from config.settings import ensure_data_directories
 from db.schema import initialize_schema
 from db.sqlite import get_connection
 from utils.backup import backup_sqlite_db
@@ -17,93 +17,105 @@ from tkinter import filedialog, messagebox
 from utils.auto_yadisk import start_yadisk_upload_scheduler
 
 
+def _ensure_db_available(logger: logging.Logger) -> None:
+    """Ensure database path is set and DB exists; prompt user if necessary.
+
+    This function centralizes the interactive logic previously embedded in main()
+    to make the flow clearer and testable.
+    """
+    db_path = get_current_db_path()
+    if db_path.exists():
+        return
+
+    logger.info("Локальная БД не найдена. Пытаемся подключиться к сетевой БД...")
+
+    network_db_path = get_network_db_path()
+    if network_db_path and network_db_path.exists():
+        logger.info(f"Найдена сетевая БД: {network_db_path}")
+        set_db_path(network_db_path)
+        return
+
+    logger.warning("Сетевая БД недоступна. Показываем диалог выбора БД...")
+
+    # Try the nicer custom dialog first; fall back to tkinter dialogs if it fails
+    try:
+        tmp = ctk.CTk()
+        tmp.withdraw()
+        from gui.network_db_dialog import NetworkDbDialog
+
+        dialog = NetworkDbDialog(tmp)
+        tmp.wait_window(dialog)
+        try:
+            tmp.destroy()
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        return
+    except Exception as exc:
+        logger.exception("Ошибка в диалоге выбора БД: %s", exc)
+
+    # Fallback: tkinter dialogs
+    try:
+        tmp = tk.Tk()
+        tmp.withdraw()
+        create_new = messagebox.askyesno(
+            "База данных",
+            "База данных не найдена.\n\nСоздать новую базу данных?\n(Нет — выбрать существующую)",
+            parent=tmp,
+        )
+        chosen: str | None = None
+        if create_new:
+            initial = "base_sdelka_rmz.db"
+            chosen = filedialog.asksaveasfilename(
+                parent=tmp,
+                title="Создать новую базу данных",
+                defaultextension=".db",
+                initialfile=initial,
+                filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
+            )
+            if chosen:
+                from pathlib import Path as _P
+
+                p = _P(chosen)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                set_db_path(p)
+                with get_connection(p) as conn:
+                    initialize_schema(conn)
+        else:
+            chosen = filedialog.askopenfilename(
+                parent=tmp,
+                title="Выберите файл базы данных",
+                filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
+            )
+            if chosen:
+                from pathlib import Path as _P
+
+                p = _P(chosen)
+                set_db_path(p)
+        try:
+            tmp.destroy()
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+    except Exception as exc:
+        logger.exception("Ошибка в fallback-диалоге выбора БД: %s", exc)
+
+
 def main() -> None:
     configure_logging()
     logger = logging.getLogger(__name__)
 
-    # Проверка наличия БД ДО создания основного окна.
-    # Сначала пытаемся подключиться к сетевой БД, если локальная не найдена.
+    # Create data/logs/backups dirs explicitly at startup
+    try:
+        ensure_data_directories()
+    except Exception:
+        logger.exception("Не удалось создать служебные директории")
+
+    # Ensure DB is available (may prompt the user)
+    _ensure_db_available(logger)
+
     db_path = get_current_db_path()
     if not db_path.exists():
-        logger.info("Локальная БД не найдена. Пытаемся подключиться к сетевой БД...")
-        
-        # Пытаемся подключиться к сетевой БД
-        network_db_path = get_network_db_path()
-        if network_db_path and network_db_path.exists():
-            logger.info(f"Найдена сетевая БД: {network_db_path}")
-            set_db_path(network_db_path)
-            db_path = network_db_path
-        else:
-            logger.warning("Сетевая БД недоступна. Показываем диалог выбора БД...")
-            
-            # Показываем диалог для выбора БД
-            try:
-                tmp = ctk.CTk()
-                tmp.withdraw()
-                
-                from gui.network_db_dialog import NetworkDbDialog
-                dialog = NetworkDbDialog(tmp)
-                tmp.wait_window(dialog)
-                tmp.destroy()
-                
-                # Обновляем путь после диалога
-                db_path = get_current_db_path()
-                
-            except Exception as exc:
-                logger.exception(f"Ошибка в диалоге выбора БД: {exc}")
-                # Fallback к простому tkinter диалогу
-                try:
-                    tmp = tk.Tk()
-                    tmp.withdraw()
-                    create_new = messagebox.askyesno(
-                        "База данных",
-                        "База данных не найдена.\n\nСоздать новую базу данных?\n(Нет — выбрать существующую)",
-                        parent=tmp,
-                    )
-                    chosen: str | None = None
-                    if create_new:
-                        initial = "base_sdelka_rmz.db"
-                        chosen = filedialog.asksaveasfilename(
-                            parent=tmp,
-                            title="Создать новую базу данных",
-                            defaultextension=".db",
-                            initialfile=initial,
-                            filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
-                        )
-                        if chosen:
-                            from pathlib import Path as _P
-                            p = _P(chosen)
-                            try:
-                                p.parent.mkdir(parents=True, exist_ok=True)
-                            except Exception:
-                                pass
-                            set_db_path(p)
-                            with get_connection(p) as conn:
-                                initialize_schema(conn)
-                    else:
-                        chosen = filedialog.askopenfilename(
-                            parent=tmp,
-                            title="Выберите файл базы данных",
-                            filetypes=[["SQLite DB", "*.db"], ["Все файлы", "*.*"]],
-                        )
-                        if chosen:
-                            from pathlib import Path as _P
-                            p = _P(chosen)
-                            set_db_path(p)
-                    try:
-                        tmp.destroy()
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-                
-                # Обновляем путь после fallback диалога
-                db_path = get_current_db_path()
-        
-        # Если по-прежнему файла нет — выходим тихо
-        if not db_path.exists():
-            logger.error("База данных не выбрана/не создана. Завершение.")
-            return
+        logger.error("База данных не выбрана/не создана. Завершение.")
+        return
 
     # Бэкап БД (если файл существует)
     backup_sqlite_db(db_path)
@@ -114,12 +126,13 @@ def main() -> None:
 
     # Единый root: создаём основное окно, скрываем, показываем диалог, затем раскрываем окно
     from utils.runtime_mode import set_mode, AppMode
+
     app = AppWindow()
     try:
         try:
             app.withdraw()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             dlg = LoginDialog(app)
             app.wait_window(dlg)
@@ -132,19 +145,27 @@ def main() -> None:
             try:
                 app.lift()
                 app.focus_force()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             # Пересобрать формы под итоговый режим (readonly/full)
             try:
                 app.rebuild_forms_for_mode()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+
             # Небольшая задержка перед разворачиванием, чтобы избежать мигания
             def _zoom():
                 try:
                     app.state("zoomed")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
+
             try:
                 app.after(50, _zoom)
             except Exception:
@@ -153,9 +174,11 @@ def main() -> None:
             try:
                 start_yadisk_upload_scheduler()
             except Exception:
-                logging.getLogger(__name__).exception("Не удалось запустить планировщик Yandex Диска")
-        except Exception:
-            pass
+                logging.getLogger(__name__).exception(
+                    "Не удалось запустить планировщик Yandex Диска"
+                )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         app.mainloop()
     finally:
         # Безопасно отменяем отложенные коллбеки, чтобы не было ошибок after script на первом старте
@@ -164,10 +187,12 @@ def main() -> None:
                 for aid in list(app._after_ids):
                     try:
                         app.after_cancel(aid)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as exc:
+                        logging.getLogger(__name__).exception(
+                            "Ignored unexpected error: %s", exc
+                        )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
 
 if __name__ == "__main__":

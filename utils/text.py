@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 
 def normalize_for_search(value: str | None) -> str | None:

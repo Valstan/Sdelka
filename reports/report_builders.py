@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Sequence
+from typing import Any
 
 import pandas as pd
 from utils.text import short_fio, normalize_for_search
+
+
+import logging
 
 
 def work_orders_report_df(
@@ -35,11 +38,15 @@ def work_orders_report_df(
         params_where.append(date_to)
     # Фильтр по работнику: либо по id через сравнение нормализованного ФИО, либо по тексту
     if worker_id and worker_name:
-        where.append("(w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?) OR w.full_name_norm = ?)")
+        where.append(
+            "(w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?) OR w.full_name_norm = ?)"
+        )
         params_where.append(worker_id)
         params_where.append(normalize_for_search(worker_name) or "")
     elif worker_id:
-        where.append("w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?)")
+        where.append(
+            "w.full_name_norm = (SELECT full_name_norm FROM workers WHERE id = ?)"
+        )
         params_where.append(worker_id)
     elif worker_name:
         where.append("w.full_name_norm = ?")
@@ -49,7 +56,9 @@ def work_orders_report_df(
         params_where.append(dept)
     if product_id:
         # Учитываем как основной продукт заголовка, так и дополнительные изделия наряда
-        where.append("(wo.product_id = ? OR EXISTS (SELECT 1 FROM work_order_products wop WHERE wop.work_order_id = wo.id AND wop.product_id = ?))")
+        where.append(
+            "(wo.product_id = ? OR EXISTS (SELECT 1 FROM work_order_products wop WHERE wop.work_order_id = wo.id AND wop.product_id = ?))"
+        )
         params_where.append(product_id)
         params_where.append(product_id)
     if contract_id:
@@ -59,7 +68,9 @@ def work_orders_report_df(
     # Для этого ожидается, что GUI передает текст в product_name через worker_name или иной параметр.
 
     if job_type_id:
-        where.append("EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)")
+        where.append(
+            "EXISTS (SELECT 1 FROM work_order_items i WHERE i.work_order_id = wo.id AND i.job_type_id = ?)"
+        )
         params_where.append(job_type_id)
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
@@ -107,6 +118,7 @@ def work_orders_report_context(
     Returns keys: title, period, dept_name, created_at, total_amount, worker_signatures, dept_head, hr_head
     """
     from datetime import datetime
+
     title = "Отчет по нарядам"
     created_at = datetime.now().strftime("%d.%m.%Y")
     period = None
@@ -120,10 +132,14 @@ def work_orders_report_context(
         for cand in ("Начислено", "Сумма", "line_amount", "Итог", "total", "Итого"):
             if cand in df.columns:
                 try:
-                    total_amount = float(pd.to_numeric(df[cand], errors="coerce").fillna(0).sum())
+                    total_amount = float(
+                        pd.to_numeric(df[cand], errors="coerce").fillna(0).sum()
+                    )
                     break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
 
     # Определяем работника для шапки: по id/name если заданы, иначе из df
     worker_signatures: list[str] = []
@@ -131,20 +147,25 @@ def work_orders_report_context(
     worker_dept: str | None = None
     if worker_id:
         try:
-            row = conn.execute("SELECT full_name, dept FROM workers WHERE id=?", (worker_id,)).fetchone()
+            row = conn.execute(
+                "SELECT full_name, dept FROM workers WHERE id=?", (worker_id,)
+            ).fetchone()
             if row:
                 single_worker_short = short_fio(str(row[0]))
                 worker_dept = row[1]
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     if not single_worker_short and worker_name:
         try:
-            row = conn.execute("SELECT full_name, dept FROM workers WHERE full_name_norm=?", (normalize_for_search(worker_name),)).fetchone()
+            row = conn.execute(
+                "SELECT full_name, dept FROM workers WHERE full_name_norm=?",
+                (normalize_for_search(worker_name),),
+            ).fetchone()
             if row:
                 single_worker_short = short_fio(str(row[0]))
                 worker_dept = row[1]
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     # Если не удалось — попробуем из df
     if not single_worker_short:
         for cand in ("Работник", "ФИО", "full_name"):
@@ -153,8 +174,10 @@ def work_orders_report_context(
                     vals = [str(x) for x in df[cand].dropna().unique().tolist()]
                     if len(vals) == 1:
                         single_worker_short = short_fio(vals[0])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
                 break
     if not worker_dept:
         if dept:
@@ -174,14 +197,19 @@ def work_orders_report_context(
     effective_dept = dept_name or context_like_dept(df)
     if effective_dept:
         try:
-            row = conn.execute("SELECT head_full_name FROM departments WHERE name = ?", (effective_dept,)).fetchone()
+            row = conn.execute(
+                "SELECT head_full_name FROM departments WHERE name = ?",
+                (effective_dept,),
+            ).fetchone()
             if row and row[0]:
                 dept_head = short_fio(str(row[0]))
         except Exception:
             dept_head = None
     # HR head из таблицы settings или persons (если есть). Падаем в тихий режим если нет.
     try:
-        row = conn.execute("SELECT value FROM app_settings WHERE key='hr_head' ").fetchone()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='hr_head' "
+        ).fetchone()
         if row and row[0]:
             hr_head = short_fio(str(row[0]))
     except Exception:
@@ -207,6 +235,6 @@ def context_like_dept(df: pd.DataFrame) -> str | None:
             vals = [str(x) for x in df["Цех"].dropna().unique().tolist()]
             if len(vals) == 1:
                 return vals[0]
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     return None

@@ -4,9 +4,8 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Iterable, Sequence
+from typing import Sequence
 
-from config.settings import CONFIG
 from db import queries as q
 from services.validation import validate_date, validate_positive_quantity
 
@@ -29,10 +28,10 @@ class WorkOrderWorkerInput:
 @dataclass
 class WorkOrderInput:
     date: str
-    product_id: int | None
-    contract_id: int
+    product_id: int | None  # Устарело, используется extra_product_ids
+    contract_id: int | None
     items: Sequence[WorkOrderItemInput]
-    workers: Sequence[WorkOrderWorkerInput]  # Изменено с worker_ids на workers
+    workers: Sequence[WorkOrderWorkerInput]
     order_no: int | None = None
     extra_product_ids: Sequence[int] | None = None
 
@@ -45,30 +44,36 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     validate_date(data.date)
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
-    # Требуем обязательный выбор изделия из БД
-    if (data.product_id is None) and (not data.extra_product_ids):
-        raise ValueError("Выберите изделие из списка (из базы данных)")
-    # Провалидируем наличие контракта и изделия, чтобы не ловить FK ошибку
-    # Валидация контракта (только один)
-    if data.contract_id is None:
-        raise ValueError("Выберите контракт из списка")
-    c_row = conn.execute("SELECT id FROM contracts WHERE id = ?", (data.contract_id,)).fetchone()
-    if not c_row:
-        raise ValueError("Выбранный контракт не найден. Выберите контракт из списка.")
+    # Требуем обязательный выбор изделий из БД
+    if not data.extra_product_ids:
+        raise ValueError("Добавьте хотя бы одно изделие")
 
-    product_ids: list[int] = []
-    if data.extra_product_ids:
-        product_ids = [int(x) for x in data.extra_product_ids if x is not None]
-    else:
-        if data.product_id is not None:
-            product_ids = [int(data.product_id)]
+    product_ids = [int(x) for x in data.extra_product_ids if x is not None]
+    if not product_ids:
+        raise ValueError("Добавьте хотя бы одно изделие")
+
+    # Валидация контракта (может быть None, если изделия не связаны с контрактами)
+    if data.contract_id is not None:
+        c_row = conn.execute(
+            "SELECT id FROM contracts WHERE id = ?", (data.contract_id,)
+        ).fetchone()
+        if not c_row:
+            raise ValueError(
+                "Выбранный контракт не найден. Выберите контракт из списка."
+            )
     for pid in product_ids:
-        p_row = conn.execute("SELECT id, contract_id FROM products WHERE id = ?", (pid,)).fetchone()
+        p_row = conn.execute(
+            "SELECT id, contract_id FROM products WHERE id = ?", (pid,)
+        ).fetchone()
         if not p_row:
-            raise ValueError("Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле.")
+            raise ValueError(
+                "Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле."
+            )
         # Жесткая привязка изделия к одному контракту: если не задан — привяжем к 'Без контракта'; если задан и не совпадает — ошибка
         try:
-            prod_contract_id = p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+            prod_contract_id = (
+                p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+            )
         except Exception:
             prod_contract_id = None
         if prod_contract_id is None:
@@ -76,45 +81,67 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
             q.set_product_contract(conn, int(pid), int(default_cid))
             prod_contract_id = default_cid
         if int(prod_contract_id) != int(data.contract_id):
-            raise ValueError("Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту.")
+            raise ValueError(
+                "Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту."
+            )
 
     total = Decimal("0")
     line_values: list[tuple[int, float, float, float]] = []
 
     for item in data.items:
         validate_positive_quantity(item.quantity)
-        jt = conn.execute("SELECT id, price FROM job_types WHERE id = ?", (item.job_type_id,)).fetchone()
+        jt = conn.execute(
+            "SELECT id, price FROM job_types WHERE id = ?", (item.job_type_id,)
+        ).fetchone()
         if not jt:
             raise ValueError(f"Вид работ id={item.job_type_id} не найден")
         unit_price = Decimal(str(jt["price"]))
         line_amount = _round_rub(unit_price * Decimal(str(item.quantity)))
         total += line_amount
-        line_values.append((item.job_type_id, float(item.quantity), float(unit_price), float(line_amount)))
+        line_values.append(
+            (
+                item.job_type_id,
+                float(item.quantity),
+                float(unit_price),
+                float(line_amount),
+            )
+        )
 
     total = _round_rub(total)
 
     # Определяем номер наряда: из данных или следующий по счетчику
-    order_no = int(data.order_no) if (getattr(data, "order_no", None) not in (None, "")) else q.next_order_no(conn)
+    order_no = (
+        int(data.order_no)
+        if (getattr(data, "order_no", None) not in (None, ""))
+        else q.next_order_no(conn)
+    )
     # Проверим уникальность, чтобы не уткнуться в UNIQUE
     if q.order_no_in_use(conn, order_no):
-        raise ValueError(f"Номер наряда {order_no} уже используется. Укажите другой номер.")
-    # Сохраним заголовок, контракт один, изделие из первой позиции при наличии
-    head_product = (product_ids[0] if product_ids else None)
-    work_order_id = q.insert_work_order(conn, order_no, data.date, head_product, data.contract_id, float(total))
+        raise ValueError(
+            f"Номер наряда {order_no} уже используется. Укажите другой номер."
+        )
+    # Сохраним заголовок наряда
+    work_order_id = q.insert_work_order(
+        conn, order_no, data.date, data.contract_id, float(total)
+    )
     # Сохраним множественные изделия (контракты — только один, не сохраняем связи)
     try:
         if product_ids:
             q.set_work_order_products(conn, work_order_id, product_ids)
     except Exception:
-        logger.warning("Не удалось сохранить дополнительные изделия для наряда %s", work_order_id)
+        logger.warning(
+            "Не удалось сохранить дополнительные изделия для наряда %s", work_order_id
+        )
 
-    for (job_type_id, quantity, unit_price, line_amount) in line_values:
-        q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
+    for job_type_id, quantity, unit_price, line_amount in line_values:
+        q.insert_work_order_item(
+            conn, work_order_id, job_type_id, quantity, unit_price, line_amount
+        )
 
     # Проверим работников
     if not data.workers:
         raise ValueError("Добавьте работников в бригаду")
-    
+
     # Убираем дубликаты и проверяем корректность ID
     unique_workers = []
     seen_ids = set()
@@ -122,21 +149,26 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         if worker.worker_id not in seen_ids:
             unique_workers.append(worker)
             seen_ids.add(worker.worker_id)
-    
+
     if len(unique_workers) != len(data.workers):
-        logger.warning("Обнаружены дублирующиеся ID работников: %s -> %s", 
-                      [w.worker_id for w in data.workers], [w.worker_id for w in unique_workers])
-    
+        logger.warning(
+            "Обнаружены дублирующиеся ID работников: %s -> %s",
+            [w.worker_id for w in data.workers],
+            [w.worker_id for w in unique_workers],
+        )
+
     # Разрешаем только работников из базы (положительные ID)
     if any(w.worker_id <= 0 for w in unique_workers):
-        raise ValueError("Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'.")
+        raise ValueError(
+            "Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'."
+        )
     existing_workers = unique_workers
-    
+
     # Проверяем корректность ID
     for worker in unique_workers:
         if not isinstance(worker.worker_id, int):
             raise ValueError(f"Некорректный ID работника: {worker.worker_id}")
-    
+
     # Проверяем существование работников в базе (только для положительных ID)
     if existing_workers:
         existing_ids = [w.worker_id for w in existing_workers]
@@ -150,12 +182,18 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
         if len(found_map) != len(existing_ids):
             missing_ids = set(existing_ids) - set(found_map.keys())
             logger.error("Работники не найдены в базе: %s", missing_ids)
-            raise ValueError(f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка.")
+            raise ValueError(
+                f"Работники с ID {missing_ids} не найдены в базе данных. Выберите работников из списка."
+            )
         # Блокировать уволенных
-        fired_ids = [wid for wid in existing_ids if found_map.get(wid, "Работает") != "Работает"]
+        fired_ids = [
+            wid for wid in existing_ids if found_map.get(wid, "Работает") != "Работает"
+        ]
         if fired_ids:
-            raise ValueError(f"Нельзя добавить уволенных работников в наряд: {fired_ids}")
-    
+            raise ValueError(
+                f"Нельзя добавить уволенных работников в наряд: {fired_ids}"
+            )
+
     # Сохраняем заданные суммы по исходному ID (все они положительные)
     final_worker_ids: list[int] = []
     specified_by_orig: dict[int, Decimal] = {}
@@ -188,7 +226,11 @@ def create_work_order(conn: sqlite3.Connection, data: WorkOrderInput) -> int:
     unspecified_ids = [wid for wid in final_worker_ids if wid not in specified_by_final]
     allocations: list[tuple[int, float]] = []
     if unspecified_ids:
-        per = _round_rub(remainder / Decimal(len(unspecified_ids))) if remainder > 0 else Decimal("0")
+        per = (
+            _round_rub(remainder / Decimal(len(unspecified_ids)))
+            if remainder > 0
+            else Decimal("0")
+        )
         amounts = [per] * len(unspecified_ids)
         diff = _round_rub(remainder - per * Decimal(len(unspecified_ids)))
         if amounts and diff != Decimal("0"):
@@ -212,7 +254,9 @@ class LoadedWorkOrder:
     date: str
     product_id: int | None
     contract_id: int
-    items: list[tuple[int, str, float, float, float]]  # job_type_id, name, qty, unit_price, line_amount
+    items: list[
+        tuple[int, str, float, float, float]
+    ]  # job_type_id, name, qty, unit_price, line_amount
     workers: list[tuple[int, float]]  # (worker_id, amount)
     total_amount: float
 
@@ -224,15 +268,26 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
     items_rows = q.get_work_order_items(conn, work_order_id)
     workers_rows = q.get_work_order_workers(conn, work_order_id)
     items = [
-        (r["job_type_id"], r["job_name"], float(r["quantity"]), float(r["unit_price"]), float(r["line_amount"]))
+        (
+            r["job_type_id"],
+            r["job_name"],
+            float(r["quantity"]),
+            float(r["unit_price"]),
+            float(r["line_amount"]),
+        )
         for r in items_rows
     ]
-    worker_allocs = [(int(r["worker_id"]), float(r["amount"]) if r["amount"] is not None else 0.0) for r in workers_rows]
+    worker_allocs = [
+        (int(r["worker_id"]), float(r["amount"]) if r["amount"] is not None else 0.0)
+        for r in workers_rows
+    ]
     return LoadedWorkOrder(
         id=int(header["id"]),
         order_no=int(header["order_no"]),
         date=str(header["date"]),
-        product_id=int(header["product_id"]) if header["product_id"] is not None else None,
+        product_id=(
+            int(header["product_id"]) if header["product_id"] is not None else None
+        ),
         contract_id=int(header["contract_id"]),
         items=items,
         workers=worker_allocs,
@@ -240,7 +295,9 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
     )
 
 
-def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOrderInput) -> None:
+def update_work_order(
+    conn: sqlite3.Connection, work_order_id: int, data: WorkOrderInput
+) -> None:
     validate_date(data.date)
     if not data.items:
         raise ValueError("Наряд должен содержать хотя бы одну строку работ")
@@ -255,23 +312,36 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
 
     for item in data.items:
         validate_positive_quantity(item.quantity)
-        jt = conn.execute("SELECT id, price FROM job_types WHERE id = ?", (item.job_type_id,)).fetchone()
+        jt = conn.execute(
+            "SELECT id, price FROM job_types WHERE id = ?", (item.job_type_id,)
+        ).fetchone()
         if not jt:
             raise ValueError(f"Вид работ id={item.job_type_id} не найден")
         unit_price = Decimal(str(jt["price"]))
         line_amount = _round_rub(unit_price * Decimal(str(item.quantity)))
         total += line_amount
-        line_values.append((item.job_type_id, float(item.quantity), float(unit_price), float(line_amount)))
+        line_values.append(
+            (
+                item.job_type_id,
+                float(item.quantity),
+                float(unit_price),
+                float(line_amount),
+            )
+        )
 
     total = _round_rub(total)
 
     # Обновим заголовок, учитывая возможную смену номера наряда
     current = q.get_work_order_header(conn, work_order_id)
     cur_no = int(current["order_no"]) if current else None
-    new_no = cur_no if getattr(data, "order_no", None) in (None, "") else int(data.order_no)
+    new_no = (
+        cur_no if getattr(data, "order_no", None) in (None, "") else int(data.order_no)
+    )
     if new_no != cur_no:
         if q.order_no_in_use(conn, new_no, exclude_id=work_order_id):
-            raise ValueError(f"Номер наряда {new_no} уже используется. Укажите другой номер.")
+            raise ValueError(
+                f"Номер наряда {new_no} уже используется. Укажите другой номер."
+            )
     product_ids: list[int] = []
     if data.extra_product_ids:
         product_ids = [int(x) for x in data.extra_product_ids if x is not None]
@@ -279,15 +349,21 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
         if data.product_id is not None:
             product_ids = [int(data.product_id)]
 
-    head_product = (product_ids[0] if product_ids else None)
+    head_product = product_ids[0] if product_ids else None
 
     # Проверим соответствие изделия и контракта, как при создании
     if head_product is not None:
-        p_row = conn.execute("SELECT id, contract_id FROM products WHERE id = ?", (head_product,)).fetchone()
+        p_row = conn.execute(
+            "SELECT id, contract_id FROM products WHERE id = ?", (head_product,)
+        ).fetchone()
         if not p_row:
-            raise ValueError("Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле.")
+            raise ValueError(
+                "Выбранное изделие не найдено. Выберите изделие из списка или очистьте поле."
+            )
         try:
-            prod_contract_id = p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+            prod_contract_id = (
+                p_row["contract_id"] if isinstance(p_row, dict) else p_row[1]
+            )
         except Exception:
             prod_contract_id = None
         if prod_contract_id is None:
@@ -295,21 +371,35 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
             q.set_product_contract(conn, int(head_product), int(default_cid))
             prod_contract_id = default_cid
         if int(prod_contract_id) != int(data.contract_id):
-            raise ValueError("Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту.")
+            raise ValueError(
+                "Изделие привязано к другому контракту. Выберите изделие, соответствующее контракту."
+            )
 
-    q.update_work_order_header(conn, work_order_id, new_no, data.date, head_product, data.contract_id, float(total))
+    q.update_work_order_header(
+        conn,
+        work_order_id,
+        new_no,
+        data.date,
+        head_product,
+        data.contract_id,
+        float(total),
+    )
     # Пересохраним изделия (контракты — один)
     q.set_work_order_products(conn, work_order_id, product_ids)
 
     q.delete_work_order_items(conn, work_order_id)
-    for (job_type_id, quantity, unit_price, line_amount) in line_values:
-        q.insert_work_order_item(conn, work_order_id, job_type_id, quantity, unit_price, line_amount)
+    for job_type_id, quantity, unit_price, line_amount in line_values:
+        q.insert_work_order_item(
+            conn, work_order_id, job_type_id, quantity, unit_price, line_amount
+        )
 
     # Обрабатываем работников: допускаются только работники из базы
     if not data.workers:
         raise ValueError("Добавьте работников в бригаду")
     if any((w.worker_id is None) or (w.worker_id <= 0) for w in data.workers):
-        raise ValueError("Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'.")
+        raise ValueError(
+            "Все работники должны быть выбраны из подсказки (из базы). Если работника нет — добавьте его в справочник 'Работники'."
+        )
     existing_ids = [int(w.worker_id) for w in data.workers]
     placeholders = ",".join(["?"] * len(existing_ids))
     found = conn.execute(
@@ -345,7 +435,11 @@ def update_work_order(conn: sqlite3.Connection, work_order_id: int, data: WorkOr
     unspecified_ids = [wid for wid in final_worker_ids if wid not in specified_by_final]
     allocations: list[tuple[int, float]] = []
     if unspecified_ids:
-        per = _round_rub(remainder / Decimal(len(unspecified_ids))) if remainder > 0 else Decimal("0")
+        per = (
+            _round_rub(remainder / Decimal(len(unspecified_ids)))
+            if remainder > 0
+            else Decimal("0")
+        )
         amounts = [per] * len(unspecified_ids)
         diff = _round_rub(remainder - per * Decimal(len(unspecified_ids)))
         if amounts and diff != Decimal("0"):

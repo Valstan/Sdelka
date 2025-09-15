@@ -9,6 +9,9 @@ from db.sqlite import get_connection
 from db.schema import initialize_schema
 
 
+import logging
+
+
 class DbSetupDialog(ctk.CTkToplevel):
     def __init__(self, master) -> None:
         super().__init__(master)
@@ -18,21 +21,21 @@ class DbSetupDialog(ctk.CTkToplevel):
         try:
             # Всегда поверх и модально по отношению к временной корневой
             self.transient(master)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.attributes("-topmost", True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.grab_set()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.focus_force()
             self.lift()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         ctk.CTkLabel(
             self,
@@ -47,9 +50,15 @@ class DbSetupDialog(ctk.CTkToplevel):
         btns = ctk.CTkFrame(self)
         btns.pack(fill="x", padx=16, pady=6)
 
-        ctk.CTkButton(btns, text="Выбрать существующую БД...", command=self._choose_existing).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Создать новую БД...", command=self._create_new).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Выход", fg_color="#6b7280", command=self._cancel).pack(side="right", padx=6)
+        ctk.CTkButton(
+            btns, text="Выбрать существующую БД...", command=self._choose_existing
+        ).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Создать новую БД...", command=self._create_new).pack(
+            side="left", padx=6
+        )
+        ctk.CTkButton(
+            btns, text="Выход", fg_color="#6b7280", command=self._cancel
+        ).pack(side="right", padx=6)
 
         self.result: bool = False
 
@@ -67,7 +76,9 @@ class DbSetupDialog(ctk.CTkToplevel):
                 # Лёгкая проверка — запроc sqlite_master
                 conn.execute("SELECT name FROM sqlite_master LIMIT 1")
         except Exception as exc:
-            messagebox.showerror("База данных", f"Не удалось открыть файл БД: {exc}", parent=self)
+            messagebox.showerror(
+                "База данных", f"Не удалось открыть файл БД: {exc}", parent=self
+            )
             return
         set_db_path(p)
         self._ok_and_close()
@@ -78,22 +89,24 @@ class DbSetupDialog(ctk.CTkToplevel):
         try:
             if cur.parent.exists():
                 initial_name = cur.name
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         path = self._ask_save_db(initial_name)
         if not path:
             return
         p = Path(path)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             set_db_path(p)
             with get_connection(p) as conn:
                 initialize_schema(conn)
         except Exception as exc:
-            messagebox.showerror("Создание БД", f"Не удалось создать БД: {exc}", parent=self)
+            messagebox.showerror(
+                "Создание БД", f"Не удалось создать БД: {exc}", parent=self
+            )
             return
         self._ok_and_close()
 
@@ -101,8 +114,8 @@ class DbSetupDialog(ctk.CTkToplevel):
         self.result = False
         try:
             self.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self.destroy()
 
     def _ok_and_close(self) -> None:
@@ -110,8 +123,8 @@ class DbSetupDialog(ctk.CTkToplevel):
         try:
             self.update_idletasks()
             self.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self.destroy()
 
     # --- Вспомогательные методы для корректного вызова диалогов файловой системы ---
@@ -119,32 +132,32 @@ class DbSetupDialog(ctk.CTkToplevel):
         # Снять topmost и grab, чтобы системный проводник не прятался под окном
         try:
             self.attributes("-topmost", False)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.update_idletasks()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _after_system_dialog(self) -> None:
         # Вернуть модальность и поверх всех окон
         try:
             self.grab_set()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.attributes("-topmost", True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.lift()
             self.focus_force()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _ask_open_db(self) -> str | None:
         self._before_system_dialog()
@@ -169,5 +182,3 @@ class DbSetupDialog(ctk.CTkToplevel):
             )
         finally:
             self._after_system_dialog()
-
-

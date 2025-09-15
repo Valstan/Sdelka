@@ -7,19 +7,24 @@ import argparse
 import os
 import importlib
 
+
+import logging
+
+
 def _data_arg(src: Path, dst: str) -> list[str]:
-    sep = ';' if os.name == 'nt' else ':'
+    sep = ";" if os.name == "nt" else ":"
     return ["--add-data", f"{str(src)}{sep}{dst}"]
 
 
 def ensure_pyinstaller() -> None:
     try:
         import PyInstaller  # type: ignore  # noqa: F401
+
         return
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     print("Installing PyInstaller...")
-    rc = subprocess.call([sys.executable, "-m", "pip", "install", "pyinstaller"]) 
+    rc = subprocess.call([sys.executable, "-m", "pip", "install", "pyinstaller"])
     if rc != 0:
         raise SystemExit("Failed to install pyinstaller")
 
@@ -30,24 +35,37 @@ def main() -> None:
     if not entry.exists():
         raise SystemExit(f"main.py not found at {entry}")
 
-    parser = argparse.ArgumentParser(description="Build Sdelka executable with PyInstaller")
-    parser.add_argument("--name", default=None, help="Executable name (default: Sdelka_RMZ_<version>)")
+    parser = argparse.ArgumentParser(
+        description="Build Sdelka executable with PyInstaller"
+    )
+    parser.add_argument(
+        "--name", default=None, help="Executable name (default: Sdelka_RMZ_<version>)"
+    )
     parser.add_argument("--icon", default=None, help="Path to .ico icon (Windows)")
-    parser.add_argument("--dist", default=str(root_dir / "dist"), help="Output dist directory")
-    parser.add_argument("--onefile", action="store_true", help="Build as onefile (default)")
-    parser.add_argument("--onedir", action="store_true", help="Build as onedir (for debugging)")
+    parser.add_argument(
+        "--dist", default=str(root_dir / "dist"), help="Output dist directory"
+    )
+    parser.add_argument(
+        "--onefile", action="store_true", help="Build as onefile (default)"
+    )
+    parser.add_argument(
+        "--onedir", action="store_true", help="Build as onedir (for debugging)"
+    )
     args = parser.parse_args()
 
     # Determine versioned name
     try:
         from utils.versioning import get_version  # type: ignore
+
         ver = get_version()
     except Exception:
         ver = ""
+
     def _sanitize(n: str) -> str:
         n = n.replace(" ", "_")
         n = n.replace("/", "_").replace("\\", "_")
         return n
+
     ver_tag = ver.replace(".", "_") if ver else ""
     default_name = _sanitize(f"Sdelka_RMZ_{ver_tag}") if ver_tag else "Sdelka_RMZ"
     exe_name = args.name or default_name
@@ -55,12 +73,19 @@ def main() -> None:
     ensure_pyinstaller()
 
     build_cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--noconfirm", "--clean", "--log-level=DEBUG",
-        "--name", exe_name,
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--clean",
+        "--log-level=DEBUG",
+        "--name",
+        exe_name,
         "--windowed",
-        "--collect-all", "tkcalendar",
-        "--collect-all", "customtkinter",
+        "--collect-all",
+        "tkcalendar",
+        "--collect-all",
+        "customtkinter",
         str(entry),
     ]
 
@@ -83,11 +108,14 @@ def main() -> None:
         cand = root_dir / "assets" / "app.ico"
         if cand.exists():
             icon_path = cand
-    if icon_path is not None and os.name == 'nt':
+    if icon_path is not None and os.name == "nt":
         build_cmd.extend(["--icon", str(icon_path)])
 
     # bundle optional assets folders if present
-    for folder, dst in [(root_dir / "assets", "assets"), (root_dir / "resources", "resources")]:
+    for folder, dst in [
+        (root_dir / "assets", "assets"),
+        (root_dir / "resources", "resources"),
+    ]:
         if folder.exists():
             build_cmd.extend(_data_arg(folder, dst))
 
@@ -98,10 +126,18 @@ def main() -> None:
             return True
         except Exception:
             return False
+
     hidden = [
-        "openpyxl", "xlrd", "xlsxwriter",
-        "pdfplumber", "docx", "odf", "dbfread",
-        "bs4", "lxml", "pandas",
+        "openpyxl",
+        "xlrd",
+        "xlsxwriter",
+        "pdfplumber",
+        "docx",
+        "odf",
+        "dbfread",
+        "bs4",
+        "lxml",
+        "pandas",
     ]
     for mod in hidden:
         if _has(mod):
@@ -137,8 +173,8 @@ def main() -> None:
             if p.name.lower() == f"{exe_name}.exe".lower():
                 found = p
                 break
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     if found is not None and found.exists():
         print(f"Build complete: {found}")
         return
@@ -147,8 +183,8 @@ def main() -> None:
         print("Dist contents:")
         for p in dist_dir.rglob("*.exe"):
             print(" -", p)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     raise SystemExit(f"Built exe not found: {dist_dir / (exe_name + '.exe')}")
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any, Callable
 
 import pandas as pd
 
@@ -18,5 +17,3 @@ def split_and_route(dfs: list[pd.DataFrame]) -> list[tuple[str, int]]:
         if d.kind != "unknown":
             out.append((d.kind, d.sheet_index))
     return out
-
-

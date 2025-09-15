@@ -8,6 +8,9 @@ import customtkinter as ctk
 from utils.user_prefs import UserPrefs
 
 
+import logging
+
+
 def apply_user_fonts(root: tk.Misc, prefs: UserPrefs) -> None:
     # Настройка базовых шрифтов Tk
     try:
@@ -15,41 +18,45 @@ def apply_user_fonts(root: tk.Misc, prefs: UserPrefs) -> None:
             try:
                 f = tkfont.nametofont(name)
                 f.configure(size=prefs.ui_font_size)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     # Настройка Treeview
     try:
         style = ttk.Style(root)
         # Фон/тема не меняем, только шрифты/высоту строки
         list_font = tkfont.Font(size=prefs.list_font_size)
-        heading_font = tkfont.Font(size=max(prefs.ui_font_size, prefs.list_font_size), weight="bold")
+        heading_font = tkfont.Font(
+            size=max(prefs.ui_font_size, prefs.list_font_size), weight="bold"
+        )
         row_h = int(prefs.list_font_size * 1.8)
         style.configure("Treeview", font=list_font, rowheight=row_h)
         style.configure("Treeview.Heading", font=heading_font)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     # Масштабирование CTk
     try:
         scale = max(0.6, prefs.ui_font_size / 12.0)
         ctk.set_widget_scaling(scale)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     # Компактный layout для больших шрифтов
     try:
         compact_layout(root, prefs)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     # Уведомить подписчиков, что шрифты/масштаб изменились
     try:
         root.event_generate("<<UIFontsChanged>>", when="tail")
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
 
 def compact_layout(root: tk.Misc, prefs: UserPrefs) -> None:
@@ -61,39 +68,59 @@ def compact_layout(root: tk.Misc, prefs: UserPrefs) -> None:
     def adjust_widget(widget: tk.Misc):
         # pack
         try:
+            if not hasattr(widget, "pack_info"):
+                return
             info = widget.pack_info()
             # Сохраняем оригиналы один раз
             if not hasattr(widget, "_orig_pack_padx"):
-                widget._orig_pack_padx = int(info.get("padx", 0)) if str(info.get("padx", "")).isdigit() else info.get("padx", 0)
+                widget._orig_pack_padx = (
+                    int(info.get("padx", 0))
+                    if str(info.get("padx", "")).isdigit()
+                    else info.get("padx", 0)
+                )
             if not hasattr(widget, "_orig_pack_pady"):
-                widget._orig_pack_pady = int(info.get("pady", 0)) if str(info.get("pady", "")).isdigit() else info.get("pady", 0)
+                widget._orig_pack_pady = (
+                    int(info.get("pady", 0))
+                    if str(info.get("pady", "")).isdigit()
+                    else info.get("pady", 0)
+                )
             ox = widget._orig_pack_padx
             oy = widget._orig_pack_pady
             nx = int(ox * factor) if isinstance(ox, int) else ox
             ny = int(oy * factor) if isinstance(oy, int) else oy
             widget.pack_configure(padx=nx, pady=ny)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # grid
         try:
+            if not hasattr(widget, "grid_info"):
+                return
             info = widget.grid_info()
             if info:
                 if not hasattr(widget, "_orig_grid_padx"):
-                    widget._orig_grid_padx = int(info.get("padx", 0)) if str(info.get("padx", "")).isdigit() else info.get("padx", 0)
+                    widget._orig_grid_padx = (
+                        int(info.get("padx", 0))
+                        if str(info.get("padx", "")).isdigit()
+                        else info.get("padx", 0)
+                    )
                 if not hasattr(widget, "_orig_grid_pady"):
-                    widget._orig_grid_pady = int(info.get("pady", 0)) if str(info.get("pady", "")).isdigit() else info.get("pady", 0)
+                    widget._orig_grid_pady = (
+                        int(info.get("pady", 0))
+                        if str(info.get("pady", "")).isdigit()
+                        else info.get("pady", 0)
+                    )
                 ox = widget._orig_grid_padx
                 oy = widget._orig_grid_pady
                 nx = int(ox * factor) if isinstance(ox, int) else ox
                 ny = int(oy * factor) if isinstance(oy, int) else oy
                 widget.grid_configure(padx=nx, pady=ny)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Рекурсия
         try:
             for child in widget.winfo_children():
                 adjust_widget(child)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     adjust_widget(root)

@@ -6,15 +6,22 @@ from typing import Callable
 import customtkinter as ctk
 from tkcalendar import Calendar
 
-from config.settings import CONFIG
 
+import logging
 
 # Минимальная задержка перед повторным открытием календаря на том же поле (секунды)
 RECENT_REOPEN_THRESHOLD_S: float = 0.3
 
 
 class DatePicker(ctk.CTkToplevel):
-    def __init__(self, master, initial: str | None, on_pick, anchor: ctk.CTkEntry | None = None, close_on_focus_out: bool = True):
+    def __init__(
+        self,
+        master,
+        initial: str | None,
+        on_pick,
+        anchor: ctk.CTkEntry | None = None,
+        close_on_focus_out: bool = True,
+    ):
         super().__init__(master)
         self.title("Выбор даты")
         self.resizable(False, False)
@@ -28,8 +35,8 @@ class DatePicker(ctk.CTkToplevel):
             if self.anchor is not None:
                 setattr(self.anchor, "_dp_is_open", True)
                 setattr(self.anchor, "_dp_opened_at", time.monotonic())
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         # Parse initial date
         selected_date = None
@@ -58,8 +65,10 @@ class DatePicker(ctk.CTkToplevel):
                 x = anchor.winfo_rootx()
                 y = anchor.winfo_rooty() + anchor.winfo_height()
                 self.geometry(f"+{x}+{y}")
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
         # Закрытие при потере фокуса и по ESC
         if close_on_focus_out:
@@ -77,27 +86,27 @@ class DatePicker(ctk.CTkToplevel):
             top = event.widget.winfo_toplevel()
             if top is self:
                 return  # клик внутри календаря — игнорируем
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self._close()
 
     def _close(self) -> None:
         try:
             # Снять глобальные бинды, чтобы не влиять на остальной UI
             self.unbind_all("<Button-1>")
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Снять флаг и отметить время закрытия для подавления мгновенного повторного открытия
         try:
             if self.anchor is not None:
                 setattr(self.anchor, "_dp_is_open", False)
                 setattr(self.anchor, "_dp_closed_at", time.monotonic())
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
             self.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _on_select(self, _evt=None):
         date_str = self.calendar.get_date()  # already dd.mm.yyyy
@@ -123,7 +132,9 @@ def can_open_for_anchor(anchor: ctk.CTkEntry | None) -> bool:
         return True
 
 
-def open_for_anchor(master, anchor: ctk.CTkEntry, initial: str, on_pick: Callable[[str], None]) -> None:
+def open_for_anchor(
+    master, anchor: ctk.CTkEntry, initial: str, on_pick: Callable[[str], None]
+) -> None:
     """Открывает DatePicker под указанным полем, если это допустимо согласно can_open_for_anchor."""
     if not can_open_for_anchor(anchor):
         return

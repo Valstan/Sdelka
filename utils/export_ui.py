@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -10,12 +9,17 @@ from db.sqlite import get_connection
 
 
 def _export_table_to_excel(table: str, target_path: str) -> None:
-    from import_export.excel_io import export_table_to_excel  # local import to avoid hard dep at import time
+    from import_export.excel_io import (
+        export_table_to_excel,
+    )  # local import to avoid hard dep at import time
+
     with get_connection() as conn:
         export_table_to_excel(conn, table, target_path)
 
 
-def create_export_button(parent: ctk.CTkFrame, table: str, button_text: str) -> ctk.CTkButton:
+def create_export_button(
+    parent: ctk.CTkFrame, table: str, button_text: str
+) -> ctk.CTkButton:
     """Create a standard export button for a given table.
 
     - parent: container to pack/place the button
@@ -48,5 +52,3 @@ def create_export_button(parent: ctk.CTkFrame, table: str, button_text: str) -> 
 
     btn = ctk.CTkButton(parent, text=button_text, command=_on_export)
     return btn
-
-

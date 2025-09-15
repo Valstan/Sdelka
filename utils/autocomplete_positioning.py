@@ -4,6 +4,9 @@ import customtkinter as ctk
 from typing import Union, Callable, Any
 
 
+import logging
+
+
 def place_suggestions_under_entry(
     entry: ctk.CTkEntry,
     suggestions_frame: ctk.CTkFrame,
@@ -14,8 +17,8 @@ def place_suggestions_under_entry(
         try:
             entry.update_idletasks()
             suggestions_frame.update_idletasks()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         # Текущий коэффициент масштабирования CustomTkinter
         try:
@@ -64,8 +67,8 @@ def place_suggestions_under_entry(
         # Ширина подсказок = ширине поля (в логических единицах)
         try:
             suggestions_frame.configure(width=width_units)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         suggestions_frame.place(x=relx, y=rely)
         suggestions_frame.lift()
@@ -75,8 +78,8 @@ def place_suggestions_under_entry(
             suggestions_frame.place_forget()
             suggestions_frame.place(relx=0.5, rely=0.0, anchor="n")
             suggestions_frame.lift()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
 
 def place_suggestions_under_widget(
@@ -84,7 +87,7 @@ def place_suggestions_under_widget(
     suggestions_frame: ctk.CTkFrame,
     master_widget: ctk.CTkFrame,
     offset_x: int = 0,
-    offset_y: int = 0
+    offset_y: int = 0,
 ) -> None:
     """
     Позиционирует фрейм с подсказками под указанным виджетом
@@ -122,10 +125,7 @@ def place_suggestions_under_widget(
 
 
 def create_suggestion_button(
-    parent: ctk.CTkFrame,
-    text: str,
-    command: Callable[[], Any],
-    **kwargs
+    parent: ctk.CTkFrame, text: str, command: Callable[[], Any], **kwargs
 ) -> ctk.CTkButton:
     """
     Создает унифицированную кнопку подсказки с единым стилем.
@@ -151,7 +151,7 @@ def create_suggestion_button(
         corner_radius=2,
         border_width=0,
         font=("Arial", 10),
-        **kwargs
+        **kwargs,
     )
 
 

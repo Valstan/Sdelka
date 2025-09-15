@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any
 
 from config.settings import CONFIG
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,9 +44,18 @@ def load_prefs() -> UserPrefs:
                 list_font_size=int(data.get("list_font_size", 12)),
                 ui_font_size=int(data.get("ui_font_size", 12)),
                 db_path=data.get("db_path") or None,
-                enable_wal=data.get("enable_wal") if data.get("enable_wal") is not None else None,
-                busy_timeout_ms=int(data.get("busy_timeout_ms", 10000)) if data.get("busy_timeout_ms") is not None else 10000,
-                yandex_remote_dir=data.get("yandex_remote_dir") or (CONFIG.yandex_default_remote_dir or "/SdelkaBackups"),
+                enable_wal=(
+                    data.get("enable_wal")
+                    if data.get("enable_wal") is not None
+                    else None
+                ),
+                busy_timeout_ms=(
+                    int(data.get("busy_timeout_ms", 10000))
+                    if data.get("busy_timeout_ms") is not None
+                    else 10000
+                ),
+                yandex_remote_dir=data.get("yandex_remote_dir")
+                or (CONFIG.yandex_default_remote_dir or "/SdelkaBackups"),
                 yandex_auth_method=(data.get("yandex_auth_method") or "oauth"),
                 yandex_oauth_token=data.get("yandex_oauth_token") or None,
                 yandex_username=data.get("yandex_username") or None,
@@ -52,8 +63,8 @@ def load_prefs() -> UserPrefs:
                 yandex_public_folder_url=data.get("yandex_public_folder_url") or None,
                 yandex_private_file_path=data.get("yandex_private_file_path") or None,
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.exception("Failed to load user preferences: %s", exc)
     return UserPrefs()
 
 
@@ -61,12 +72,15 @@ def save_prefs(prefs: UserPrefs) -> None:
     path = CONFIG.user_settings_path
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(prefs), ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+        path.write_text(
+            json.dumps(asdict(prefs), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:
+        _logger.exception("Failed to save user preferences: %s", exc)
 
 
 # ---- Helpers for DB settings ----
+
 
 def get_current_db_path() -> Path:
     """Возвращает актуальный путь к БД: пользовательский из prefs либо дефолтный из CONFIG.
@@ -77,8 +91,8 @@ def get_current_db_path() -> Path:
     path = Path(prefs.db_path) if prefs.db_path else Path(CONFIG.db_path)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     return path
 
 

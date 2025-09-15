@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
+
+import logging
+
 try:
     from bs4 import BeautifulSoup  # type: ignore[import]
-except Exception:  # optional dependency
+except Exception:
     BeautifulSoup = None  # type: ignore[assignment]
 import json
+
 try:
     import pdfplumber  # type: ignore[import]
-except Exception:  # optional
+except Exception:
     pdfplumber = None  # type: ignore[assignment]
 try:
     from docx import Document  # type: ignore[import]
-except Exception:  # optional
+except Exception:
     Document = None  # type: ignore[assignment]
 try:
     from dbfread import DBF  # type: ignore[import]
@@ -74,7 +77,13 @@ def read_any_tabular(path: str | Path) -> list[pd.DataFrame]:
                     cells = tr.getElementsByType(TableCell)
                     row = []
                     for cell in cells:
-                        text = "".join([node.data for node in cell.childNodes if hasattr(node, 'data')])
+                        text = "".join(
+                            [
+                                node.data
+                                for node in cell.childNodes
+                                if hasattr(node, "data")
+                            ]
+                        )
                         row.append(text.strip())
                     if row:
                         rows.append(row)
@@ -93,7 +102,7 @@ def read_any_tabular(path: str | Path) -> list[pd.DataFrame]:
             return []
     if suffix in {".dbf"} and DBF is not None:
         try:
-            records = list(DBF(str(p), load=True, char_decode_errors='ignore'))
+            records = list(DBF(str(p), load=True, char_decode_errors="ignore"))
             return [pd.DataFrame(records)]
         except Exception:
             return []
@@ -110,7 +119,9 @@ def read_any_tabular(path: str | Path) -> list[pd.DataFrame]:
         # Prefer BeautifulSoup if available; otherwise try pandas.read_html on full document
         if BeautifulSoup is not None:
             try:
-                soup = BeautifulSoup(Path(p).read_text(encoding="utf-8", errors="ignore"), "html.parser")
+                soup = BeautifulSoup(
+                    Path(p).read_text(encoding="utf-8", errors="ignore"), "html.parser"
+                )
                 tables = soup.find_all("table")
                 dfs: list[pd.DataFrame] = []
                 for t in tables:
@@ -118,8 +129,10 @@ def read_any_tabular(path: str | Path) -> list[pd.DataFrame]:
                     if df:
                         dfs.extend(df)
                 return dfs
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         try:
             return pd.read_html(str(p))  # type: ignore[return-value]
         except Exception:
@@ -138,8 +151,6 @@ def read_any_tabular(path: str | Path) -> list[pd.DataFrame]:
     # Fallback: try pandas
     try:
         return [pd.read_csv(p)]
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     return []
-
-

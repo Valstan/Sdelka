@@ -16,6 +16,9 @@ from utils.versioning import get_version
 from utils.runtime_mode import is_readonly
 
 
+import logging
+
+
 class AppWindow(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
@@ -36,8 +39,8 @@ class AppWindow(ctk.CTk):
         # Разрешить изменение размера пользователем
         try:
             self.resizable(True, True)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self._tab_font_normal = None
         self._tab_font_active = None
         self._tabview = None
@@ -48,14 +51,14 @@ class AppWindow(ctk.CTk):
         self._closing: bool = False
         try:
             self.protocol("WM_DELETE_WINDOW", self._on_close)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Применить пользовательские шрифты для остального UI
         try:
             prefs = load_prefs()
             apply_user_fonts(self, prefs)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -77,15 +80,23 @@ class AppWindow(ctk.CTk):
         try:
             if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None:
                 self._setup_tab_fonts(self._refs_tabs)  # type: ignore[arg-type]
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         try:
-            self.bind("<<UIFontsChanged>>", lambda e: [
-                self._setup_tab_fonts(self._tabview),
-                (self._setup_tab_fonts(self._refs_tabs) if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None else None)
-            ])
-        except Exception:
-            pass
+            self.bind(
+                "<<UIFontsChanged>>",
+                lambda e: [
+                    self._setup_tab_fonts(self._tabview),
+                    (
+                        self._setup_tab_fonts(self._refs_tabs)
+                        if hasattr(self, "_refs_tabs")
+                        and getattr(self, "_refs_tabs") is not None
+                        else None
+                    ),
+                ],
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         # Создаем компактный бейдж названия/версии на одном уровне с кнопками табов
         self._create_title_badge()
@@ -93,17 +104,24 @@ class AppWindow(ctk.CTk):
         self.bind("<Configure>", lambda e: self._place_title_badge(), add="+")
         try:
             seg = getattr(self._tabview, "_segmented_button", None)
-            if seg is not None:
+            if (
+                seg is not None
+                and hasattr(seg, "__class__")
+                and "CTkSegmentedButton" not in str(seg.__class__)
+            ):
                 seg.bind("<Configure>", lambda e: self._place_title_badge(), add="+")
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Первичное размещение
         self._schedule_after(50, self._place_title_badge)
 
         # Малый бейдж "Режим просмотра" справа от сегментированных кнопок
         try:
             seg = getattr(self._tabview, "_segmented_button", None)
-            self._readonly_badge = ctk.CTkLabel(self, text="Режим просмотра", text_color="#dc2626")
+            self._readonly_badge = ctk.CTkLabel(
+                self, text="Режим просмотра", text_color="#dc2626"
+            )
+
             def place_badge():
                 try:
                     if seg is None or not seg.winfo_exists():
@@ -113,7 +131,9 @@ class AppWindow(ctk.CTk):
                     if not is_readonly():
                         self._readonly_badge.place_forget()
                         return
-                    self.update_idletasks(); seg.update_idletasks(); self._readonly_badge.update_idletasks()
+                    self.update_idletasks()
+                    seg.update_idletasks()
+                    self._readonly_badge.update_idletasks()
                     x = seg.winfo_rootx() - self.winfo_rootx()
                     y = seg.winfo_rooty() - self.winfo_rooty()
                     w = seg.winfo_width()
@@ -122,14 +142,24 @@ class AppWindow(ctk.CTk):
                 except Exception:
                     try:
                         self._readonly_badge.place_forget()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.getLogger(__name__).exception(
+                            "Ignored unexpected error: %s", exc
+                        )
+
             self.bind("<Configure>", lambda e: place_badge(), add="+")
-            if seg is not None:
-                seg.bind("<Configure>", lambda e: place_badge(), add="+")
+            if (
+                seg is not None
+                and hasattr(seg, "__class__")
+                and "CTkSegmentedButton" not in str(seg.__class__)
+            ):
+                try:
+                    seg.bind("<Configure>", lambda e: place_badge(), add="+")
+                except Exception:
+                    pass  # Не поддерживает bind
             self._schedule_after(60, place_badge)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _create_title_badge(self) -> None:
         # Фиксированный шрифт ~8pt в пикселях (не зависит от scaling/настроек)
@@ -141,7 +171,9 @@ class AppWindow(ctk.CTk):
         fixed_font_small = ctk.CTkFont(family=base_family, size=11, weight="normal")
         fixed_font_small_bold = ctk.CTkFont(family=base_family, size=11, weight="bold")
 
-        badge = ctk.CTkFrame(self, corner_radius=4, border_width=1, border_color=("gray70", "gray40"))
+        badge = ctk.CTkFrame(
+            self, corner_radius=4, border_width=1, border_color=("gray70", "gray40")
+        )
         # Минимальные внутренние отступы
         inner = ctk.CTkFrame(badge, fg_color="transparent")
         inner.pack(padx=3, pady=0)
@@ -150,11 +182,32 @@ class AppWindow(ctk.CTk):
         line_h = 12  # px
 
         # Строки названия без межстрочных отступов
-        short = ctk.CTkLabel(inner, text=f"СДЕЛКА РМЗ {self._version}", font=fixed_font_small_bold, anchor="w", justify="left", height=line_h)
+        short = ctk.CTkLabel(
+            inner,
+            text=f"СДЕЛКА РМЗ {self._version}",
+            font=fixed_font_small_bold,
+            anchor="w",
+            justify="left",
+            height=line_h,
+        )
         short.pack(anchor="w", pady=0)
-        line2 = ctk.CTkLabel(inner, text="Программа учёта нарядов и контрактов", font=fixed_font_small, anchor="w", justify="left", height=line_h)
+        line2 = ctk.CTkLabel(
+            inner,
+            text="Программа учёта нарядов и контрактов",
+            font=fixed_font_small,
+            anchor="w",
+            justify="left",
+            height=line_h,
+        )
         line2.pack(anchor="w", pady=0)
-        line3 = ctk.CTkLabel(inner, text="РМЗ", font=fixed_font_small, anchor="w", justify="left", height=line_h)
+        line3 = ctk.CTkLabel(
+            inner,
+            text="РМЗ",
+            font=fixed_font_small,
+            anchor="w",
+            justify="left",
+            height=line_h,
+        )
         line3.pack(anchor="w", pady=0)
 
         self._title_badge = badge
@@ -185,8 +238,10 @@ class AppWindow(ctk.CTk):
         except Exception:
             try:
                 badge.place_forget()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     def _setup_tab_fonts(self, tabview: ctk.CTkTabview) -> None:
         try:
@@ -209,40 +264,83 @@ class AppWindow(ctk.CTk):
             current = None
             try:
                 current = tabview.get()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             buttons = getattr(seg, "_buttons_dict", {})
             for name, btn in buttons.items():
                 f = active if name == current else normal
                 try:
-                    btn.configure(font=f)
-                except Exception:
-                    pass
+                    # Преобразуем tkinter.font.Font в формат CustomTkinter
+                    if hasattr(f, "cget"):
+                        font_family = f.cget("family")
+                        font_size = f.cget("size")
+                        font_weight = f.cget("weight")
+                        font_slant = f.cget("slant")
+                        ctk_font = (font_family, font_size, font_weight, font_slant)
+                    else:
+                        ctk_font = f
+                    btn.configure(font=ctk_font)
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
                 # Без разрывов между кнопками
                 try:
                     btn.grid_configure(padx=0, pady=0)
                 except Exception:
                     try:
                         btn.pack_configure(padx=0, pady=0)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.getLogger(__name__).exception(
+                            "Ignored unexpected error: %s", exc
+                        )
                 # Применим шрифт всем дочерним виджетам внутри кнопки
                 try:
                     for child in btn.winfo_children():
                         try:
-                            child.configure(font=f)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-        try:
-            seg.bind("<ButtonRelease-1>", lambda e: apply_fonts(), add="+")
-            seg.bind("<KeyRelease>", lambda e: apply_fonts(), add="+")
-        except Exception:
-            pass
+                            # Проверяем, поддерживает ли виджет шрифты
+                            if (
+                                hasattr(child, "configure")
+                                and "font" in child.configure()
+                            ):
+                                if hasattr(f, "cget"):
+                                    font_family = f.cget("family")
+                                    font_size = f.cget("size")
+                                    font_weight = f.cget("weight")
+                                    font_slant = f.cget("slant")
+                                    ctk_font = (
+                                        font_family,
+                                        font_size,
+                                        font_weight,
+                                        font_slant,
+                                    )
+                                else:
+                                    ctk_font = f
+                                child.configure(font=ctk_font)
+                        except Exception as exc:
+                            logging.getLogger(__name__).exception(
+                                "Ignored unexpected error: %s", exc
+                            )
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
+
+        # CTkSegmentedButton не поддерживает bind, пропускаем
+        if hasattr(seg, "__class__") and "CTkSegmentedButton" not in str(seg.__class__):
+            try:
+                seg.bind("<ButtonRelease-1>", lambda e: apply_fonts(), add="+")
+                seg.bind("<KeyRelease>", lambda e: apply_fonts(), add="+")
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         # Периодически отслеживать смену вкладки и обновлять шрифты
         try:
             seg._last_tab_caption = None
+
             def _watch():
                 if self._closing:
                     return
@@ -254,9 +352,10 @@ class AppWindow(ctk.CTk):
                     seg._last_tab_caption = current
                     apply_fonts()
                 self._schedule_after(120, _watch)
+
             self._schedule_after(80, _watch)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         self._schedule_after(50, apply_fonts)
 
     def _clear_children(self, widget) -> None:
@@ -264,10 +363,12 @@ class AppWindow(ctk.CTk):
             for child in list(widget.winfo_children()):
                 try:
                     child.destroy()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _build_forms_for_current_mode(self) -> None:
         # Очистить вкладки и пересоздать формы согласно текущему режиму
@@ -276,11 +377,13 @@ class AppWindow(ctk.CTk):
             self._clear_children(self.tab_refs)
             self._clear_children(self.tab_reports)
             self._clear_children(self.tab_settings)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
         # Наряды
-        WorkOrdersForm(self.tab_orders, readonly=is_readonly()).pack(expand=True, fill="both")
+        WorkOrdersForm(self.tab_orders, readonly=is_readonly()).pack(
+            expand=True, fill="both"
+        )
 
         # Справочники (внутренние вкладки)
         refs_tabs = ctk.CTkTabview(self.tab_refs)
@@ -293,14 +396,20 @@ class AppWindow(ctk.CTk):
 
         WorkersForm(tab_workers, readonly=is_readonly()).pack(expand=True, fill="both")
         JobTypesForm(tab_jobs, readonly=is_readonly()).pack(expand=True, fill="both")
-        ProductsForm(tab_products, readonly=is_readonly()).pack(expand=True, fill="both")
-        ContractsForm(tab_contracts, readonly=is_readonly()).pack(expand=True, fill="both")
+        ProductsForm(tab_products, readonly=is_readonly()).pack(
+            expand=True, fill="both"
+        )
+        ContractsForm(tab_contracts, readonly=is_readonly()).pack(
+            expand=True, fill="both"
+        )
 
         # Отчеты
         ReportsView(self.tab_reports).pack(expand=True, fill="both")
 
         # Настройки
-        SettingsView(self.tab_settings, readonly=is_readonly()).pack(expand=True, fill="both")
+        SettingsView(self.tab_settings, readonly=is_readonly()).pack(
+            expand=True, fill="both"
+        )
 
     def rebuild_forms_for_mode(self) -> None:
         # Публичный метод для пересборки после смены режима (после диалога входа)
@@ -309,8 +418,8 @@ class AppWindow(ctk.CTk):
             self._setup_tab_fonts(self._tabview)
             if hasattr(self, "_refs_tabs") and getattr(self, "_refs_tabs") is not None:
                 self._setup_tab_fonts(self._refs_tabs)  # type: ignore[arg-type]
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _schedule_after(self, delay_ms: int, callback) -> None:
         if self._closing:
@@ -319,10 +428,12 @@ class AppWindow(ctk.CTk):
             aid = self.after(delay_ms, callback)
             try:
                 self._after_ids.add(aid)
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _on_close(self) -> None:
         self._closing = True
@@ -330,13 +441,17 @@ class AppWindow(ctk.CTk):
         for aid in list(self._after_ids):
             try:
                 self.after_cancel(aid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             try:
                 self._after_ids.discard(aid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         try:
             super().destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)

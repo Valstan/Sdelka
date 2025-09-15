@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 import sqlite3
 
@@ -81,11 +81,19 @@ def parse_orders_csv(path: str | Path) -> ParsedOrder:
         if full_text.startswith("ФИО сотрудника"):
             # Extract name after ':'
             name_match = re.search(r"ФИО сотрудника\s*:([^;]+)", full_text)
-            name = (name_match.group(1).strip() if name_match else full_text.replace("ФИО сотрудника", "").strip(": "))
+            name = (
+                name_match.group(1).strip()
+                if name_match
+                else full_text.replace("ФИО сотрудника", "").strip(": ")
+            )
             # Remove extra notes like 'тоже'
             name = name.replace("тоже", "").strip()
             tab_match = re.search(r"Таб\s*№\s*([0-9A-Za-z\-]+)", full_text)
-            personnel_no = tab_match.group(1).strip() if tab_match else f"AUTO-{normalize_for_search(name)}"
+            personnel_no = (
+                tab_match.group(1).strip()
+                if tab_match
+                else f"AUTO-{normalize_for_search(name)}"
+            )
             if name:
                 workers.append({"full_name": name, "personnel_no": personnel_no})
             continue
@@ -117,16 +125,20 @@ def parse_orders_csv(path: str | Path) -> ParsedOrder:
         qty = _parse_int_or_float(cols[4])
         amount = _parse_price(cols[5])
         if name and (price > 0 or qty > 0 or amount > 0):
-            items.append({
-                "date": current_date_str,
-                "name": name,
-                "unit": unit or "шт.",
-                "price": price,
-                "qty": qty if qty else (amount / price if price else 0),
-                "amount": amount if amount else (price * qty),
-            })
+            items.append(
+                {
+                    "date": current_date_str,
+                    "name": name,
+                    "unit": unit or "шт.",
+                    "price": price,
+                    "qty": qty if qty else (amount / price if price else 0),
+                    "amount": amount if amount else (price * qty),
+                }
+            )
 
-    return ParsedOrder(header_year=header_year, workers=workers, products=products, items=items)
+    return ParsedOrder(
+        header_year=header_year, workers=workers, products=products, items=items
+    )
 
 
 def _resolve_date(d: str | None, fallback_year: int | None) -> str:
@@ -145,7 +157,9 @@ def _resolve_date(d: str | None, fallback_year: int | None) -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def import_orders_from_csv(path: str | Path, progress_cb: ProgressCb | None = None) -> dict[str, int]:
+def import_orders_from_csv(
+    path: str | Path, progress_cb: ProgressCb | None = None
+) -> dict[str, int]:
     parsed = parse_orders_csv(path)
     if progress_cb:
         progress_cb(0, 1, "Подготовка к записи в БД...")
@@ -153,7 +167,9 @@ def import_orders_from_csv(path: str | Path, progress_cb: ProgressCb | None = No
         return _commit_parsed_order(conn, parsed, progress_cb)
 
 
-def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress_cb: ProgressCb | None) -> dict[str, int]:
+def _commit_parsed_order(
+    conn: sqlite3.Connection, parsed: ParsedOrder, progress_cb: ProgressCb | None
+) -> dict[str, int]:
     added_items = 0
     added_workers = 0
     added_products = 0
@@ -173,7 +189,11 @@ def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress
         product_ids.append(pid)
 
     # Date heuristics
-    dates = [_resolve_date(it.get("date"), parsed.header_year) for it in parsed.items if it.get("date")]
+    dates = [
+        _resolve_date(it.get("date"), parsed.header_year)
+        for it in parsed.items
+        if it.get("date")
+    ]
     order_date = max(dates) if dates else datetime.now().strftime("%Y-%m-%d")
 
     # Total amount
@@ -182,7 +202,14 @@ def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress
     # Order header
     order_no = q.next_order_no(conn)
     first_product_id = product_ids[0] if product_ids else None
-    wo_id = q.insert_work_order(conn, order_no=order_no, date=order_date, product_id=first_product_id, contract_id=contract_id, total_amount=total_amount)
+    wo_id = q.insert_work_order(
+        conn,
+        order_no=order_no,
+        date=order_date,
+        product_id=first_product_id,
+        contract_id=contract_id,
+        total_amount=total_amount,
+    )
 
     # Link additional products
     if len(product_ids) > 1:
@@ -191,7 +218,9 @@ def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress
     # Items
     for it in parsed.items:
         # Upsert job type (updates price if changed)
-        jt_id = q.upsert_job_type(conn, it["name"], it.get("unit") or "шт.", float(it.get("price") or 0.0))
+        jt_id = q.upsert_job_type(
+            conn, it["name"], it.get("unit") or "шт.", float(it.get("price") or 0.0)
+        )
         if isinstance(jt_id, int) and jt_id <= 0:
             row = q.get_job_type_by_name(conn, it["name"]) or {}
             jt_id = int(row.get("id")) if row else None  # type: ignore[arg-type]
@@ -207,11 +236,15 @@ def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress
     worker_ids: list[int] = []
     for w in parsed.workers:
         full_name = w.get("full_name") or ""
-        personnel_no = w.get("personnel_no") or f"AUTO-{normalize_for_search(full_name)}"
+        personnel_no = (
+            w.get("personnel_no") or f"AUTO-{normalize_for_search(full_name)}"
+        )
         if not full_name:
             continue
         q.upsert_worker(conn, full_name, None, None, personnel_no)
-        row = q.get_worker_by_personnel_no(conn, personnel_no) or q.get_worker_by_full_name(conn, full_name)
+        row = q.get_worker_by_personnel_no(
+            conn, personnel_no
+        ) or q.get_worker_by_full_name(conn, full_name)
         if row:
             worker_ids.append(int(row["id"]))  # type: ignore[index]
             added_workers += 1
@@ -236,5 +269,3 @@ def _commit_parsed_order(conn: sqlite3.Connection, parsed: ParsedOrder, progress
         "workers": len(worker_ids),
         "products": added_products,
     }
-
-

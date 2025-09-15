@@ -4,9 +4,8 @@ import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable, Sequence
+from typing import Any, Generator, Iterable, Sequence
 
-from config.settings import CONFIG
 from utils.user_prefs import get_current_db_path, get_enable_wal, get_busy_timeout_ms
 from utils.runtime_mode import is_readonly
 
@@ -24,12 +23,14 @@ def _apply_pragmas(conn: sqlite3.Connection) -> None:
     try:
         timeout_ms = int(get_busy_timeout_ms())
         conn.execute(f"PRAGMA busy_timeout = {timeout_ms};")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to set busy_timeout PRAGMA: %s", exc)
 
 
 @contextmanager
-def get_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Connection, None, None]:
+def get_connection(
+    db_path: Path | str | None = None,
+) -> Generator[sqlite3.Connection, None, None]:
     # Берем путь из аргумента, иначе из пользовательских настроек (prefs), иначе из CONFIG
     path = Path(db_path) if db_path else get_current_db_path()
     needs_init = not path.exists()
@@ -57,9 +58,9 @@ def get_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Conne
     try:
         try:
             _apply_pragmas(conn)
-        except Exception:
-            # Некоторые PRAGMA могут быть недоступны в режиме ro — игнорируем
-            pass
+        except Exception as exc:
+            # Некоторые PRAGMA могут быть недоступны в режиме ro — логируем на debug
+            logger.debug("_apply_pragmas failed (ignored): %s", exc)
         if needs_init:
             logger.info("Создана новая БД по пути: %s", path)
         yield conn
@@ -74,28 +75,47 @@ def get_connection(db_path: Path | str | None = None) -> Generator[sqlite3.Conne
             raise
         logger.exception("Откат транзакции из-за ошибки")
         raise
-    except Exception:
+    except Exception as exc:
         conn.rollback()
-        logger.exception("Откат транзакции из-за ошибки")
+        logger.exception("Откат транзакции из-за ошибки: %s", exc)
         raise
     finally:
         conn.close()
 
 
-def execute(conn: sqlite3.Connection, sql: str, params: Sequence[Any] | None = None) -> int:
-    if is_readonly() and sql.strip().split()[0].upper() in {"INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER"}:
+def execute(
+    conn: sqlite3.Connection, sql: str, params: Sequence[Any] | None = None
+) -> int:
+    if is_readonly() and sql.strip().split()[0].upper() in {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "REPLACE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+    }:
         raise PermissionError("Режим только просмотра: запись запрещена")
     cur = conn.execute(sql, params or [])
     return cur.lastrowid if cur.lastrowid is not None else cur.rowcount
 
 
-def executemany(conn: sqlite3.Connection, sql: str, seq_of_params: Iterable[Sequence[Any]]) -> int:
-    if is_readonly() and sql.strip().split()[0].upper() in {"INSERT", "UPDATE", "DELETE", "REPLACE"}:
+def executemany(
+    conn: sqlite3.Connection, sql: str, seq_of_params: Iterable[Sequence[Any]]
+) -> int:
+    if is_readonly() and sql.strip().split()[0].upper() in {
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "REPLACE",
+    }:
         raise PermissionError("Режим только просмотра: запись запрещена")
     cur = conn.executemany(sql, seq_of_params)
     return cur.rowcount
 
 
-def query(conn: sqlite3.Connection, sql: str, params: Sequence[Any] | None = None) -> list[sqlite3.Row]:
+def query(
+    conn: sqlite3.Connection, sql: str, params: Sequence[Any] | None = None
+) -> list[sqlite3.Row]:
     cur = conn.execute(sql, params or [])
     return cur.fetchall()

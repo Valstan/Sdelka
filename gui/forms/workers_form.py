@@ -13,10 +13,11 @@ from services import suggestions
 from db import queries as q
 from utils.usage_history import record_use, get_recent
 from utils.autocomplete_positioning import (
-    place_suggestions_under_entry, 
-    create_suggestion_button, 
-    create_suggestions_frame
+    place_suggestions_under_entry,
+    create_suggestion_button,
+    create_suggestions_frame,
 )
+import logging
 
 
 class WorkersForm(ctk.CTkFrame):
@@ -31,9 +32,11 @@ class WorkersForm(ctk.CTkFrame):
         # Обновлять список при импорте
         try:
             self.bind("<<DataImported>>", lambda e: self._load_workers())
-            self.winfo_toplevel().bind("<<DataImported>>", lambda e: self._load_workers(), add="+")
-        except Exception:
-            pass
+            self.winfo_toplevel().bind(
+                "<<DataImported>>", lambda e: self._load_workers(), add="+"
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _build_ui(self) -> None:
         # Top spacer removed to avoid empty gap under tabs
@@ -49,11 +52,15 @@ class WorkersForm(ctk.CTkFrame):
         self.status_var = ctk.StringVar(value="Работает")
 
         ctk.CTkLabel(form, text="ФИО").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.full_name_entry = ctk.CTkEntry(form, textvariable=self.full_name_var, width=300)
+        self.full_name_entry = ctk.CTkEntry(
+            form, textvariable=self.full_name_var, width=300
+        )
         self.full_name_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.full_name_entry.bind("<KeyRelease>", self._on_name_key)
         self.full_name_entry.bind("<FocusIn>", lambda e: self._on_name_key())
-        self.full_name_entry.bind("<Button-1>", lambda e: self.after(1, self._on_name_key))
+        self.full_name_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_name_key)
+        )
 
         ctk.CTkLabel(form, text="Цех").grid(row=0, column=2, sticky="w", padx=5, pady=5)
         self.dept_entry = ctk.CTkEntry(form, textvariable=self.dept_var, width=150)
@@ -62,42 +69,73 @@ class WorkersForm(ctk.CTkFrame):
         self.dept_entry.bind("<FocusIn>", lambda e: self._on_dept_key())
         self.dept_entry.bind("<Button-1>", lambda e: self.after(1, self._on_dept_key))
 
-        ctk.CTkLabel(form, text="Должность").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.position_entry = ctk.CTkEntry(form, textvariable=self.position_var, width=300)
+        ctk.CTkLabel(form, text="Должность").grid(
+            row=1, column=0, sticky="w", padx=5, pady=5
+        )
+        self.position_entry = ctk.CTkEntry(
+            form, textvariable=self.position_var, width=300
+        )
         self.position_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
         self.position_entry.bind("<KeyRelease>", self._on_position_key)
         self.position_entry.bind("<FocusIn>", lambda e: self._on_position_key())
-        self.position_entry.bind("<Button-1>", lambda e: self.after(1, self._on_position_key))
+        self.position_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_position_key)
+        )
 
-        ctk.CTkLabel(form, text="Таб. номер").grid(row=1, column=2, sticky="w", padx=5, pady=5)
-        self.personnel_entry = ctk.CTkEntry(form, textvariable=self.personnel_no_var, width=150)
+        ctk.CTkLabel(form, text="Таб. номер").grid(
+            row=1, column=2, sticky="w", padx=5, pady=5
+        )
+        self.personnel_entry = ctk.CTkEntry(
+            form, textvariable=self.personnel_no_var, width=150
+        )
         self.personnel_entry.grid(row=1, column=3, sticky="w", padx=5, pady=5)
         self.personnel_entry.bind("<KeyRelease>", self._on_personnel_key)
         self.personnel_entry.bind("<FocusIn>", lambda e: self._on_personnel_key())
-        self.personnel_entry.bind("<Button-1>", lambda e: self.after(1, self._on_personnel_key))
+        self.personnel_entry.bind(
+            "<Button-1>", lambda e: self.after(1, self._on_personnel_key)
+        )
 
-        ctk.CTkLabel(form, text="Статус").grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        self.status_opt = ctk.CTkOptionMenu(form, values=["Работает", "Уволен"], variable=self.status_var, width=150)
+        ctk.CTkLabel(form, text="Статус").grid(
+            row=2, column=0, sticky="w", padx=5, pady=5
+        )
+        self.status_opt = ctk.CTkOptionMenu(
+            form, values=["Работает", "Уволен"], variable=self.status_var, width=150
+        )
         self.status_opt.grid(row=2, column=1, sticky="w", padx=5, pady=5)
 
         btns = ctk.CTkFrame(form)
         btns.grid(row=3, column=0, columnspan=4, sticky="w", padx=5, pady=10)
 
         save_btn = ctk.CTkButton(btns, text="Сохранить", command=self._save)
-        cancel_btn = ctk.CTkButton(btns, text="Отмена", command=self._cancel_edit, fg_color="#6b7280")
+        cancel_btn = ctk.CTkButton(
+            btns, text="Отмена", command=self._cancel_edit, fg_color="#6b7280"
+        )
         clear_btn = ctk.CTkButton(btns, text="Очистить", command=self._clear)
-        del_btn = ctk.CTkButton(btns, text="Удалить", fg_color="#b91c1c", hover_color="#7f1d1d", command=self._delete)
+        del_btn = ctk.CTkButton(
+            btns,
+            text="Удалить",
+            fg_color="#b91c1c",
+            hover_color="#7f1d1d",
+            command=self._delete,
+        )
         for b in (save_btn, cancel_btn, clear_btn, del_btn):
             b.pack(side="left", padx=5)
         # Export aligned to the right in the same row
         export_btn = create_export_button(btns, "workers", "Экспорт работников")
         export_btn.pack(side="right")
         if self._readonly:
-            for w in (self.full_name_entry, self.dept_entry, self.position_entry, self.personnel_entry):
+            for w in (
+                self.full_name_entry,
+                self.dept_entry,
+                self.position_entry,
+                self.personnel_entry,
+            ):
                 try:
                     w.configure(state="disabled")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
             for b in (save_btn, cancel_btn, clear_btn, del_btn):
                 b.configure(state="disabled")
 
@@ -108,7 +146,11 @@ class WorkersForm(ctk.CTkFrame):
         table_frame.grid_rowconfigure(0, weight=1)
         table_frame.grid_columnconfigure(0, weight=1)
 
-        self.tree = ttk.Treeview(table_frame, columns=("full_name", "dept", "position", "personnel_no", "status"), show="headings")
+        self.tree = ttk.Treeview(
+            table_frame,
+            columns=("full_name", "dept", "position", "personnel_no", "status"),
+            show="headings",
+        )
         self.tree.heading("full_name", text="ФИО")
         self.tree.heading("dept", text="Цех")
         self.tree.heading("position", text="Должность")
@@ -147,14 +189,18 @@ class WorkersForm(ctk.CTkFrame):
         self.suggest_position_frame.place_forget()
         self.suggest_personnel_frame.place_forget()
 
-    def _schedule_auto_hide(self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]) -> None:
+    def _schedule_auto_hide(
+        self, frame: ctk.CTkFrame, related_entries: list[ctk.CTkEntry]
+    ) -> None:
         # cancel previous job for this frame
         job_id = getattr(frame, "_auto_hide_job", None)
         if job_id:
             try:
                 self.after_cancel(job_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
         def is_focus_within() -> bool:
             focus_w = self.focus_get()
@@ -185,39 +231,60 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.full_name_var.get().strip()
         for w in self.suggest_frame.winfo_children():
             w.destroy()
-        
+
         # Показываем подсказки даже при пустом вводе
         place_suggestions_under_entry(self.full_name_entry, self.suggest_frame, self)
-        
+
         items: list[tuple[int, str]] = []
         if prefix:
             with get_connection() as conn:
-                items = suggestions.suggest_workers(conn, prefix, CONFIG.autocomplete_limit)
-        
+                items = suggestions.suggest_workers(
+                    conn, prefix, CONFIG.autocomplete_limit
+                )
+
         shown = 0
         for _id, label in items:
-            create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_frame,
+                text=label,
+                command=lambda s=label: self._pick_name(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
+
         # Дополняем историей (если пустой ввод — показываем только историю)
-        recent = [v for v in get_recent("workers.full_name", prefix or None, CONFIG.autocomplete_limit)]
+        recent = [
+            v
+            for v in get_recent(
+                "workers.full_name", prefix or None, CONFIG.autocomplete_limit
+            )
+        ]
         for label in recent:
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in [lbl for _, lbl in items]:
-                create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_name(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все работников
         if shown == 0:
             with get_connection() as conn:
-                all_workers = suggestions.suggest_workers(conn, "", CONFIG.autocomplete_limit)
+                all_workers = suggestions.suggest_workers(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for _id, label in all_workers:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_frame, text=label, command=lambda s=label: self._pick_name(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_name(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_frame, [self.full_name_entry])
 
     def _on_dept_key(self, event=None) -> None:
@@ -225,36 +292,54 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.dept_var.get().strip()
         for w in self.suggest_dept_frame.winfo_children():
             w.destroy()
-        
+
         place_suggestions_under_entry(self.dept_entry, self.suggest_dept_frame, self)
-        
+
         vals = []
         if prefix:
             with get_connection() as conn:
-                vals = suggestions.suggest_depts(conn, prefix, CONFIG.autocomplete_limit)
-        
+                vals = suggestions.suggest_depts(
+                    conn, prefix, CONFIG.autocomplete_limit
+                )
+
         shown = 0
         for val in vals:
-            create_suggestion_button(self.suggest_dept_frame, text=val, command=lambda s=val: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_dept_frame,
+                text=val,
+                command=lambda s=val: self._pick_dept(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("workers.dept", prefix or None, CONFIG.autocomplete_limit):
+
+        for label in get_recent(
+            "workers.dept", prefix or None, CONFIG.autocomplete_limit
+        ):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                create_suggestion_button(self.suggest_dept_frame, text=label, command=lambda s=label: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_dept_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_dept(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все цеха
         if shown == 0:
             with get_connection() as conn:
-                all_depts = suggestions.suggest_depts(conn, "", CONFIG.autocomplete_limit)
+                all_depts = suggestions.suggest_depts(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for dept in all_depts:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_dept_frame, text=dept, command=lambda s=dept: self._pick_dept(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_dept_frame,
+                    text=dept,
+                    command=lambda s=dept: self._pick_dept(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_dept_frame, [self.dept_entry])
 
     def _on_position_key(self, event=None) -> None:
@@ -262,36 +347,56 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.position_var.get().strip()
         for w in self.suggest_position_frame.winfo_children():
             w.destroy()
-        
-        place_suggestions_under_entry(self.position_entry, self.suggest_position_frame, self)
-        
+
+        place_suggestions_under_entry(
+            self.position_entry, self.suggest_position_frame, self
+        )
+
         vals = []
         if prefix:
             with get_connection() as conn:
-                vals = suggestions.suggest_positions(conn, prefix, CONFIG.autocomplete_limit)
-        
+                vals = suggestions.suggest_positions(
+                    conn, prefix, CONFIG.autocomplete_limit
+                )
+
         shown = 0
         for val in vals:
-            create_suggestion_button(self.suggest_position_frame, text=val, command=lambda s=val: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_position_frame,
+                text=val,
+                command=lambda s=val: self._pick_position(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("workers.position", prefix or None, CONFIG.autocomplete_limit):
+
+        for label in get_recent(
+            "workers.position", prefix or None, CONFIG.autocomplete_limit
+        ):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                create_suggestion_button(self.suggest_position_frame, text=label, command=lambda s=label: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_position_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_position(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все должности
         if shown == 0:
             with get_connection() as conn:
-                all_positions = suggestions.suggest_positions(conn, "", CONFIG.autocomplete_limit)
+                all_positions = suggestions.suggest_positions(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for position in all_positions:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_position_frame, text=position, command=lambda s=position: self._pick_position(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_position_frame,
+                    text=position,
+                    command=lambda s=position: self._pick_position(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_position_frame, [self.position_entry])
 
     def _on_personnel_key(self, event=None) -> None:
@@ -299,36 +404,56 @@ class WorkersForm(ctk.CTkFrame):
         prefix = self.personnel_no_var.get().strip()
         for w in self.suggest_personnel_frame.winfo_children():
             w.destroy()
-        
-        place_suggestions_under_entry(self.personnel_entry, self.suggest_personnel_frame, self)
-        
+
+        place_suggestions_under_entry(
+            self.personnel_entry, self.suggest_personnel_frame, self
+        )
+
         vals = []
         if prefix:
             with get_connection() as conn:
-                vals = suggestions.suggest_personnel_nos(conn, prefix, CONFIG.autocomplete_limit)
-        
+                vals = suggestions.suggest_personnel_nos(
+                    conn, prefix, CONFIG.autocomplete_limit
+                )
+
         shown = 0
         for val in vals:
-            create_suggestion_button(self.suggest_personnel_frame, text=val, command=lambda s=val: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+            create_suggestion_button(
+                self.suggest_personnel_frame,
+                text=val,
+                command=lambda s=val: self._pick_personnel(s),
+            ).pack(fill="x", padx=2, pady=1)
             shown += 1
-        
-        for label in get_recent("workers.personnel_no", prefix or None, CONFIG.autocomplete_limit):
+
+        for label in get_recent(
+            "workers.personnel_no", prefix or None, CONFIG.autocomplete_limit
+        ):
             if shown >= CONFIG.autocomplete_limit:
                 break
             if label not in vals:
-                create_suggestion_button(self.suggest_personnel_frame, text=label, command=lambda s=label: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_personnel_frame,
+                    text=label,
+                    command=lambda s=label: self._pick_personnel(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         # Если нет данных из БД и истории, показываем все табельные номера
         if shown == 0:
             with get_connection() as conn:
-                all_personnel = suggestions.suggest_personnel_nos(conn, "", CONFIG.autocomplete_limit)
+                all_personnel = suggestions.suggest_personnel_nos(
+                    conn, "", CONFIG.autocomplete_limit
+                )
             for personnel in all_personnel:
                 if shown >= CONFIG.autocomplete_limit:
                     break
-                create_suggestion_button(self.suggest_personnel_frame, text=personnel, command=lambda s=personnel: self._pick_personnel(s)).pack(fill="x", padx=2, pady=1)
+                create_suggestion_button(
+                    self.suggest_personnel_frame,
+                    text=personnel,
+                    command=lambda s=personnel: self._pick_personnel(s),
+                ).pack(fill="x", padx=2, pady=1)
                 shown += 1
-        
+
         self._schedule_auto_hide(self.suggest_personnel_frame, [self.personnel_entry])
 
     def _pick_name(self, name: str) -> None:
@@ -357,7 +482,12 @@ class WorkersForm(ctk.CTkFrame):
             self._hide_all_suggestions()
             return
         # Если клик внутри любого фрейма подсказок — не скрывать
-        for frame in (self.suggest_frame, self.suggest_dept_frame, self.suggest_position_frame, self.suggest_personnel_frame):
+        for frame in (
+            self.suggest_frame,
+            self.suggest_dept_frame,
+            self.suggest_position_frame,
+            self.suggest_personnel_frame,
+        ):
             w = widget
             while w is not None:
                 if w == frame:
@@ -375,18 +505,26 @@ class WorkersForm(ctk.CTkFrame):
             status_val = r["status"] if "status" in r.keys() else None
             if not status_val:
                 status_val = "Работает"
-            vals = (r["full_name"], r["dept"], r["position"], r["personnel_no"], status_val)
+            vals = (
+                r["full_name"],
+                r["dept"],
+                r["position"],
+                r["personnel_no"],
+                status_val,
+            )
             iid = self.tree.insert("", "end", iid=str(r["id"]), values=vals)
             # Подсветка уволенных красным
             try:
                 if status_val != "Работает":
                     self.tree.item(iid, tags=("fired",))
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         try:
             self.tree.tag_configure("fired", foreground="#b91c1c")
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
     def _on_select(self, event=None) -> None:
         sel = self.tree.selection()
@@ -401,8 +539,8 @@ class WorkersForm(ctk.CTkFrame):
         self.personnel_no_var.set(vals[3])
         try:
             self.status_var.set(vals[4])
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # snapshot
         self._edit_snapshot = {
             "full_name": vals[0],
@@ -440,13 +578,33 @@ class WorkersForm(ctk.CTkFrame):
         try:
             with get_connection() as conn:
                 if self._selected_id:
-                    ref.update_worker(conn, self._selected_id, full_name, dept, position, personnel_no, status=self.status_var.get().strip() or "Работает")
+                    ref.update_worker(
+                        conn,
+                        self._selected_id,
+                        full_name,
+                        dept,
+                        position,
+                        personnel_no,
+                        status=self.status_var.get().strip() or "Работает",
+                    )
                 else:
                     # Проверка дубликатов по ФИО и табельному
-                    if q.get_worker_by_full_name(conn, full_name) or q.get_worker_by_personnel_no(conn, personnel_no):
-                        messagebox.showwarning("Дубликат", "Работник уже существует. Выберите его в списке для редактирования.")
+                    if q.get_worker_by_full_name(
+                        conn, full_name
+                    ) or q.get_worker_by_personnel_no(conn, personnel_no):
+                        messagebox.showwarning(
+                            "Дубликат",
+                            "Работник уже существует. Выберите его в списке для редактирования.",
+                        )
                         return
-                    ref.add_or_update_worker(conn, full_name, dept, position, personnel_no, status=self.status_var.get().strip() or "Работает")
+                    ref.add_or_update_worker(
+                        conn,
+                        full_name,
+                        dept,
+                        position,
+                        personnel_no,
+                        status=self.status_var.get().strip() or "Работает",
+                    )
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Нарушение уникальности: {exc}")
             return
@@ -463,7 +621,7 @@ class WorkersForm(ctk.CTkFrame):
         try:
             with get_connection() as conn:
                 ref.delete_worker(conn, self._selected_id)
-        except sqlite3.IntegrityError as exc:
+        except (sqlite3.IntegrityError, ValueError) as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")
             return
         self._load_workers()
@@ -472,9 +630,15 @@ class WorkersForm(ctk.CTkFrame):
     def _export_workers(self) -> None:
         from import_export.excel_io import export_table_to_excel
         from datetime import datetime
+
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         initial = f"экспорт_работники_{stamp}.xlsx"
-        path = filedialog.asksaveasfilename(title="Сохранить работников", defaultextension=".xlsx", initialfile=initial, filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")])
+        path = filedialog.asksaveasfilename(
+            title="Сохранить работников",
+            defaultextension=".xlsx",
+            initialfile=initial,
+            filetypes=[("Excel", "*.xlsx"), ("Все файлы", "*.*")],
+        )
         if not path:
             return
         try:

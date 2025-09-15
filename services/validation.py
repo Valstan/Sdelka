@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-import sqlite3
 from dataclasses import dataclass
 
 from config.settings import CONFIG
@@ -17,7 +16,9 @@ DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 
 def validate_date(date_str: str) -> None:
     if not DATE_RE.match(date_str):
-        raise ValidationError(f"Некорректный формат даты: {date_str}. Ожидается {CONFIG.date_format}")
+        raise ValidationError(
+            f"Некорректный формат даты: {date_str}. Ожидается {CONFIG.date_format}"
+        )
     day, month, year = map(int, date_str.split("."))
     try:
         dt.date(year, month, day)

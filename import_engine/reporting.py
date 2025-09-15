@@ -19,5 +19,3 @@ def write_html_report(path: str | Path, title: str, rows: Iterable[str]) -> str:
     html.append("</body></html>")
     p.write_text("\n".join(html), encoding="utf-8")
     return str(p)
-
-

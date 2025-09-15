@@ -42,4 +42,21 @@
 - `run_project.bat` - скрипт запуска для Windows
 - `run_project.ps1` - PowerShell скрипт запуска
 - `venv/` - виртуальное окружение Python с зависимостями
- - `NETWORK_DB.md` - как подключить общую сетевую БД (мультипользовательский режим)
+- `NETWORK_DB.md` - как подключить общую сетевую БД (мультипользовательский режим)
+
+## Secrets и CI
+
+- **Yandex Disk token**: приложение читает OAuth-токен для автозагрузки с Яндекс.Диска из переменной окружения `YADISK_OAUTH_TOKEN` или из пользовательских настроек (`user_settings.json`). **Никогда** не храните токен в `config/settings.py` или в репозитории.
+- Рекомендуется создать файл `secrets.env` (в корне проекта, не добавляемый в репозиторий) с содержимым:
+
+```bash
+YADISK_OAUTH_TOKEN=your_real_token_here
+```
+
+Загрузите его перед запуском в PowerShell, например:
+
+```powershell
+Get-Content .\secrets.env | Foreach-Object { $pair = $_.Split('=',2); [System.Environment]::SetEnvironmentVariable($pair[0], $pair[1]) }
+```
+
+Также рекомендовано настроить CI (например, GitHub Actions) и добавить проверки линтера/тестов. В репозитории добавлен пример workflow для этого.

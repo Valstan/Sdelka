@@ -6,6 +6,9 @@ from tkinter import messagebox
 from utils.runtime_mode import is_readonly
 
 
+import logging
+
+
 def guard_readonly(action: str = "операция") -> bool:
     """Return True if allowed, False if blocked due to readonly. Shows a warning.
 
@@ -15,9 +18,12 @@ def guard_readonly(action: str = "операция") -> bool:
     """
     if is_readonly():
         try:
-            messagebox.showwarning("Режим 'Просмотр'", f"{action.capitalize()} недоступно в режиме 'Просмотр'.")
-        except Exception:
-            pass
+            messagebox.showwarning(
+                "Режим 'Просмотр'",
+                f"{action.capitalize()} недоступно в режиме 'Просмотр'.",
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         return False
     return True
 
@@ -28,7 +34,7 @@ def disable_when_readonly(*widgets: ctk.CTkBaseClass) -> None:
         for w in widgets:
             try:
                 w.configure(state="disabled")
-            except Exception:
-                pass
-
-
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )

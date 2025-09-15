@@ -1,3 +1,19 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+.venv/
+*.egg-info/
+env/
+/.idea/
+.vscode/
+backups/
+logs/
+*.db
+*.sqlite3
+secrets.env
 # Project data directory (completely ignored)
 data/
 

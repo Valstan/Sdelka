@@ -4,7 +4,6 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from config.settings import CONFIG
 from db.sqlite import get_connection
 from db import queries as q
 
@@ -13,7 +12,9 @@ def _row_factory(cursor, row):
     return {d[0]: row[idx] for idx, d in enumerate(cursor.description)}
 
 
-def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> tuple[int, int]:
+def merge_from_file(
+    target_db_path: Path | str, source_db_path: Path | str
+) -> tuple[int, int]:
     """Merge source DB into target DB.
 
     Returns tuple: (num_reference_upserts, num_orders_merged)
@@ -32,29 +33,47 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
         try:
             # --- 1) Reference tables ---
             # Workers
-            for r in src_conn.execute("SELECT full_name, dept, position, personnel_no FROM workers").fetchall():
-                if q.get_worker_by_personnel_no(tgt_conn, r["personnel_no"]) or q.get_worker_by_full_name(tgt_conn, r["full_name"]):
+            for r in src_conn.execute(
+                "SELECT full_name, dept, position, personnel_no FROM workers"
+            ).fetchall():
+                if q.get_worker_by_personnel_no(
+                    tgt_conn, r["personnel_no"]
+                ) or q.get_worker_by_full_name(tgt_conn, r["full_name"]):
                     continue
                 try:
-                    q.insert_worker(tgt_conn, r["full_name"], r.get("dept"), r.get("position"), r["personnel_no"])
+                    q.insert_worker(
+                        tgt_conn,
+                        r["full_name"],
+                        r.get("dept"),
+                        r.get("position"),
+                        r["personnel_no"],
+                    )
                     refs_upserts += 1
                 except sqlite3.IntegrityError:
                     pass
 
             # Job types
-            for r in src_conn.execute("SELECT name, unit, price FROM job_types").fetchall():
+            for r in src_conn.execute(
+                "SELECT name, unit, price FROM job_types"
+            ).fetchall():
                 q.upsert_job_type(tgt_conn, r["name"], r["unit"], float(r["price"]))
                 refs_upserts += 1
 
             # Products
-            for r in src_conn.execute("SELECT name, product_no, contract_id FROM products").fetchall():
+            for r in src_conn.execute(
+                "SELECT name, product_no, contract_id FROM products"
+            ).fetchall():
                 # Map contract_id by code if available
                 tgt_contract_id: Optional[int] = None
                 try:
                     if r.get("contract_id"):
-                        row = src_conn.execute("SELECT code FROM contracts WHERE id=?", (r["contract_id"],)).fetchone()
+                        row = src_conn.execute(
+                            "SELECT code FROM contracts WHERE id=?", (r["contract_id"],)
+                        ).fetchone()
                         if row and row.get("code"):
-                            c = q.get_contract_by_code(tgt_conn, row["code"])  # map by code
+                            c = q.get_contract_by_code(
+                                tgt_conn, row["code"]
+                            )  # map by code
                             if c:
                                 tgt_contract_id = int(c["id"])  # type: ignore[index]
                 except Exception:
@@ -65,8 +84,16 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
                 refs_upserts += 1
 
             # Contracts
-            for r in src_conn.execute("SELECT code, start_date, end_date, description FROM contracts").fetchall():
-                q.upsert_contract(tgt_conn, r["code"], r.get("start_date"), r.get("end_date"), r.get("description"))
+            for r in src_conn.execute(
+                "SELECT code, start_date, end_date, description FROM contracts"
+            ).fetchall():
+                q.upsert_contract(
+                    tgt_conn,
+                    r["code"],
+                    r.get("start_date"),
+                    r.get("end_date"),
+                    r.get("description"),
+                )
                 refs_upserts += 1
 
             # --- 2) Work orders ---
@@ -83,7 +110,9 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
             def _map_contract_id(src_contract_id: int | None) -> int | None:
                 if not src_contract_id:
                     return None
-                row = src_conn.execute("SELECT code FROM contracts WHERE id=?", (src_contract_id,)).fetchone()
+                row = src_conn.execute(
+                    "SELECT code FROM contracts WHERE id=?", (src_contract_id,)
+                ).fetchone()
                 if not row:
                     return None
                 tgt = q.get_contract_by_code(tgt_conn, row["code"])  # by code_norm
@@ -92,30 +121,44 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
             def _map_product_id(src_product_id: int | None) -> int | None:
                 if not src_product_id:
                     return None
-                row = src_conn.execute("SELECT product_no, name FROM products WHERE id=?", (src_product_id,)).fetchone()
+                row = src_conn.execute(
+                    "SELECT product_no, name FROM products WHERE id=?",
+                    (src_product_id,),
+                ).fetchone()
                 if not row:
                     return None
                 # Prefer product_no for lookup; fallback by name
-                tgt = q.get_product_by_no(tgt_conn, row["product_no"]) or q.get_product_by_name(tgt_conn, row["name"])
+                tgt = q.get_product_by_no(
+                    tgt_conn, row["product_no"]
+                ) or q.get_product_by_name(tgt_conn, row["name"])
                 return int(tgt["id"]) if tgt else None
 
             def _map_job_type_id(src_job_type_id: int) -> Optional[int]:
-                r = src_conn.execute("SELECT name FROM job_types WHERE id=?", (src_job_type_id,)).fetchone()
+                r = src_conn.execute(
+                    "SELECT name FROM job_types WHERE id=?", (src_job_type_id,)
+                ).fetchone()
                 if not r:
                     return None
                 jt = q.get_job_type_by_name(tgt_conn, r["name"])
                 return int(jt["id"]) if jt else None
 
             def _map_worker_id(src_worker_id: int) -> Optional[int]:
-                r = src_conn.execute("SELECT full_name, personnel_no FROM workers WHERE id=?", (src_worker_id,)).fetchone()
+                r = src_conn.execute(
+                    "SELECT full_name, personnel_no FROM workers WHERE id=?",
+                    (src_worker_id,),
+                ).fetchone()
                 if not r:
                     return None
-                w = q.get_worker_by_personnel_no(tgt_conn, r["personnel_no"]) or q.get_worker_by_full_name(tgt_conn, r["full_name"]) 
+                w = q.get_worker_by_personnel_no(
+                    tgt_conn, r["personnel_no"]
+                ) or q.get_worker_by_full_name(tgt_conn, r["full_name"])
                 return int(w["id"]) if w else None
 
             for o in src_orders:
                 tgt_contract_id = _map_contract_id(o["contract_id"])
-                tgt_product_id = _map_product_id(o["product_id"]) if o["product_id"] else None
+                tgt_product_id = (
+                    _map_product_id(o["product_id"]) if o["product_id"] else None
+                )
                 if not tgt_contract_id:
                     # Cannot import order without contract mapping
                     continue
@@ -124,7 +167,9 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
                 desired_no = int(o["order_no"]) if o["order_no"] is not None else None
                 use_order_no = desired_no
                 if desired_no is not None:
-                    row = tgt_conn.execute("SELECT 1 FROM work_orders WHERE order_no=?", (desired_no,)).fetchone()
+                    row = tgt_conn.execute(
+                        "SELECT 1 FROM work_orders WHERE order_no=?", (desired_no,)
+                    ).fetchone()
                     if row:
                         use_order_no = q.next_order_no(tgt_conn)
                 else:
@@ -151,9 +196,17 @@ def merge_from_file(target_db_path: Path | str, source_db_path: Path | str) -> t
                     if not jt_id:
                         continue
                     qty = float(it["quantity"]) if it["quantity"] is not None else 0.0
-                    unit_price = float(it["unit_price"]) if it["unit_price"] is not None else 0.0
-                    line_amount = float(it["line_amount"]) if it["line_amount"] is not None else qty * unit_price
-                    q.insert_work_order_item(tgt_conn, new_wo_id, jt_id, qty, unit_price, line_amount)
+                    unit_price = (
+                        float(it["unit_price"]) if it["unit_price"] is not None else 0.0
+                    )
+                    line_amount = (
+                        float(it["line_amount"])
+                        if it["line_amount"] is not None
+                        else qty * unit_price
+                    )
+                    q.insert_work_order_item(
+                        tgt_conn, new_wo_id, jt_id, qty, unit_price, line_amount
+                    )
                     total += line_amount
                 q.update_work_order_total(tgt_conn, new_wo_id, total)
 

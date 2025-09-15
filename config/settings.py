@@ -27,8 +27,9 @@ class AppConfig:
 
     # Yandex Disk defaults
     yandex_default_remote_dir: str = "/SdelkaBackups"
-    # Если нужно предустановить токен, задайте здесь (иначе оставить пустым)
-    yandex_default_oauth_token: str = "y0__xDR8Z0KGNuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK"
+    # OAuth token is loaded from environment variable `YADISK_OAUTH_TOKEN` at runtime.
+    # Do NOT store secrets in source code. Leave blank here.
+    yandex_default_oauth_token: str = ""
 
     # DB
     enable_wal: bool = True
@@ -36,7 +37,13 @@ class AppConfig:
 
 CONFIG = AppConfig()
 
-# Ensure directories exist at import time
-CONFIG.data_dir.mkdir(parents=True, exist_ok=True)
-CONFIG.backups_dir.mkdir(parents=True, exist_ok=True)
-CONFIG.logs_dir.mkdir(parents=True, exist_ok=True)
+
+def ensure_data_directories(config: AppConfig = CONFIG) -> None:
+    """Create data, backups and logs directories. Call explicitly during startup.
+
+    This avoids side-effects at module import time and makes the operation
+    explicit and testable.
+    """
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    config.backups_dir.mkdir(parents=True, exist_ok=True)
+    config.logs_dir.mkdir(parents=True, exist_ok=True)

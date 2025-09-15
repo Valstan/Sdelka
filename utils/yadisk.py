@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import ssl
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,13 +52,17 @@ class YaDiskClient:
                     raise RuntimeError(f"MKDIR failed: {resp.status} {resp.reason}")
                 try:
                     _ = resp.read()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
             finally:
                 try:
                     conn.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
 
     def test_connection(self) -> tuple[bool, str]:
         """Validate OAuth by calling /v1/disk/ (expects 200)."""
@@ -72,17 +77,23 @@ class YaDiskClient:
             msg = f"{resp.status} {resp.reason}"
             try:
                 _ = resp.read()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return ok, msg
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     # -------- Public resources (download by link) --------
-    def download_public_file(self, public_url: str, dest_path: Path, item_name: Optional[str] = None) -> None:
+    def download_public_file(
+        self, public_url: str, dest_path: Path, item_name: Optional[str] = None
+    ) -> None:
         """Download a public file (no OAuth) using public resources API.
 
         If public_url points to a folder, provide item_name (e.g., 'sdelka_base.db').
@@ -96,7 +107,9 @@ class YaDiskClient:
             pk = quote(public_url, safe="")
             if item_name:
                 path_q = quote("/" + item_name)
-                url = f"/v1/disk/public/resources/download?public_key={pk}&path={path_q}"
+                url = (
+                    f"/v1/disk/public/resources/download?public_key={pk}&path={path_q}"
+                )
             else:
                 url = f"/v1/disk/public/resources/download?public_key={pk}"
             conn.putrequest("GET", url)
@@ -105,7 +118,10 @@ class YaDiskClient:
                 h, v = self._auth_header()
                 conn.putheader(h, v)
             # Добавим заголовки как у обычного браузера, чтобы снизить шанс капчи
-            conn.putheader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+            conn.putheader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            )
             conn.putheader("Accept", "*/*")
             conn.putheader("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
             conn.endheaders()
@@ -116,7 +132,9 @@ class YaDiskClient:
                 if not item_name:
                     try:
                         conn_list = self._conn_api()
-                        list_url = f"/v1/disk/public/resources?public_key={pk}&limit=1000"
+                        list_url = (
+                            f"/v1/disk/public/resources?public_key={pk}&limit=1000"
+                        )
                         # Простая ретрай-логика для временных 5xx
                         attempt = 0
                         while True:
@@ -133,14 +151,18 @@ class YaDiskClient:
                             if 500 <= rlist.status < 600 and attempt < 3:
                                 try:
                                     conn_list.close()
-                                except Exception:
-                                    pass
+                                except Exception as exc:
+                                    logging.getLogger(__name__).exception(
+                                        "Ignored unexpected error: %s", exc
+                                    )
                                 conn_list = self._conn_api()
                                 continue
-                            raise RuntimeError(f"List public folder failed: {rlist.status} {rlist.reason}")
+                            raise RuntimeError(
+                                f"List public folder failed: {rlist.status} {rlist.reason}"
+                            )
                         if rlist.status == 200:
                             meta = json.loads(listing.decode("utf-8", errors="ignore"))
-                            items = ((meta.get("_embedded") or {}).get("items") or [])
+                            items = (meta.get("_embedded") or {}).get("items") or []
                             # Сформировать упорядоченный список кандидатов
                             candidates: list[str] = []
                             # 1) точное имя sdelka_base.db
@@ -153,7 +175,11 @@ class YaDiskClient:
                             for it in items:
                                 nm = str(it.get("name", ""))
                                 lnm = nm.lower()
-                                if lnm.endswith(".db") and lnm != "sdelka_base.db" and lnm != "thumbs.db":
+                                if (
+                                    lnm.endswith(".db")
+                                    and lnm != "sdelka_base.db"
+                                    and lnm != "thumbs.db"
+                                ):
                                     candidates.append(nm)
                             # Перебираем кандидатов до первой валидной SQLite
                             downloaded_ok = False
@@ -174,7 +200,9 @@ class YaDiskClient:
                                         if r2.status != 200:
                                             last_err = f"{r2.status} {r2.reason}"
                                             continue
-                                        info2 = json.loads(d2.decode("utf-8", errors="ignore"))
+                                        info2 = json.loads(
+                                            d2.decode("utf-8", errors="ignore")
+                                        )
                                         href2 = info2.get("href")
                                         if not href2:
                                             last_err = "no href"
@@ -182,18 +210,31 @@ class YaDiskClient:
                                     finally:
                                         try:
                                             conn2.close()
-                                        except Exception:
-                                            pass
+                                        except Exception as exc:
+                                            logging.getLogger(__name__).exception(
+                                                "Ignored unexpected error: %s", exc
+                                            )
                                     # Скачать кандидата
                                     parsed2 = urlparse(href2)
-                                    dl2c = HTTPSConnection(parsed2.hostname, 443, context=ssl.create_default_context())
+                                    dl2c = HTTPSConnection(
+                                        parsed2.hostname,
+                                        443,
+                                        context=ssl.create_default_context(),
+                                    )
                                     try:
-                                        pwq = parsed2.path + (f"?{parsed2.query}" if parsed2.query else "")
+                                        pwq = parsed2.path + (
+                                            f"?{parsed2.query}" if parsed2.query else ""
+                                        )
                                         dl2c.putrequest("GET", pwq)
                                         # Браузерные заголовки для снижения капчи
-                                        dl2c.putheader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+                                        dl2c.putheader(
+                                            "User-Agent",
+                                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                                        )
                                         dl2c.putheader("Accept", "*/*")
-                                        dl2c.putheader("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                                        dl2c.putheader(
+                                            "Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8"
+                                        )
                                         dl2c.endheaders()
                                         rdl = dl2c.getresponse()
                                         if rdl.status != 200:
@@ -201,7 +242,10 @@ class YaDiskClient:
                                             continue
                                         blob = rdl.read()
                                         # Проверим на SQLite заголовок
-                                        if not (len(blob) >= 16 and blob[:16] == b"SQLite format 3\x00"):
+                                        if not (
+                                            len(blob) >= 16
+                                            and blob[:16] == b"SQLite format 3\x00"
+                                        ):
                                             last_err = "not sqlite"
                                             continue
                                         dest_path.write_bytes(blob)
@@ -210,21 +254,29 @@ class YaDiskClient:
                                     finally:
                                         try:
                                             dl2c.close()
-                                        except Exception:
-                                            pass
+                                        except Exception as exc:
+                                            logging.getLogger(__name__).exception(
+                                                "Ignored unexpected error: %s", exc
+                                            )
                                 except Exception as e:
                                     last_err = str(e)
                                     continue
                             if not downloaded_ok:
-                                raise RuntimeError(f"В расшаренной папке не найден корректный файл базы (.db). {last_err or ''}")
+                                raise RuntimeError(
+                                    f"В расшаренной папке не найден корректный файл базы (.db). {last_err or ''}"
+                                )
                             return
                         else:
-                            raise RuntimeError(f"List public folder failed: {rlist.status} {rlist.reason}")
+                            raise RuntimeError(
+                                f"List public folder failed: {rlist.status} {rlist.reason}"
+                            )
                     finally:
                         try:
                             conn_list.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logging.getLogger(__name__).exception(
+                                "Ignored unexpected error: %s", exc
+                            )
                 # Если не папка — отдадим исходную ошибку
                 if resp.status != 200:
                     try:
@@ -232,7 +284,9 @@ class YaDiskClient:
                         err = j.get("message") or j
                     except Exception:
                         err = data[:200]
-                    raise RuntimeError(f"Get public download URL failed: {resp.status} {resp.reason} — {err}")
+                    raise RuntimeError(
+                        f"Get public download URL failed: {resp.status} {resp.reason} — {err}"
+                    )
             info = json.loads(data.decode("utf-8"))
             href = info.get("href")
             if not href:
@@ -240,32 +294,45 @@ class YaDiskClient:
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         # Step 2: download
         parsed = urlparse(href)
-        dl_conn = HTTPSConnection(parsed.hostname, 443, context=ssl.create_default_context())
+        dl_conn = HTTPSConnection(
+            parsed.hostname, 443, context=ssl.create_default_context()
+        )
         try:
             path_with_query = parsed.path + (f"?{parsed.query}" if parsed.query else "")
             dl_conn.putrequest("GET", path_with_query)
             # Браузерные заголовки
-            dl_conn.putheader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+            dl_conn.putheader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            )
             dl_conn.putheader("Accept", "*/*")
             dl_conn.putheader("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
             dl_conn.endheaders()
             dl_resp = dl_conn.getresponse()
             if dl_resp.status != 200:
-                raise RuntimeError(f"Public download failed: {dl_resp.status} {dl_resp.reason}")
+                raise RuntimeError(
+                    f"Public download failed: {dl_resp.status} {dl_resp.reason}"
+                )
             content = dl_resp.read()
             # Если запрашивали конкретный файл, проверим, что это SQLite
             if not (len(content) >= 16 and content[:16] == b"SQLite format 3\x00"):
-                raise RuntimeError("Загруженный файл не является базой SQLite. Убедитесь, что в папке лежит sdelka_base.db")
+                raise RuntimeError(
+                    "Загруженный файл не является базой SQLite. Убедитесь, что в папке лежит sdelka_base.db"
+                )
             dest_path.write_bytes(content)
         finally:
             try:
                 dl_conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     def get_public_meta(self, public_url: str) -> dict:
         """Return metadata for a public resource (file or folder)."""
@@ -281,13 +348,17 @@ class YaDiskClient:
             resp = conn.getresponse()
             data = resp.read()
             if resp.status != 200:
-                raise RuntimeError(f"Get public meta failed: {resp.status} {resp.reason}")
+                raise RuntimeError(
+                    f"Get public meta failed: {resp.status} {resp.reason}"
+                )
             return json.loads(data.decode("utf-8", errors="ignore"))
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     # -------- Private resources (OAuth) --------
     def _resource_exists(self, remote_path: str) -> bool:
@@ -301,14 +372,18 @@ class YaDiskClient:
             resp = conn.getresponse()
             try:
                 _ = resp.read()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return resp.status == 200
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     def _move(self, from_path: str, to_path: str, overwrite: bool = True) -> None:
         conn = self._conn_api()
@@ -332,8 +407,10 @@ class YaDiskClient:
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
     def _list_dir(self, remote_dir: str) -> list[dict]:
         conn = self._conn_api()
@@ -352,16 +429,25 @@ class YaDiskClient:
                     err = j.get("message") or j
                 except Exception:
                     err = data[:200]
-                raise RuntimeError(f"List dir failed: {resp.status} {resp.reason} — {err}")
+                raise RuntimeError(
+                    f"List dir failed: {resp.status} {resp.reason} — {err}"
+                )
             meta = json.loads(data.decode("utf-8", errors="ignore"))
-            return ((meta.get("_embedded") or {}).get("items") or [])
+            return (meta.get("_embedded") or {}).get("items") or []
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
-    def upload_file(self, local_path: Path, remote_name: Optional[str] = None, overwrite: bool = True) -> str:
+    def upload_file(
+        self,
+        local_path: Path,
+        remote_name: Optional[str] = None,
+        overwrite: bool = True,
+    ) -> str:
         local_path = Path(local_path)
         if not local_path.exists():
             raise FileNotFoundError(local_path)
@@ -383,13 +469,17 @@ class YaDiskClient:
                 respd = conn_del.getresponse()
                 # 204/202 ok, 404 not found also ok
                 _ = respd.read()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             finally:
                 try:
                     conn_del.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
 
         # Step 1: get upload URL
         conn = self._conn_api()
@@ -408,7 +498,9 @@ class YaDiskClient:
                     err = j.get("message") or j
                 except Exception:
                     err = data[:200]
-                raise RuntimeError(f"Get upload URL failed: {resp.status} {resp.reason} — {err}")
+                raise RuntimeError(
+                    f"Get upload URL failed: {resp.status} {resp.reason} — {err}"
+                )
             try:
                 info = json.loads(data.decode("utf-8"))
             except Exception as exc:
@@ -419,12 +511,16 @@ class YaDiskClient:
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
         # Step 2: PUT file to href
         parsed = urlparse(href)
-        up_conn = HTTPSConnection(parsed.hostname, 443, context=ssl.create_default_context())
+        up_conn = HTTPSConnection(
+            parsed.hostname, 443, context=ssl.create_default_context()
+        )
         try:
             path_with_query = parsed.path + (f"?{parsed.query}" if parsed.query else "")
             data_bytes = local_path.read_bytes()
@@ -439,16 +535,26 @@ class YaDiskClient:
                 raise RuntimeError(f"Upload failed: {up_resp.status} {up_resp.reason}")
             try:
                 _ = up_resp.read()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
             return remote_path
         finally:
             try:
                 up_conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
 
-    def rotate_and_upload(self, local_path: Path, canonical_name: str = "sdelka_base.db", backup_prefix: str = "backup_base_sdelka_", max_keep: int = 20) -> str:
+    def rotate_and_upload(
+        self,
+        local_path: Path,
+        canonical_name: str = "sdelka_base.db",
+        backup_prefix: str = "backup_base_sdelka_",
+        max_keep: int = 20,
+    ) -> str:
         """Move existing canonical file to a timestamped backup, upload new file, prune backups."""
         local_path = Path(local_path)
         if not local_path.exists():
@@ -461,12 +567,15 @@ class YaDiskClient:
         # If canonical exists, move to backup name
         if self._resource_exists(canonical_path):
             from datetime import datetime
+
             stamp = datetime.now().strftime("%m%d_%H%M")
             backup_name = f"{backup_prefix}{stamp}.db"
             backup_path = f"{remote_dir}/{backup_name}"
             self._move(canonical_path, backup_path, overwrite=True)
         # Upload new canonical
-        uploaded_path = self.upload_file(local_path, remote_name=canonical_name, overwrite=True)
+        uploaded_path = self.upload_file(
+            local_path, remote_name=canonical_name, overwrite=True
+        )
         # Prune old backups beyond max_keep
         try:
             items = self._list_dir(remote_dir)
@@ -476,16 +585,20 @@ class YaDiskClient:
                     name = str(it.get("name", ""))
                     if name.startswith(backup_prefix) and name.endswith(".db"):
                         backups.append(it)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
             # Sort by modified (fallback to name)
             try:
                 backups.sort(key=lambda it: it.get("modified", ""))
             except Exception:
                 try:
                     backups.sort(key=lambda it: it.get("name", ""))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
             # Delete oldest extras
             extras = max(0, len(backups) - max_keep)
             for it in backups[:extras]:
@@ -497,7 +610,9 @@ class YaDiskClient:
                     conn_del = self._conn_api()
                     try:
                         path_q = quote(path)
-                        conn_del.putrequest("DELETE", f"/v1/disk/resources?path={path_q}")
+                        conn_del.putrequest(
+                            "DELETE", f"/v1/disk/resources?path={path_q}"
+                        )
                         h, v = self._auth_header()
                         conn_del.putheader(h, v)
                         conn_del.endheaders()
@@ -505,12 +620,16 @@ class YaDiskClient:
                     finally:
                         try:
                             conn_del.close()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                        except Exception as exc:
+                            logging.getLogger(__name__).exception(
+                                "Ignored unexpected error: %s", exc
+                            )
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         return uploaded_path
 
     def download_file(self, remote_path: str, dest_path: Path) -> None:
@@ -523,6 +642,7 @@ class YaDiskClient:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         # Step 1: get download URL
         import logging
+
         log = logging.getLogger(__name__)
         log.info("download_file start: remote=%s -> dest=%s", remote_path, dest_path)
         conn = self._conn_api()
@@ -540,8 +660,12 @@ class YaDiskClient:
                     err = j.get("message") or j
                 except Exception:
                     err = data[:200]
-                log.error("download URL error: %s %s: %s", resp.status, resp.reason, err)
-                raise RuntimeError(f"Get download URL failed: {resp.status} {resp.reason} — {err}")
+                log.error(
+                    "download URL error: %s %s: %s", resp.status, resp.reason, err
+                )
+                raise RuntimeError(
+                    f"Get download URL failed: {resp.status} {resp.reason} — {err}"
+                )
             info = json.loads(data.decode("utf-8"))
             href = info.get("href")
             if not href:
@@ -549,11 +673,15 @@ class YaDiskClient:
         finally:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
         # Step 2: GET from href (follow one redirect if needed)
         parsed = urlparse(href)
-        dl_conn = HTTPSConnection(parsed.hostname, 443, context=ssl.create_default_context())
+        dl_conn = HTTPSConnection(
+            parsed.hostname, 443, context=ssl.create_default_context()
+        )
         try:
             path_with_query = parsed.path + (f"?{parsed.query}" if parsed.query else "")
             dl_conn.putrequest("GET", path_with_query)
@@ -568,34 +696,50 @@ class YaDiskClient:
                     location = None
                 try:
                     _ = dl_resp.read()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
+                    )
                 if not location:
-                    raise RuntimeError(f"Download failed: {dl_resp.status} {dl_resp.reason}")
+                    raise RuntimeError(
+                        f"Download failed: {dl_resp.status} {dl_resp.reason}"
+                    )
                 redir = urlparse(location)
-                rd_conn = HTTPSConnection(redir.hostname, 443, context=ssl.create_default_context())
+                rd_conn = HTTPSConnection(
+                    redir.hostname, 443, context=ssl.create_default_context()
+                )
                 try:
                     rd_path = redir.path + (f"?{redir.query}" if redir.query else "")
                     rd_conn.putrequest("GET", rd_path)
                     rd_conn.endheaders()
                     rd_resp = rd_conn.getresponse()
-                    log.info("download redirect resp: %s %s", rd_resp.status, rd_resp.reason)
+                    log.info(
+                        "download redirect resp: %s %s", rd_resp.status, rd_resp.reason
+                    )
                     if rd_resp.status != 200:
-                        raise RuntimeError(f"Download failed: {rd_resp.status} {rd_resp.reason}")
+                        raise RuntimeError(
+                            f"Download failed: {rd_resp.status} {rd_resp.reason}"
+                        )
                     content = rd_resp.read()
                     dest_path.write_bytes(content)
                     return
                 finally:
                     try:
                         rd_conn.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.getLogger(__name__).exception(
+                            "Ignored unexpected error: %s", exc
+                        )
             if dl_resp.status != 200:
-                raise RuntimeError(f"Download failed: {dl_resp.status} {dl_resp.reason}")
+                raise RuntimeError(
+                    f"Download failed: {dl_resp.status} {dl_resp.reason}"
+                )
             content = dl_resp.read()
             dest_path.write_bytes(content)
         finally:
             try:
                 dl_conn.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
