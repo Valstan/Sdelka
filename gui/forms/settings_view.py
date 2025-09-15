@@ -467,64 +467,85 @@ class SettingsView(ctk.CTkFrame):
         ):
             return
         prefs = load_prefs()
-        public_url = (self._yd_remote_file_var.get() or "").strip()
-        # Валидация публичной ссылки: требуется реальная расшаренная папка/файл Яндекс.Диска
-        try:
-            bad_defaults = {"https://disk.yandex.ru", "https://disk.yandex.ru/", "http://disk.yandex.ru", "http://disk.yandex.ru/"}
-            if (not public_url) or (public_url.strip().rstrip("/") in bad_defaults) or ("disk.yandex.ru" in public_url and ("/d/" not in public_url and "/i/" not in public_url)):
-                messagebox.showwarning(
-                    "Загрузка базы",
-                    "Укажите ссылку на расшаренную папку Яндекс.Диска вида https://disk.yandex.ru/d/…",
-                    parent=self,
-                )
-                return
-        except Exception:
-            pass
-        # Сохраним ссылку в пользовательские настройки для будущих запусков
-        try:
-            prefs.yandex_public_folder_url = public_url
-            save_prefs(prefs)
-        except Exception:
-            pass
         # Пути
         cur_db = Path(get_current_db_path())
         tmp_download = cur_db.parent / "_yadisk_download.db"
+        public_url = (self._yd_remote_file_var.get() or prefs.yandex_public_folder_url or "").strip()
+        # Сохраним ссылку в пользовательские настройки (если пользователь уже вводил)
+        try:
+            prefs.yandex_public_folder_url = public_url or None
+            save_prefs(prefs)
+        except Exception:
+            pass
         def run():
+            from utils.yadisk import YaDiskClient, YaDiskConfig
+            import logging, shutil
+            log = logging.getLogger(__name__)
             try:
-                # Скачиваем в temp файл: поддержка публичной ссылки (без токена) и приватного пути (с токеном)
-                from utils.yadisk import YaDiskClient, YaDiskConfig
-                import logging
-                log = logging.getLogger(__name__)
-                log.info("Yadisk import start: url=%s", public_url)
-                if public_url.startswith("http://") or public_url.startswith("https://"):
-                    # Публичная ссылка на папку. Всегда передаем токен (если есть) для обхода антибота
-                    eff_token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
-                    client = YaDiskClient(YaDiskConfig(oauth_token=eff_token))
-                    # Авто-поиск sdelka_base.db или первого .db
-                    client.download_public_file(public_url=public_url, dest_path=tmp_download, item_name=None)
+                # 1) Сначала пробуем приватный путь с OAuth (используем сохраненный или дефолтный токен)
+                token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
+                remote_dir = (prefs.yandex_remote_dir or CONFIG.yandex_default_remote_dir or "/SdelkaBackups").strip()
+                if token:
+                    client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
+                    private_path = (prefs.yandex_private_file_path or f"{remote_dir.rstrip('/')}/sdelka_base.db").strip()
+                    private_path = private_path if private_path.startswith("/") else "/" + private_path
+                    try:
+                        client.download_file(private_path, tmp_download)
+                        log.info("Yadisk import private OK: %s", private_path)
+                    except Exception as e_priv:
+                        log.warning("Yadisk private download failed: %s", e_priv)
+                        # Переходим к публичной ссылке, если есть
+                        raise e_priv
                 else:
-                    token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
-                    if not token:
-                        raise RuntimeError("Ожидается ссылка на папку Яндекс.Диска. Для приватного пути требуется OAuth токен в настройках.")
-                    client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=prefs.yandex_remote_dir or CONFIG.yandex_default_remote_dir or "/SdelkaBackups"))
-                    # Приватный путь: ожидаем вид "/path/to/sdelka_base.db"
-                    private_path = public_url if public_url.startswith("/") else "/" + public_url
-                    client.download_file(private_path, tmp_download)
-                # Доп. валидация: проверим что файл — SQLite
+                    log.info("Yadisk import: no token available, skipping private path")
+                    raise RuntimeError("no_token_for_private")
+            except Exception:
+                # 2) Фолбэк: публичная папка/ссылка (если указана). Передаём токен если есть
                 try:
-                    head = tmp_download.read_bytes()[:16]
-                    if not (len(head) >= 16 and head[:16] == b"SQLite format 3\x00"):
-                        log.error("Downloaded file is not SQLite: %s", tmp_download)
-                        raise RuntimeError("Загруженный файл не является базой SQLite. Проверьте содержимое папки.")
-                except FileNotFoundError:
-                    log.error("Temp download not found: %s", tmp_download)
-                    raise RuntimeError("Файл не был загружен. Повторите попытку.")
-
-                # Бэкап текущей базы
+                    eff_token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
+                    if not public_url:
+                        raise RuntimeError("Не удалось загрузить приватно. Укажите ссылку на Яндекс-папку (публичную) и повторите.")
+                    log.info("Yadisk import fallback public: %s", public_url)
+                    client = YaDiskClient(YaDiskConfig(oauth_token=eff_token))
+                    client.download_public_file(public_url=public_url, dest_path=tmp_download, item_name=None)
+                except Exception as e_pub:
+                    logging.getLogger(__name__).exception("Yadisk import failed")
+                    def _err():
+                        try:
+                            messagebox.showerror("Загрузка базы", f"Не удалось загрузить базу. Проверьте токен/настройки, либо укажите ссылку на Яндекс-папку и повторите.\n\nПодробности: {e_pub}", parent=self)
+                        except Exception:
+                            pass
+                    try:
+                        self.after(0, _err)
+                    except Exception:
+                        pass
+                    try:
+                        if tmp_download.exists():
+                            tmp_download.unlink()
+                    except Exception:
+                        pass
+                    return
+            # Валидация SQLite и замена
+            try:
+                head = tmp_download.read_bytes()[:16]
+                if not (len(head) >= 16 and head[:16] == b"SQLite format 3\x00"):
+                    log.error("Downloaded file is not SQLite: %s", tmp_download)
+                    raise RuntimeError("Загруженный файл не является базой SQLite. Проверьте содержимое папки.")
+            except FileNotFoundError:
+                log.error("Temp download not found: %s", tmp_download)
+                def _err_nf():
+                    try:
+                        messagebox.showerror("Загрузка базы", "Файл не был загружен. Повторите попытку.", parent=self)
+                    except Exception:
+                        pass
+                try:
+                    self.after(0, _err_nf)
+                except Exception:
+                    pass
+                return
+            try:
                 log.info("Backing up current DB: %s", cur_db)
                 backup_sqlite_db(cur_db)
-                # Замена базы атомарно
-                import shutil
                 log.info("Replacing DB with downloaded file")
                 shutil.copy2(tmp_download, cur_db)
                 def _ok():
@@ -532,16 +553,10 @@ class SettingsView(ctk.CTkFrame):
                         messagebox.showinfo("Загрузка базы", "База данных успешно загружена и заменена. Перезапустите приложение для применения во всех окнах.", parent=self)
                     except Exception:
                         pass
-                self.after(0, _ok)
-            except Exception as exc:
-                import logging
-                logging.getLogger(__name__).exception("Yadisk import failed")
-                def _err():
-                    try:
-                        messagebox.showerror("Загрузка базы", f"Ошибка: {exc}", parent=self)
-                    except Exception:
-                        pass
-                self.after(0, _err)
+                try:
+                    self.after(0, _ok)
+                except Exception:
+                    pass
             finally:
                 try:
                     if tmp_download.exists():
