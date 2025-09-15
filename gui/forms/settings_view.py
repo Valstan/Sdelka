@@ -399,9 +399,9 @@ class SettingsView(ctk.CTkFrame):
         def run():
             try:
                 from utils.yadisk import YaDiskClient, YaDiskConfig
-                # Имя на диске фиксируем как sdelka_base (без расширения), для совместимости оставим .db
+                # Ротация на Яндекс.Диске: сдвиг текущей базы в backup + загрузка новой + ограничение до 20 копий
                 client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
-                remote_path = client.upload_file(Path(backup_path), remote_name="sdelka_base.db", overwrite=True)
+                remote_path = client.rotate_and_upload(Path(backup_path), canonical_name="sdelka_base.db", backup_prefix="backup_base_sdelka_", max_keep=20)
                 def _ok():
                     try:
                         messagebox.showinfo("Яндекс.Диск", f"Бэкап загружен: {remote_path}")

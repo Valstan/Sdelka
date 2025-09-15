@@ -81,6 +81,7 @@ class YaDiskClient:
             except Exception:
                 pass
 
+    # -------- Public resources (download by link) --------
     def download_public_file(self, public_url: str, dest_path: Path, item_name: Optional[str] = None) -> None:
         """Download a public file (no OAuth) using public resources API.
 
@@ -287,7 +288,80 @@ class YaDiskClient:
                 conn.close()
             except Exception:
                 pass
-    def upload_file(self, local_path: Path, remote_name: Optional[str] = None, overwrite: bool: bool = True) -> str:
+
+    # -------- Private resources (OAuth) --------
+    def _resource_exists(self, remote_path: str) -> bool:
+        conn = self._conn_api()
+        try:
+            path_q = quote(remote_path)
+            conn.putrequest("GET", f"/v1/disk/resources?path={path_q}")
+            h, v = self._auth_header()
+            conn.putheader(h, v)
+            conn.endheaders()
+            resp = conn.getresponse()
+            try:
+                _ = resp.read()
+            except Exception:
+                pass
+            return resp.status == 200
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _move(self, from_path: str, to_path: str, overwrite: bool = True) -> None:
+        conn = self._conn_api()
+        try:
+            f_q = quote(from_path)
+            t_q = quote(to_path)
+            url = f"/v1/disk/resources/move?from={f_q}&path={t_q}&overwrite={'true' if overwrite else 'false'}"
+            conn.putrequest("POST", url)
+            h, v = self._auth_header()
+            conn.putheader(h, v)
+            conn.endheaders()
+            resp = conn.getresponse()
+            data = resp.read()
+            if resp.status not in (200, 201, 202):
+                try:
+                    j = json.loads(data.decode("utf-8", errors="ignore"))
+                    err = j.get("message") or j
+                except Exception:
+                    err = data[:200]
+                raise RuntimeError(f"Move failed: {resp.status} {resp.reason} — {err}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _list_dir(self, remote_dir: str) -> list[dict]:
+        conn = self._conn_api()
+        try:
+            d_q = quote(remote_dir.rstrip("/") or "/")
+            url = f"/v1/disk/resources?path={d_q}&limit=1000"
+            conn.putrequest("GET", url)
+            h, v = self._auth_header()
+            conn.putheader(h, v)
+            conn.endheaders()
+            resp = conn.getresponse()
+            data = resp.read()
+            if resp.status != 200:
+                try:
+                    j = json.loads(data.decode("utf-8", errors="ignore"))
+                    err = j.get("message") or j
+                except Exception:
+                    err = data[:200]
+                raise RuntimeError(f"List dir failed: {resp.status} {resp.reason} — {err}")
+            meta = json.loads(data.decode("utf-8", errors="ignore"))
+            return ((meta.get("_embedded") or {}).get("items") or [])
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def upload_file(self, local_path: Path, remote_name: Optional[str] = None, overwrite: bool = True) -> str:
         local_path = Path(local_path)
         if not local_path.exists():
             raise FileNotFoundError(local_path)
@@ -373,6 +447,71 @@ class YaDiskClient:
                 up_conn.close()
             except Exception:
                 pass
+
+    def rotate_and_upload(self, local_path: Path, canonical_name: str = "sdelka_base.db", backup_prefix: str = "backup_base_sdelka_", max_keep: int = 20) -> str:
+        """Move existing canonical file to a timestamped backup, upload new file, prune backups."""
+        local_path = Path(local_path)
+        if not local_path.exists():
+            raise FileNotFoundError(local_path)
+        remote_dir = self.cfg.remote_dir.rstrip("/") or "/"
+        canonical_path = f"{remote_dir}/{canonical_name}"
+        # ensure directory exists
+        if remote_dir and remote_dir != "/":
+            self.ensure_dir(remote_dir)
+        # If canonical exists, move to backup name
+        if self._resource_exists(canonical_path):
+            from datetime import datetime
+            stamp = datetime.now().strftime("%m%d_%H%M")
+            backup_name = f"{backup_prefix}{stamp}.db"
+            backup_path = f"{remote_dir}/{backup_name}"
+            self._move(canonical_path, backup_path, overwrite=True)
+        # Upload new canonical
+        uploaded_path = self.upload_file(local_path, remote_name=canonical_name, overwrite=True)
+        # Prune old backups beyond max_keep
+        try:
+            items = self._list_dir(remote_dir)
+            backups: list[dict] = []
+            for it in items:
+                try:
+                    name = str(it.get("name", ""))
+                    if name.startswith(backup_prefix) and name.endswith(".db"):
+                        backups.append(it)
+                except Exception:
+                    pass
+            # Sort by modified (fallback to name)
+            try:
+                backups.sort(key=lambda it: it.get("modified", ""))
+            except Exception:
+                try:
+                    backups.sort(key=lambda it: it.get("name", ""))
+                except Exception:
+                    pass
+            # Delete oldest extras
+            extras = max(0, len(backups) - max_keep)
+            for it in backups[:extras]:
+                try:
+                    name = str(it.get("name", ""))
+                    if not name:
+                        continue
+                    path = f"{remote_dir}/{name}"
+                    conn_del = self._conn_api()
+                    try:
+                        path_q = quote(path)
+                        conn_del.putrequest("DELETE", f"/v1/disk/resources?path={path_q}")
+                        h, v = self._auth_header()
+                        conn_del.putheader(h, v)
+                        conn_del.endheaders()
+                        _ = conn_del.getresponse().read()
+                    finally:
+                        try:
+                            conn_del.close()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return uploaded_path
 
     def download_file(self, remote_path: str, dest_path: Path) -> None:
         """Download a file from Yandex.Disk to a local destination using REST API.
