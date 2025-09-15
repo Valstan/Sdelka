@@ -28,7 +28,7 @@ class AppConfig:
     # Yandex Disk defaults
     yandex_default_remote_dir: str = "/SdelkaBackups"
     # Если нужно предустановить токен, задайте здесь (иначе оставить пустым)
-    yandex_default_oauth_token: str = ""
+    yandex_default_oauth_token: str = "y0__xDR8Z0KGNuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK"
 
     # DB
     enable_wal: bool = True

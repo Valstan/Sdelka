@@ -380,7 +380,8 @@ class SettingsView(ctk.CTkFrame):
             return
         prefs = load_prefs()
         remote_dir = (prefs.yandex_remote_dir or "/SdelkaBackups").strip()
-        token = (prefs.yandex_oauth_token or "").strip()
+        # Используем токен из настроек пользователя, иначе встроенный по умолчанию из CONFIG
+        token = (prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip()
         if not token:
             messagebox.showwarning("Яндекс.Диск", "Укажите OAuth токен и нажмите 'Сохранить'.")
             return
@@ -399,7 +400,7 @@ class SettingsView(ctk.CTkFrame):
             try:
                 from utils.yadisk import YaDiskClient, YaDiskConfig
                 # Имя на диске фиксируем как sdelka_base (без расширения), для совместимости оставим .db
-                client = YaDiskClient(YaDiskConfig(oauth_token=(prefs.yandex_oauth_token or CONFIG.yandex_default_oauth_token or "").strip(), remote_dir=remote_dir))
+                client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
                 remote_path = client.upload_file(Path(backup_path), remote_name="sdelka_base.db", overwrite=True)
                 def _ok():
                     try:
