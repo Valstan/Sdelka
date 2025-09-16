@@ -39,10 +39,26 @@ def apply_user_fonts(root: tk.Misc, prefs: UserPrefs) -> None:
     except Exception as exc:
         logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
-    # Масштабирование CTk
+    # Масштабирование CTk: выполняем отложенно и только если окно существует
     try:
         scale = max(0.6, prefs.ui_font_size / 12.0)
-        ctk.set_widget_scaling(scale)
+
+        def _apply_scale():
+            try:
+                # Проверяем, что корень все еще существует
+                if hasattr(root, "winfo_exists") and not root.winfo_exists():
+                    return
+                ctk.set_widget_scaling(scale)
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+
+        # Выполним через after, чтобы избежать вызовов во время уничтожения виджетов
+        try:
+            root.after(0, _apply_scale)
+        except Exception:
+            _apply_scale()
     except Exception as exc:
         logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 

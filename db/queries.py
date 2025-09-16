@@ -166,8 +166,16 @@ def update_worker(
 
 
 def delete_worker(conn: sqlite3.Connection, worker_id: int) -> None:
-    # Проверяем, используется ли работник в других таблицах
-    # Пока что в схеме нет связи работников с нарядами, поэтому просто удаляем
+    # Проверяем связи, чтобы не ловить FOREIGN KEY constraint failed
+    cur = conn.execute(
+        "SELECT COUNT(*) FROM work_order_workers WHERE worker_id = ?",
+        (worker_id,),
+    )
+    count = cur.fetchone()[0]
+    if count > 0:
+        raise ValueError(
+            f"Нельзя удалить работника: он участвует в {count} нарядах"
+        )
     conn.execute("DELETE FROM workers WHERE id = ?", (worker_id,))
 
 
@@ -418,6 +426,16 @@ def update_product(
 
 
 def delete_product(conn: sqlite3.Connection, product_id: int) -> None:
+    # Проверяем связи, чтобы не ловить FOREIGN KEY constraint failed
+    cur = conn.execute(
+        "SELECT COUNT(*) FROM work_order_products WHERE product_id = ?",
+        (product_id,),
+    )
+    count = cur.fetchone()[0]
+    if count > 0:
+        raise ValueError(
+            f"Нельзя удалить изделие: оно используется в {count} нарядах"
+        )
     conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
 
 
@@ -578,6 +596,18 @@ def update_contract(
 
 
 def delete_contract(conn: sqlite3.Connection, contract_id: int) -> None:
+    # Проверяем связи, чтобы не ловить FOREIGN KEY constraint failed
+    # 1) Изделия ссылаются на контракт (RESTRICT) — блокируем удаление
+    cur = conn.execute(
+        "SELECT COUNT(*) FROM products WHERE contract_id = ?",
+        (contract_id,),
+    )
+    prod_count = cur.fetchone()[0]
+    if prod_count > 0:
+        raise ValueError(
+            f"Нельзя удалить контракт: к нему привязано изделий: {prod_count}"
+        )
+    # 2) Наряды ссылаются с ON DELETE SET NULL — не блокирует, можем удалять
     conn.execute("DELETE FROM contracts WHERE id = ?", (contract_id,))
 
 
@@ -676,6 +706,17 @@ def list_contracts(
         sql += " LIMIT ?"
         params = (*params, limit)
     return conn.execute(sql, params).fetchall()
+
+
+def get_contract(conn: sqlite3.Connection, contract_id: int) -> sqlite3.Row | None:
+    """Получает контракт по ID.
+
+    Используется формой нарядов; нужен для отображения кода/имени контракта.
+    """
+    return conn.execute(
+        "SELECT * FROM contracts WHERE id = ?",
+        (contract_id,),
+    ).fetchone()
 
 
 def search_contracts_by_prefix(

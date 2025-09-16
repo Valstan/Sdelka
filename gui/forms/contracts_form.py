@@ -466,7 +466,34 @@ class ContractsForm(ctk.CTkFrame):
             return
         try:
             with get_connection() as conn:
-                ref.delete_contract(conn, self._selected_id)
+                try:
+                    ref.delete_contract(conn, self._selected_id)
+                except ValueError as exc:
+                    # Обработать внутри контекста, чтобы избежать логирования отката
+                    try:
+                        rows = conn.execute(
+                            "SELECT product_no, name FROM products WHERE contract_id = ? ORDER BY name LIMIT 5",
+                            (self._selected_id,),
+                        ).fetchall()
+                        more = conn.execute(
+                            "SELECT COUNT(*) FROM products WHERE contract_id = ?",
+                            (self._selected_id,),
+                        ).fetchone()[0]
+                    except Exception:
+                        rows = []
+                        more = 0
+                    items = []
+                    for r in rows:
+                        try:
+                            items.append(f"• {r['product_no']} — {r['name']}")
+                        except Exception:
+                            items.append(f"• {r[0]} — {r[1]}")
+                    extra = ""
+                    if more and more > len(rows):
+                        extra = f"\n… и ещё {more - len(rows)}"
+                    details = ("\n" + "\n".join(items) + extra) if items else ""
+                    messagebox.showerror("Связанные данные", f"{exc}{details}")
+                    return
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Ошибка", f"Невозможно удалить: {exc}")
             return

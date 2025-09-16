@@ -133,11 +133,11 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         self.bind("<Configure>", _on_resize, add="+")
 
-        # Header form (Номер, Дата, Контракты +, Изделия +)
+        # Header form (Номер, Дата)
         header = ctk.CTkFrame(left)
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         for i in range(6):
-            header.grid_columnconfigure(i, weight=(1 if i in (2, 4) else 0))
+            header.grid_columnconfigure(i, weight=0)
 
         # Order No (авто подставляется, можно менять)
         ctk.CTkLabel(header, text="№ наряда").grid(row=0, column=0, sticky="w", padx=5)
@@ -163,37 +163,25 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
-        # Products (список изделий)
-        ctk.CTkLabel(header, text="Изделия").grid(row=0, column=2, sticky="w", padx=5)
-
-        # Фрейм для изделий
-        products_frame = ctk.CTkFrame(header)
-        products_frame.grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
+        # Products section (ниже шапки)
+        products_section = ctk.CTkFrame(left)
+        products_section.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        products_section.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(products_section, text="Изделия").grid(row=0, column=0, sticky="w", padx=5)
+        products_frame = ctk.CTkFrame(products_section)
+        products_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
         products_frame.grid_columnconfigure(0, weight=1)
-
         # Поле ввода для добавления изделий
-        self.product_entry = ctk.CTkEntry(
-            products_frame, placeholder_text="Номер/Название"
-        )
+        self.product_entry = ctk.CTkEntry(products_frame, placeholder_text="Номер/Название")
         self.product_entry.grid(row=0, column=0, sticky="ew", padx=(5, 2), pady=5)
-        self.product_entry.bind(
-            "<KeyRelease>", lambda e: self._on_product_key_for(self.product_entry)
-        )
-        self.product_entry.bind(
-            "<FocusIn>", lambda e: self._on_product_key_for(self.product_entry)
-        )
-
+        self.product_entry.bind("<KeyRelease>", lambda e: self._on_product_key_for(self.product_entry))
+        self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key_for(self.product_entry))
         # Кнопка добавления изделия
-        self.add_product_btn = ctk.CTkButton(
-            products_frame, text="+", width=30, command=self._add_product
-        )
+        self.add_product_btn = ctk.CTkButton(products_frame, text="+", width=30, command=self._add_product)
         self.add_product_btn.grid(row=0, column=1, padx=(2, 5), pady=5)
-
-        # Список выбранных изделий
-        self.products_list = ctk.CTkScrollableFrame(products_frame, height=80)
-        self.products_list.grid(
-            row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5)
-        )
+        # Список выбранных изделий (табличный вид: Наименование | № | Контракт | x)
+        self.products_list = ctk.CTkScrollableFrame(products_frame, height=120)
+        self.products_list.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5))
 
         # Contract (заполняется автоматически по изделию, недоступно для редактирования)
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=4, sticky="w", padx=5)
@@ -218,7 +206,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Items list (adaptive rows with delete buttons) — тянем к верхнему краю
         items_list_frame = ctk.CTkFrame(left)
-        items_list_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 6))
+        items_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
         # Header row
         hdr = ctk.CTkFrame(items_list_frame)
         hdr.grid(row=0, column=0, sticky="ew")
@@ -328,7 +316,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Workers section (заголовок)
         workers_header = ctk.CTkFrame(left)
-        workers_header.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 2))
+        workers_header.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 2))
         ctk.CTkLabel(workers_header, text="Работники").pack(side="left", padx=5)
 
         self.suggest_worker_frame = create_suggestions_frame(self)
@@ -338,7 +326,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
         self.workers_list = ctk.CTkScrollableFrame(left)
-        self.workers_list.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 8))
+        self.workers_list.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 8))
         try:
             can_workers = self.workers_list._parent_canvas
             sb_workers = self.workers_list._scrollbar
@@ -399,7 +387,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
-        totals_frame.grid(row=4, column=0, sticky="sew", padx=10, pady=(6, 8))
+        totals_frame.grid(row=5, column=0, sticky="sew", padx=10, pady=(6, 8))
         for i in range(4):
             totals_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
 
@@ -2222,7 +2210,9 @@ class WorkOrdersForm(ctk.CTkFrame):
             match = re.match(r'^(\d+)\s*—', text)
             if match:
                 product_no = match.group(1)
-                rows = suggestions.suggest_products(conn, product_no, 1)
+                # повторный запрос — в отдельном подключении, чтобы не использовать закрытое
+                with get_connection() as conn2:
+                    rows = suggestions.suggest_products(conn2, product_no, 1)
             
             if not rows:
                 messagebox.showerror("Ошибка", f"Изделие '{text}' не найдено")
@@ -2262,29 +2252,64 @@ class WorkOrdersForm(ctk.CTkFrame):
                     "Ignored unexpected error: %s", exc
                 )
 
-        # Добавляем изделия
+        # Заголовок таблицы
+        header = ctk.CTkFrame(self.products_list)
+        header.pack(fill="x")
+        name_h = ctk.CTkLabel(header, text="Наименование", anchor="w")
+        name_h.grid(row=0, column=0, sticky="ew", padx=6)
+        no_h = ctk.CTkLabel(header, text="№", anchor="w", width=120)
+        no_h.grid(row=0, column=1, sticky="w", padx=6)
+        contract_h = ctk.CTkLabel(header, text="Контракт", anchor="w", width=160)
+        contract_h.grid(row=0, column=2, sticky="w", padx=6)
+        header.grid_columnconfigure(0, weight=1)
+
+        # Добавляем строки изделий
         with get_connection() as conn:
             for product_id in self.selected_product_ids:
-                product = q.get_product(conn, product_id)
-                if product:
-                    product_frame = ctk.CTkFrame(self.products_list)
-                    product_frame.pack(fill="x", padx=2, pady=1)
-
-                    # Название изделия
-                    label = ctk.CTkLabel(
-                        product_frame,
-                        text=f"{product['product_no']} — {product['name']}",
+                row = q.get_product(conn, product_id)
+                if not row:
+                    continue
+                # Получить контракт; если None — привязать к "Без контракта"
+                cid = row["contract_id"] if "contract_id" in row.keys() else row[3]
+                try:
+                    if cid is None:
+                        cid = q.get_or_create_default_contract(conn)
+                        q.set_product_contract(conn, int(product_id), int(cid))
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ignored unexpected error: %s", exc
                     )
-                    label.pack(side="left", fill="x", expand=True, padx=5, pady=2)
+                contract = None
+                try:
+                    if cid is not None:
+                        contract = q.get_contract(conn, int(cid))
+                except Exception:
+                    contract = None
 
-                    # Кнопка удаления
-                    remove_btn = ctk.CTkButton(
-                        product_frame,
-                        text="×",
-                        width=20,
-                        command=lambda pid=product_id: self._remove_product(pid),
-                    )
-                    remove_btn.pack(side="right", padx=(0, 5), pady=2)
+                # Строка таблицы
+                line = ctk.CTkFrame(self.products_list)
+                line.pack(fill="x", padx=2, pady=1)
+                # Наименование
+                name_lbl = ctk.CTkLabel(line, text=str(row["name"]))
+                name_lbl.grid(row=0, column=0, sticky="ew", padx=6)
+                # № изделия
+                no_lbl = ctk.CTkLabel(line, text=str(row["product_no"]))
+                no_lbl.grid(row=0, column=1, sticky="w", padx=6)
+                # Контракт
+                code = contract["code"] if contract and "code" in contract.keys() else "Без контракта"
+                contract_lbl = ctk.CTkLabel(line, text=str(code))
+                contract_lbl.grid(row=0, column=2, sticky="w", padx=6)
+                # Удаление справа
+                del_btn = ctk.CTkButton(
+                    line,
+                    text="Удалить",
+                    width=80,
+                    fg_color="#b91c1c",
+                    hover_color="#7f1d1d",
+                    command=lambda pid=product_id: self._remove_product(pid),
+                )
+                del_btn.grid(row=0, column=3, sticky="e", padx=6)
+                line.grid_columnconfigure(0, weight=1)
 
     def _update_contract_from_products(self) -> None:
         """Обновляет контракт на основе выбранных изделий"""

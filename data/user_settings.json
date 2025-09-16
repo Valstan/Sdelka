@@ -1,14 +1,14 @@
 {
-  "list_font_size": 14,
-  "ui_font_size": 14,
-  "db_path": "D:\\111111111111\\base_sdelka.db",
-  "enable_wal": true,
+  "list_font_size": 12,
+  "ui_font_size": 12,
+  "db_path": null,
+  "enable_wal": null,
   "busy_timeout_ms": 10000,
-  "yandex_remote_dir": "/SdelkaBackups",
+  "yandex_remote_dir": null,
   "yandex_auth_method": "oauth",
-  "yandex_oauth_token": "y0__xDR8Z0KGNuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK",
+  "yandex_oauth_token": null,
   "yandex_username": null,
   "yandex_app_password": null,
-  "yandex_public_folder_url": "https://disk.yandex.ru/d/UYR4M9s3hO2uyA",
+  "yandex_public_folder_url": null,
   "yandex_private_file_path": null
 }
