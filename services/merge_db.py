@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional
 
 from db.sqlite import get_connection
 from db import queries as q
+
+logger = logging.getLogger(__name__)
 
 
 def _row_factory(cursor, row):
@@ -28,9 +31,8 @@ def merge_from_file(
     orders_merged = 0
 
     with get_connection(str(target_db_path)) as tgt_conn:
-        src_conn = sqlite3.connect(str(source_db_path))
-        src_conn.row_factory = _row_factory
-        try:
+        with sqlite3.connect(str(source_db_path)) as src_conn:
+            src_conn.row_factory = _row_factory
             # --- 1) Reference tables ---
             # Workers
             for r in src_conn.execute(
@@ -163,6 +165,20 @@ def merge_from_file(
                     # Cannot import order without contract mapping
                     continue
 
+                # ВАЖНО: Проверяем, не существует ли уже такой наряд по содержимому
+                # Ищем наряд с такой же датой и контрактом
+                existing_order = tgt_conn.execute(
+                    "SELECT id, order_no FROM work_orders WHERE date=? AND contract_id=?",
+                    (o["date"], tgt_contract_id),
+                ).fetchone()
+
+                if existing_order:
+                    # Наряд уже существует - пропускаем, чтобы избежать дублирования
+                    logger.info(
+                        f"Наряд уже существует: дата={o['date']}, контракт_id={tgt_contract_id}, пропускаем"
+                    )
+                    continue
+
                 # Choose order_no: keep if free, else allocate new
                 desired_no = int(o["order_no"]) if o["order_no"] is not None else None
                 use_order_no = desired_no
@@ -180,10 +196,17 @@ def merge_from_file(
                     tgt_conn,
                     order_no=use_order_no,
                     date=o["date"],
-                    product_id=tgt_product_id,
                     contract_id=tgt_contract_id,
                     total_amount=float(o.get("total_amount") or 0.0),
                 )
+
+                # Если есть продукт в старой схеме, добавляем связь
+                if tgt_product_id:
+                    try:
+                        q.set_work_order_products(tgt_conn, new_wo_id, [tgt_product_id])
+                    except Exception:
+                        # Игнорируем ошибки связывания продуктов при миграции
+                        pass
 
                 # Items
                 items = src_conn.execute(
@@ -224,7 +247,5 @@ def merge_from_file(
                     q.set_work_order_workers(tgt_conn, new_wo_id, mapped_ids)
 
                 orders_merged += 1
-        finally:
-            src_conn.close()
 
     return refs_upserts, orders_merged

@@ -41,7 +41,7 @@ def parse_job_types(df: pd.DataFrame) -> list[dict[str, Any]]:
                     break
     except Exception as exc:
         logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-    cols = [str(c).strip().lower() for c in df.columns]
+    [str(c).strip().lower() for c in df.columns]
     name_col = next(
         (
             c
@@ -152,7 +152,7 @@ def parse_products(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def parse_contracts(df: pd.DataFrame) -> list[dict[str, Any]]:
-    cols_lower = [str(c).strip().lower() for c in df.columns]
+    [str(c).strip().lower() for c in df.columns]
     # Базовые колонки
     code_col = next(
         (

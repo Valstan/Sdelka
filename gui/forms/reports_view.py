@@ -9,8 +9,6 @@ import sys
 import subprocess
 
 from config.settings import CONFIG
-import tkinter as tk
-from pathlib import Path
 from utils.text import normalize_for_search
 from db.sqlite import get_connection
 from services import suggestions
@@ -264,7 +262,7 @@ class ReportsView(ctk.CTkFrame):
                 cleaned_hist = [
                     h for h in history if normalize_for_search(h) in valid_norms
                 ]
-            except Exception as exc:
+            except Exception:
                 cleaned_hist = []
         
         seen: set[str] = set()
@@ -387,7 +385,7 @@ class ReportsView(ctk.CTkFrame):
                 cleaned = [h for h in history if normalize_for_search(h) in valid_norms]
                 # Удалим отсутствующие из истории
                 purge_missing("reports.job_type", valid_norms)
-            except Exception as exc:
+            except Exception:
                 cleaned = []
         
         seen = set()
@@ -459,7 +457,7 @@ class ReportsView(ctk.CTkFrame):
                 cleaned_hist = [
                     h for h in hist if normalize_for_search(h) in valid_norms
                 ]
-            except Exception as exc:
+            except Exception:
                 cleaned_hist = []
         
         seen = set()
@@ -531,7 +529,7 @@ class ReportsView(ctk.CTkFrame):
                 cleaned_hist = [
                     h for h in hist if normalize_for_search(h) in valid_norms
                 ]
-            except Exception as exc:
+            except Exception:
                 cleaned_hist = []
         
         seen = set()
@@ -647,7 +645,7 @@ class ReportsView(ctk.CTkFrame):
                                 parent=self,
                             )
                             return
-                    except Exception as exc:
+                    except Exception:
                         messagebox.showwarning(
                             "Фильтр: Вид работ",
                             "Указанный вид работ не найден в базе. Выберите из подсказки.",
@@ -696,7 +694,7 @@ class ReportsView(ctk.CTkFrame):
                                 parent=self,
                             )
                             return
-                    except Exception as exc:
+                    except Exception:
                         messagebox.showwarning(
                             "Фильтр: Изделие",
                             "Указанное изделие не найдено в базе. Выберите из подсказки.",
@@ -737,7 +735,7 @@ class ReportsView(ctk.CTkFrame):
                                 parent=self,
                             )
                             return
-                    except Exception as exc:
+                    except Exception:
                         messagebox.showwarning(
                             "Фильтр: Контракт",
                             "Указанный контракт не найден в базе. Выберите из подсказки.",
@@ -825,7 +823,7 @@ class ReportsView(ctk.CTkFrame):
             # Обновим статистику
             try:
                 self._update_stats()
-            except Exception as exc:
+            except Exception:
                 self.stats_var.set("")
             # Применим локализацию заголовков в превью
             cols = list(self._df.columns)
@@ -897,7 +895,7 @@ class ReportsView(ctk.CTkFrame):
                 v = item[1][idx]
                 try:
                     return float(str(v).replace(" ", "").replace(",", "."))
-                except Exception as exc:
+                except Exception:
                     return str(v)
 
             rows.sort(key=key_func, reverse=(new_dir == "desc"))
@@ -917,7 +915,7 @@ class ReportsView(ctk.CTkFrame):
         # Auto-size columns to fit content (header + visible rows) and fit into window width
         try:
             font = tkfont.nametofont("TkDefaultFont")
-        except Exception as exc:
+        except Exception:
             font = tkfont.Font()
         pad = 24
         min_w = 60
@@ -934,7 +932,7 @@ class ReportsView(ctk.CTkFrame):
         # Compute available width of tree widget
         try:
             avail = max(200, int(self.tree.winfo_width()) - 32)
-        except Exception as exc:
+        except Exception:
             avail = sum(desired)
         total_desired = sum(desired)
         # Scale down if overflow, but not below min_w
@@ -972,7 +970,7 @@ class ReportsView(ctk.CTkFrame):
                     dmin = s.min().strftime("%d.%m.%Y")
                     dmax = s.max().strftime("%d.%m.%Y")
                     period_text = f"{dmin} — {dmax}"
-            except Exception as exc:
+            except Exception:
                 period_text = "—"
         # Сумма: попробуем несколько колонок
         total = 0.0
@@ -983,7 +981,7 @@ class ReportsView(ctk.CTkFrame):
                         pd.to_numeric(df[cand], errors="coerce").fillna(0).sum()
                     )
                     break
-                except Exception as exc:
+                except Exception:
                     continue
         self.stats_var.set(
             f"Строк: {rows}   Период: {period_text}   Сумма: {total:.2f}"
@@ -1016,7 +1014,7 @@ class ReportsView(ctk.CTkFrame):
         # Измеряем желаемые ширины по содержимому
         try:
             font = tkfont.nametofont("TkDefaultFont")
-        except Exception as exc:
+        except Exception:
             font = tkfont.Font()
         pad = 24
         min_fixed = 60
@@ -1029,7 +1027,7 @@ class ReportsView(ctk.CTkFrame):
             for r in sample:
                 try:
                     w = font.measure(str(r[j]))
-                except Exception as exc:
+                except Exception:
                     w = header_w
                 if w > max_w:
                     max_w = w
@@ -1043,7 +1041,7 @@ class ReportsView(ctk.CTkFrame):
                 return
             # Небольшой запас на внутренние отступы
             avail = max(200, avail - 16)
-        except Exception as exc:
+        except Exception:
             avail = sum(desired.values())
 
         nonflex_cols = [c for c in cols if c not in flex_cols]
@@ -1104,7 +1102,7 @@ class ReportsView(ctk.CTkFrame):
                     width=int(widths.get(c, desired.get(c, 80))),
                     stretch=(c in flex_cols),
                 )
-            except Exception as exc:
+            except Exception:
                 try:
                     self.tree.column(c, width=int(widths.get(c, 80)))
                 except Exception as exc:

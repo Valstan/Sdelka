@@ -242,7 +242,7 @@ def import_products_from_contracts_csv(
                         contract_id = no_contract["id"]
 
                 # Создаем или обновляем изделие
-                product_id = q.upsert_product(
+                q.upsert_product(
                     conn,
                     name=product_data["name"],
                     product_no=product_data["number"],

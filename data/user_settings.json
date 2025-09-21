@@ -6,9 +6,9 @@
   "busy_timeout_ms": 10000,
   "yandex_remote_dir": "/SdelkaBackups",
   "yandex_auth_method": "oauth",
-  "yandex_oauth_token": null,
+  "yandex_oauth_token": "y0__xDR8Z0KGNuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK",
   "yandex_username": null,
   "yandex_app_password": null,
   "yandex_public_folder_url": null,
-  "yandex_private_file_path": null
+  "yandex_private_file_path": "/SdelkaBackups/sdelka_base.db"
 }

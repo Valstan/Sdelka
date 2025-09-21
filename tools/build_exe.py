@@ -92,10 +92,8 @@ def main() -> None:
     # onefile/onedir
     if args.onedir and not args.onefile:
         build_mode = "--onedir"
-        is_onedir = True
     else:
         build_mode = "--onefile"
-        is_onedir = False
     build_cmd.insert(6, build_mode)
 
     # icon if provided or default exists

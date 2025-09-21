@@ -28,7 +28,6 @@ def work_orders_report_df(
     """
     where: list[str] = []
     params_where: list[Any] = []
-    params_join: list[Any] = []
 
     if date_from:
         where.append("wo.date >= ?")

@@ -1701,7 +1701,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Динамическая подгрузка при достижении низа списка
         try:
-            f = float(first)
+            float(first)
             l = float(last)
             if l > 0.98:
                 self.after(1, self._load_more_orders)

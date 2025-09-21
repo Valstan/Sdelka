@@ -10,7 +10,6 @@ from utils.logging import configure_logging
 from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path, set_db_path
-import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
@@ -97,7 +96,7 @@ def main() -> None:
     with get_connection() as conn:
         initialize_schema(conn)
 
-    # Единый root: создаём основное окно, скрываем, показываем диалог, затем раскрываем окно
+    # Единый root: создаём основное окно, скрываем, показываем диалог, затем синхронизацию, затем раскрываем окно
     from utils.runtime_mode import set_mode, AppMode
 
     app = AppWindow()
@@ -111,20 +110,55 @@ def main() -> None:
             app.wait_window(dlg)
         except Exception:
             set_mode(AppMode.FULL)
-        # Показать и развернуть главное окно
+
+        # Пересобрать формы под итоговый режим (readonly/full) но пока не показываем окно
+        try:
+            app.rebuild_forms_for_mode()
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+
+        # Запускаем фоновую синхронизацию при старте (без диалога)
+        try:
+            logging.getLogger(__name__).info(
+                "Запуск фоновой синхронизации при старте..."
+            )
+            from services.auto_sync import sync_on_startup
+            import threading
+
+            # Запускаем синхронизацию в фоновом потоке
+            def background_sync():
+                try:
+                    sync_on_startup()
+                    # После завершения обновляем статус
+                    app.after(
+                        0, lambda: app._update_sync_status("Синхронизация завершена")
+                    )
+                except Exception as exc:
+                    logging.getLogger(__name__).exception(
+                        "Ошибка фоновой синхронизации: %s", exc
+                    )
+                    app.after(
+                        0, lambda: app._update_sync_status("Ошибка синхронизации")
+                    )
+
+            sync_thread = threading.Thread(target=background_sync, daemon=True)
+            sync_thread.start()
+
+            # Показываем статус синхронизации
+            app.after(1000, lambda: app._update_sync_status("Синхронизация в фоне..."))
+
+        except Exception as exc:
+            logging.getLogger(__name__).exception(
+                "Ошибка запуска фоновой синхронизации: %s", exc
+            )
+
+        # Показать и развернуть главное окно (синхронизация идет в фоне)
         try:
             app.deiconify()
             app.update_idletasks()
             try:
                 app.lift()
                 app.focus_force()
-            except Exception as exc:
-                logging.getLogger(__name__).exception(
-                    "Ignored unexpected error: %s", exc
-                )
-            # Пересобрать формы под итоговый режим (readonly/full)
-            try:
-                app.rebuild_forms_for_mode()
             except Exception as exc:
                 logging.getLogger(__name__).exception(
                     "Ignored unexpected error: %s", exc
@@ -143,13 +177,15 @@ def main() -> None:
                 app.after(50, _zoom)
             except Exception:
                 _zoom()
-            # Запуск автоматической синхронизации через Яндекс.Диск
+
+            # Запуск периодической синхронизации в фоне
             try:
                 app.start_auto_sync()
-            except Exception:
+            except Exception as exc:
                 logging.getLogger(__name__).exception(
-                    "Не удалось запустить автоматическую синхронизацию"
+                    "Ошибка запуска периодической синхронизации: %s", exc
                 )
+
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         app.mainloop()

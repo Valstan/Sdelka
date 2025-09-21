@@ -593,7 +593,7 @@ class SettingsView(ctk.CTkFrame):
                     logging.getLogger(__name__).exception(
                         "Ignored unexpected error: %s", exc
                     )
-            except Exception as exc:
+            except Exception:
 
                 def _err():
                     try:
@@ -652,7 +652,7 @@ class SettingsView(ctk.CTkFrame):
                         )
 
                 self.after(0, _res)
-            except Exception as exc:
+            except Exception:
 
                 def _err():
                     try:
@@ -772,7 +772,7 @@ class SettingsView(ctk.CTkFrame):
                     client.download_public_file(
                         public_url=public_url, dest_path=tmp_download, item_name=None
                     )
-                except Exception as e_pub:
+                except Exception:
                     logging.getLogger(__name__).exception("Yadisk import failed")
 
                     def _err():
@@ -953,7 +953,7 @@ class SettingsView(ctk.CTkFrame):
                         )
 
                 self.after(0, _ok)
-            except Exception as exc:
+            except Exception:
 
                 def _err():
                     try:
@@ -1168,7 +1168,7 @@ class SettingsView(ctk.CTkFrame):
                     logging.getLogger(__name__).exception(
                         "Ignored unexpected error: %s", exc
                     )
-            except Exception as e:
+            except Exception:
 
                 def _show_err():
                     try:
