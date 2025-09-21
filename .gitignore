@@ -239,6 +239,17 @@ desktop.ini
 *.orig
 *.rej
 
+# Development scripts and temporary files
+scripts/
+temp/
+tmp/
+*.temp
+*.temporary
+
+# IDE and editor specific files
+*.sublime-*
+*.code-workspace
+
 # Abstra
 # Abstra is an AI-powered process automation framework.
 # Ignore directories containing user credentials, local state, and settings.

@@ -10,7 +10,7 @@ def normalize_for_search(value: str | None) -> str | None:
 
 
 def sanitize_filename(name: str, max_length: int = 100) -> str:
-    """Return a filesystem-safe filename stem (без расширения).
+    r"""Return a filesystem-safe filename stem (без расширения).
 
     - Удаляет запрещённые символы / \ : * ? " < > | и управляющие
     - Режет до max_length

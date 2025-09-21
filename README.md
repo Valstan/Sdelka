@@ -3,11 +3,12 @@
 ## Быстрый запуск
 
 ### Windows (рекомендуется)
-1. Дважды кликните на `run_project.bat`
+1. Дважды кликните на `tools\run_project.bat`
 2. Приложение запустится автоматически
 
 ### Альтернативные способы
-- **PowerShell**: `.\run_project.ps1`
+- **PowerShell**: `.\tools\run_project.ps1`
+- **Python**: `python main.py`
 - **Ручной запуск**: см. `SETUP.md`
 
 ## Первоначальная настройка
