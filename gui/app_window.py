@@ -62,9 +62,34 @@ class AppWindow(ctk.CTk):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        # Верхняя панель с кнопкой синхронизации
+        top_frame = ctk.CTkFrame(self, height=50)
+        top_frame.pack(fill="x", padx=5, pady=(5, 0))
+        top_frame.pack_propagate(False)
+        
+        # Кнопка принудительной синхронизации
+        self._sync_button = ctk.CTkButton(
+            top_frame,
+            text="🔄 Обновить данные",
+            fg_color="#dc2626",  # Красный цвет
+            hover_color="#b91c1c",
+            width=200,
+            height=35,
+            command=self._force_sync
+        )
+        self._sync_button.pack(side="right", padx=10, pady=7)
+        
+        # Статус синхронизации
+        self._sync_status_label = ctk.CTkLabel(
+            top_frame,
+            text="Готов к работе",
+            font=ctk.CTkFont(size=12)
+        )
+        self._sync_status_label.pack(side="left", padx=10, pady=7)
+        
         # Основной Tabview
         tabview = ctk.CTkTabview(self)
-        tabview.pack(expand=True, fill="both", pady=0)
+        tabview.pack(expand=True, fill="both", pady=(5, 0))
         self._tabview = tabview
 
         self.tab_orders = tabview.add("Наряды")
@@ -455,3 +480,79 @@ class AppWindow(ctk.CTk):
             super().destroy()
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+    
+    def _force_sync(self) -> None:
+        """Принудительная синхронизация по нажатию красной кнопки"""
+        try:
+            from services.auto_sync import force_sync
+            
+            # Отключаем кнопку во время синхронизации
+            self._sync_button.configure(state="disabled", text="⏳ Синхронизация...")
+            self._sync_status_label.configure(text="Выполняется принудительная синхронизация...")
+            
+            # Запускаем синхронизацию в отдельном потоке
+            import threading
+            
+            def sync_thread():
+                try:
+                    success = force_sync()
+                    # Обновляем UI в главном потоке
+                    self.after(0, lambda: self._sync_completed(success))
+                except Exception as exc:
+                    logging.getLogger(__name__).exception("Ошибка принудительной синхронизации: %s", exc)
+                    self.after(0, lambda: self._sync_completed(False))
+            
+            threading.Thread(target=sync_thread, daemon=True).start()
+            
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка запуска принудительной синхронизации: %s", exc)
+            self._sync_completed(False)
+    
+    def _sync_completed(self, success: bool) -> None:
+        """Обработка завершения синхронизации"""
+        try:
+            # Включаем кнопку обратно
+            self._sync_button.configure(state="normal", text="🔄 Обновить данные")
+            
+            if success:
+                self._sync_status_label.configure(text="Синхронизация завершена успешно")
+                # Обновляем все формы
+                self._refresh_all_forms()
+            else:
+                self._sync_status_label.configure(text="Ошибка синхронизации")
+                
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка обработки завершения синхронизации: %s", exc)
+    
+    def _refresh_all_forms(self) -> None:
+        """Обновление всех форм после синхронизации"""
+        try:
+            # Пересоздаем все формы, чтобы они подтянули новые данные
+            self._build_forms_for_current_mode()
+            logging.getLogger(__name__).info("Формы обновлены после синхронизации")
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка обновления форм: %s", exc)
+    
+    def _update_sync_status(self, status: str) -> None:
+        """Обновление статуса синхронизации"""
+        try:
+            if hasattr(self, '_sync_status_label'):
+                self._sync_status_label.configure(text=status)
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка обновления статуса: %s", exc)
+    
+    def start_auto_sync(self) -> None:
+        """Запуск автоматической синхронизации"""
+        try:
+            from services.auto_sync import start_auto_sync
+            
+            # Запускаем автосинхронизацию с коллбэками
+            start_auto_sync(
+                ui_refresh_callback=self._refresh_all_forms,
+                sync_status_callback=self._update_sync_status
+            )
+            
+            logging.getLogger(__name__).info("Автоматическая синхронизация запущена")
+            
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка запуска автоматической синхронизации: %s", exc)

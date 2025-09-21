@@ -10,61 +10,34 @@ from utils.logging import configure_logging
 from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path, set_db_path
-from utils.network_db import get_network_db_path
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from utils.auto_yadisk import start_yadisk_upload_scheduler
 
 
 def _ensure_db_available(logger: logging.Logger) -> None:
     """Ensure database path is set and DB exists; prompt user if necessary.
 
-    This function centralizes the interactive logic previously embedded in main()
-    to make the flow clearer and testable.
+    Новая логика: работаем только с локальной БД, синхронизация через Яндекс.Диск
     """
     db_path = get_current_db_path()
     if db_path.exists():
         return
 
-    logger.info("Локальная БД не найдена. Пытаемся подключиться к сетевой БД...")
+    logger.info("Локальная БД не найдена. Создаем новую или выбираем существующую...")
 
-    network_db_path = get_network_db_path()
-    if network_db_path and network_db_path.exists():
-        logger.info(f"Найдена сетевая БД: {network_db_path}")
-        set_db_path(network_db_path)
-        return
-
-    logger.warning("Сетевая БД недоступна. Показываем диалог выбора БД...")
-
-    # Try the nicer custom dialog first; fall back to tkinter dialogs if it fails
-    try:
-        tmp = ctk.CTk()
-        tmp.withdraw()
-        from gui.network_db_dialog import NetworkDbDialog
-
-        dialog = NetworkDbDialog(tmp)
-        tmp.wait_window(dialog)
-        try:
-            tmp.destroy()
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-        return
-    except Exception as exc:
-        logger.exception("Ошибка в диалоге выбора БД: %s", exc)
-
-    # Fallback: tkinter dialogs
+    # Простой диалог выбора
     try:
         tmp = tk.Tk()
         tmp.withdraw()
         create_new = messagebox.askyesno(
             "База данных",
-            "База данных не найдена.\n\nСоздать новую базу данных?\n(Нет — выбрать существующую)",
+            "Локальная база данных не найдена.\n\nСоздать новую базу данных?\n(Нет — выбрать существующую)\n\nПримечание: Синхронизация с другими компьютерами будет происходить через Яндекс.Диск",
             parent=tmp,
         )
         chosen: str | None = None
         if create_new:
-            initial = "base_sdelka_rmz.db"
+            initial = "base_sdelka.db"
             chosen = filedialog.asksaveasfilename(
                 parent=tmp,
                 title="Создать новую базу данных",
@@ -96,7 +69,7 @@ def _ensure_db_available(logger: logging.Logger) -> None:
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
     except Exception as exc:
-        logger.exception("Ошибка в fallback-диалоге выбора БД: %s", exc)
+        logger.exception("Ошибка в диалоге выбора БД: %s", exc)
 
 
 def main() -> None:
@@ -170,12 +143,12 @@ def main() -> None:
                 app.after(50, _zoom)
             except Exception:
                 _zoom()
-            # Старт планировщика автовыгрузки на Яндекс.Диск (08,10,12,14,16,18)
+            # Запуск автоматической синхронизации через Яндекс.Диск
             try:
-                start_yadisk_upload_scheduler()
+                app.start_auto_sync()
             except Exception:
                 logging.getLogger(__name__).exception(
-                    "Не удалось запустить планировщик Yandex Диска"
+                    "Не удалось запустить автоматическую синхронизацию"
                 )
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
