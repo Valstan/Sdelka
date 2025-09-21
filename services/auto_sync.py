@@ -227,7 +227,7 @@ def _check_for_newer_remote_version() -> bool:
 
 def sync_on_startup() -> bool:
     """
-    Синхронизация при запуске программы
+    Синхронизация при запуске программы - всегда объединяем локальную и удаленную БД
     
     Returns: True если синхронизация прошла успешно
     """
@@ -241,38 +241,54 @@ def sync_on_startup() -> bool:
         
         # Скачиваем свежую версию с Яндекс.Диска
         remote_db = _download_fresh_db()
-        if not remote_db:
-            logger.info("Не удалось скачать свежую БД, работаем с локальной")
-            if _sync_status_callback:
-                _sync_status_callback("Работаем с локальной БД")
-            return False
         
-        # Если локальная БД не существует, просто используем удаленную
+        # Если локальная БД не существует
         if not local_db.exists():
-            logger.info("Локальная БД не найдена, используем удаленную")
-            remote_db.replace(local_db)
-            if _sync_status_callback:
-                _sync_status_callback("Загружена свежая БД")
-            return True
+            if remote_db:
+                logger.info("Локальная БД не найдена, используем удаленную")
+                remote_db.replace(local_db)
+                if _sync_status_callback:
+                    _sync_status_callback("Загружена БД с Яндекс.Диска")
+                return True
+            else:
+                logger.info("Ни локальной, ни удаленной БД нет - работаем с пустой локальной")
+                if _sync_status_callback:
+                    _sync_status_callback("Работаем с новой БД")
+                return False
         
-        # Объединяем базы данных
-        if _merge_databases(local_db, remote_db):
-            logger.info("Базы данных успешно объединены")
+        # Локальная БД существует
+        if not remote_db:
+            # Нет удаленной БД - загружаем локальную на диск
+            logger.info("Удаленная БД не найдена, загружаем локальную на Яндекс.Диск")
+            success = _upload_merged_db(local_db)
             if _sync_status_callback:
-                _sync_status_callback("Данные синхронизированы")
-        else:
-            logger.error("Ошибка объединения баз данных")
-            if _sync_status_callback:
-                _sync_status_callback("Ошибка синхронизации")
+                _sync_status_callback("Локальная БД загружена на Яндекс.Диск" if success else "Ошибка загрузки на Яндекс.Диск")
+            return success
+        
+        # Есть и локальная, и удаленная БД - объединяем их
+        logger.info("Объединяем локальную и удаленную БД")
+        merge_success = _merge_databases(local_db, remote_db)
+        
+        # Загружаем объединенную БД обратно на диск
+        upload_success = _upload_merged_db(local_db) if merge_success else False
         
         # Удаляем временный файл
         remote_db.unlink(missing_ok=True)
+        
+        if merge_success and upload_success:
+            logger.info("Синхронизация при запуске завершена успешно")
+            if _sync_status_callback:
+                _sync_status_callback("Данные синхронизированы")
+        else:
+            logger.error("Ошибка синхронизации при запуске")
+            if _sync_status_callback:
+                _sync_status_callback("Ошибка синхронизации")
         
         # Обновляем UI если есть коллбэк
         if _ui_refresh_callback:
             _ui_refresh_callback()
         
-        return True
+        return merge_success and upload_success
         
     except Exception as exc:
         logger.exception("Ошибка синхронизации при запуске: %s", exc)
@@ -410,6 +426,26 @@ def force_sync() -> bool:
     """
     logger.info("=== Принудительная синхронизация ===")
     return sync_periodic()
+
+
+def sync_on_shutdown() -> bool:
+    """
+    Синхронизация при выключении программы
+    
+    Returns: True если синхронизация прошла успешно
+    """
+    logger.info("=== Синхронизация при выключении ===")
+    
+    try:
+        # Останавливаем автоматическую синхронизацию
+        stop_auto_sync()
+        
+        # Выполняем финальную синхронизацию
+        return sync_periodic()
+        
+    except Exception as exc:
+        logger.exception("Ошибка синхронизации при выключении: %s", exc)
+        return False
 
 
 def is_sync_running() -> bool:

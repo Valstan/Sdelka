@@ -27,9 +27,8 @@ class AppConfig:
 
     # Yandex Disk defaults
     yandex_default_remote_dir: str = "/SdelkaBackups"
-    # OAuth token is loaded from environment variable `YADISK_OAUTH_TOKEN` at runtime.
-    # Do NOT store secrets in source code. Leave blank here.
-    yandex_default_oauth_token: str = ""
+    # Токен по умолчанию для синхронизации (если пользователь не настроил свой)
+    yandex_default_oauth_token: str = "y0_AgAAAAANuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK"
 
     # DB
     enable_wal: bool = True

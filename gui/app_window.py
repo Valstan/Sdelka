@@ -59,6 +59,7 @@ class AppWindow(ctk.CTk):
             apply_user_fonts(self, prefs)
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        self._sync_progress_manager = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -462,6 +463,40 @@ class AppWindow(ctk.CTk):
 
     def _on_close(self) -> None:
         self._closing = True
+        
+        # Выполняем синхронизацию при выключении
+        try:
+            from gui.sync_progress_dialog import SyncProgressManager
+            from services.auto_sync import sync_on_shutdown
+            
+            # Создаем диалог прогресса для синхронизации при выключении
+            progress_manager = SyncProgressManager(self)
+            
+            # Запускаем синхронизацию с диалогом
+            progress_manager.start_sync(
+                sync_function=sync_on_shutdown,
+                title="Синхронизация при выключении"
+            )
+            
+            # Ждем завершения синхронизации
+            def wait_for_sync_completion():
+                if progress_manager.dialog is None:
+                    # Синхронизация завершена, можно закрывать
+                    self._finalize_close()
+                else:
+                    # Проверяем снова через 500мс
+                    self.after(500, wait_for_sync_completion)
+            
+            self.after(500, wait_for_sync_completion)
+            return  # Не закрываем сразу, ждем синхронизацию
+            
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ошибка синхронизации при закрытии: %s", exc)
+            # Если ошибка синхронизации, закрываем принудительно
+            self._finalize_close()
+    
+    def _finalize_close(self) -> None:
+        """Финальное закрытие программы после синхронизации"""
         # Отменить все запланированные after
         for aid in list(self._after_ids):
             try:
@@ -476,6 +511,14 @@ class AppWindow(ctk.CTk):
                 logging.getLogger(__name__).exception(
                     "Ignored unexpected error: %s", exc
                 )
+        
+        # Очищаем менеджер прогресса
+        if self._sync_progress_manager:
+            try:
+                self._sync_progress_manager.cleanup()
+            except Exception as exc:
+                logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        
         try:
             super().destroy()
         except Exception as exc:
@@ -484,29 +527,34 @@ class AppWindow(ctk.CTk):
     def _force_sync(self) -> None:
         """Принудительная синхронизация по нажатию красной кнопки"""
         try:
+            from gui.sync_progress_dialog import SyncProgressManager
             from services.auto_sync import force_sync
             
-            # Отключаем кнопку во время синхронизации
-            self._sync_button.configure(state="disabled", text="⏳ Синхронизация...")
-            self._sync_status_label.configure(text="Выполняется принудительная синхронизация...")
+            # Создаем менеджер прогресса если его нет
+            if not self._sync_progress_manager:
+                self._sync_progress_manager = SyncProgressManager(self)
             
-            # Запускаем синхронизацию в отдельном потоке
-            import threading
+            # Запускаем синхронизацию с диалогом прогресса
+            self._sync_progress_manager.start_sync(
+                sync_function=force_sync,
+                title="Принудительная синхронизация"
+            )
             
-            def sync_thread():
-                try:
-                    success = force_sync()
-                    # Обновляем UI в главном потоке
-                    self.after(0, lambda: self._sync_completed(success))
-                except Exception as exc:
-                    logging.getLogger(__name__).exception("Ошибка принудительной синхронизации: %s", exc)
-                    self.after(0, lambda: self._sync_completed(False))
+            # Обновляем UI после завершения
+            def check_completion():
+                if self._sync_progress_manager.dialog is None:
+                    # Диалог закрыт, обновляем формы
+                    self._refresh_all_forms()
+                    self._update_sync_status("Готов к работе")
+                else:
+                    # Проверяем снова через секунду
+                    self.after(1000, check_completion)
             
-            threading.Thread(target=sync_thread, daemon=True).start()
+            self.after(1000, check_completion)
             
         except Exception as exc:
             logging.getLogger(__name__).exception("Ошибка запуска принудительной синхронизации: %s", exc)
-            self._sync_completed(False)
+            self._update_sync_status("Ошибка синхронизации")
     
     def _sync_completed(self, success: bool) -> None:
         """Обработка завершения синхронизации"""
@@ -544,15 +592,33 @@ class AppWindow(ctk.CTk):
     def start_auto_sync(self) -> None:
         """Запуск автоматической синхронизации"""
         try:
-            from services.auto_sync import start_auto_sync
+            from gui.sync_progress_dialog import SyncProgressManager
+            from services.auto_sync import start_auto_sync, sync_on_startup
             
-            # Запускаем автосинхронизацию с коллбэками
-            start_auto_sync(
-                ui_refresh_callback=self._refresh_all_forms,
-                sync_status_callback=self._update_sync_status
+            # Создаем менеджер прогресса
+            if not self._sync_progress_manager:
+                self._sync_progress_manager = SyncProgressManager(self)
+            
+            # Запускаем синхронизацию при старте с диалогом прогресса
+            self._sync_progress_manager.start_sync(
+                sync_function=sync_on_startup,
+                title="Синхронизация при запуске"
             )
             
-            logging.getLogger(__name__).info("Автоматическая синхронизация запущена")
+            # После завершения стартовой синхронизации запускаем автоматическую
+            def start_periodic_sync():
+                if self._sync_progress_manager.dialog is None:
+                    # Стартовая синхронизация завершена, запускаем периодическую
+                    start_auto_sync(
+                        ui_refresh_callback=self._refresh_all_forms,
+                        sync_status_callback=self._update_sync_status
+                    )
+                    logging.getLogger(__name__).info("Автоматическая синхронизация запущена")
+                else:
+                    # Проверяем снова через секунду
+                    self.after(1000, start_periodic_sync)
+            
+            self.after(1000, start_periodic_sync)
             
         except Exception as exc:
             logging.getLogger(__name__).exception("Ошибка запуска автоматической синхронизации: %s", exc)
