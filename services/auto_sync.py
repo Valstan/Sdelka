@@ -102,8 +102,23 @@ def _get_yadisk_client() -> Optional[YaDiskClient]:
         if not token:
             logger.warning("Яндекс.Диск: токен не настроен")
             return None
+        
+        # Создаем клиент и проверяем токен
+        client = YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
+        
+        # Проверяем авторизацию
+        try:
+            is_valid, message = client.test_connection()
+            if not is_valid:
+                logger.error("Яндекс.Диск: ошибка авторизации - %s", message)
+                if "401" in message or "UNAUTHORIZED" in message:
+                    logger.error("Токен Яндекс.Диска недействителен или истек. Обновите токен в настройках.")
+                return None
+        except Exception as test_exc:
+            logger.exception("Ошибка проверки токена Яндекс.Диска: %s", test_exc)
+            return None
             
-        return YaDiskClient(YaDiskConfig(oauth_token=token, remote_dir=remote_dir))
+        return client
         
     except Exception as exc:
         logger.exception("Ошибка создания клиента Яндекс.Диска: %s", exc)
@@ -239,6 +254,16 @@ def sync_on_startup() -> bool:
     try:
         local_db = Path(get_current_db_path())
         
+        # Проверяем доступность Яндекс.Диска
+        client = _get_yadisk_client()
+        if not client:
+            logger.warning("Яндекс.Диск недоступен, работаем только с локальной БД")
+            if _sync_status_callback:
+                _sync_status_callback("Работаем без синхронизации (Яндекс.Диск недоступен)")
+            
+            # Если локальная БД есть, возвращаем True (можем работать)
+            return local_db.exists()
+        
         # Скачиваем свежую версию с Яндекс.Диска
         remote_db = _download_fresh_db()
         
@@ -258,12 +283,18 @@ def sync_on_startup() -> bool:
         
         # Локальная БД существует
         if not remote_db:
-            # Нет удаленной БД - загружаем локальную на диск
-            logger.info("Удаленная БД не найдена, загружаем локальную на Яндекс.Диск")
+            # Нет удаленной БД - пытаемся загрузить локальную на диск
+            logger.info("Удаленная БД не найдена, пытаемся загрузить локальную на Яндекс.Диск")
             success = _upload_merged_db(local_db)
-            if _sync_status_callback:
-                _sync_status_callback("Локальная БД загружена на Яндекс.Диск" if success else "Ошибка загрузки на Яндекс.Диск")
-            return success
+            if success:
+                if _sync_status_callback:
+                    _sync_status_callback("Локальная БД загружена на Яндекс.Диск")
+            else:
+                logger.warning("Не удалось загрузить БД на Яндекс.Диск, работаем только локально")
+                if _sync_status_callback:
+                    _sync_status_callback("Работаем только с локальной БД")
+            # Возвращаем True, так как локальная БД есть и можем работать
+            return True
         
         # Есть и локальная, и удаленная БД - объединяем их
         logger.info("Объединяем локальную и удаленную БД")
@@ -275,10 +306,10 @@ def sync_on_startup() -> bool:
         # Удаляем временный файл
         remote_db.unlink(missing_ok=True)
         
-        if merge_success and upload_success:
+        if merge_success:
             logger.info("Синхронизация при запуске завершена успешно")
             if _sync_status_callback:
-                _sync_status_callback("Данные синхронизированы")
+                _sync_status_callback("Данные синхронизированы" if upload_success else "Данные объединены (проблемы с загрузкой)")
         else:
             logger.error("Ошибка синхронизации при запуске")
             if _sync_status_callback:
@@ -288,13 +319,20 @@ def sync_on_startup() -> bool:
         if _ui_refresh_callback:
             _ui_refresh_callback()
         
-        return merge_success and upload_success
+        # Возвращаем True если хотя бы объединение прошло успешно
+        return merge_success
         
     except Exception as exc:
         logger.exception("Ошибка синхронизации при запуске: %s", exc)
         if _sync_status_callback:
             _sync_status_callback("Ошибка синхронизации")
-        return False
+        
+        # Даже при ошибке синхронизации, если локальная БД есть, можем работать
+        try:
+            local_db = Path(get_current_db_path())
+            return local_db.exists()
+        except Exception:
+            return False
 
 
 def sync_periodic() -> bool:
@@ -446,6 +484,31 @@ def sync_on_shutdown() -> bool:
     except Exception as exc:
         logger.exception("Ошибка синхронизации при выключении: %s", exc)
         return False
+
+
+def show_yadisk_setup_dialog(parent_window=None) -> str:
+    """
+    Показать диалог настройки Яндекс.Диска при проблемах с токеном
+    
+    Returns: 'token_saved', 'offline' или 'cancelled'
+    """
+    try:
+        if not parent_window:
+            # Создаем временное окно
+            import tkinter as tk
+            parent_window = tk.Tk()
+            parent_window.withdraw()
+            
+        from gui.yadisk_setup_dialog import YaDiskSetupDialog
+        
+        dialog = YaDiskSetupDialog(parent_window)
+        parent_window.wait_window(dialog)
+        
+        return dialog.result or 'cancelled'
+        
+    except Exception as exc:
+        logger.exception("Ошибка показа диалога настройки Яндекс.Диска: %s", exc)
+        return 'cancelled'
 
 
 def is_sync_running() -> bool:

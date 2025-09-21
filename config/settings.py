@@ -28,6 +28,7 @@ class AppConfig:
     # Yandex Disk defaults
     yandex_default_remote_dir: str = "/SdelkaBackups"
     # Токен по умолчанию для синхронизации (если пользователь не настроил свой)
+    # ВАЖНО: Этот токен нужно заменить на действующий!
     yandex_default_oauth_token: str = "y0_AgAAAAANuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK"
 
     # DB
