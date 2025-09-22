@@ -33,6 +33,18 @@ _ui_refresh_callback: Optional[Callable[[], None]] = None
 _sync_status_callback: Optional[Callable[[str], None]] = None
 
 
+def _safe_callback(callback: Optional[Callable], *args, **kwargs) -> None:
+    """Безопасно вызывает callback функцию, игнорируя ошибки UI."""
+    if callback is None:
+        return
+    
+    try:
+        callback(*args, **kwargs)
+    except Exception as exc:
+        logger.debug(f"Ignored callback error: {exc}")
+        # Игнорируем ошибки callback (обычно это TclError от UI)
+
+
 class SyncConflictResolver:
     """Класс для разрешения конфликтов при объединении баз данных"""
 
@@ -290,8 +302,7 @@ def sync_on_startup() -> bool:
     """
     logger.info("=== Синхронизация при запуске ===")
 
-    if _sync_status_callback:
-        _sync_status_callback("Проверка локальной БД...")
+    _safe_callback(_sync_status_callback, "Проверка локальной БД...")
 
     try:
         local_db = Path(get_current_db_path())
@@ -300,8 +311,7 @@ def sync_on_startup() -> bool:
         # Это предотвращает постоянное дублирование данных
         if local_db.exists():
             logger.info("Локальная БД найдена, синхронизация при запуске НЕ НУЖНА")
-            if _sync_status_callback:
-                _sync_status_callback("Локальная БД готова к работе")
+            _safe_callback(_sync_status_callback, "Локальная БД готова к работе")
             return True
 
         # Проверяем доступность Яндекс.Диска
@@ -393,16 +403,14 @@ def sync_on_startup() -> bool:
                 _sync_status_callback("Ошибка синхронизации")
 
         # Обновляем UI если есть коллбэк
-        if _ui_refresh_callback:
-            _ui_refresh_callback()
+        _safe_callback(_ui_refresh_callback)
 
         # Возвращаем True если хотя бы объединение прошло успешно
         return merge_success
 
     except Exception as exc:
         logger.exception("Ошибка синхронизации при запуске: %s", exc)
-        if _sync_status_callback:
-            _sync_status_callback("Ошибка синхронизации")
+        _safe_callback(_sync_status_callback, "Ошибка синхронизации")
 
         # Даже при ошибке синхронизации, если локальная БД есть, можем работать
         try:

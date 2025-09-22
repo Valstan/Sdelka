@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
 from config.settings import ensure_data_directories
 from db.schema import initialize_schema
@@ -10,8 +12,36 @@ from utils.logging import configure_logging
 from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path, set_db_path
-import tkinter as tk
-from tkinter import filedialog, messagebox
+
+
+def handle_tcl_error(func, *args, **kwargs):
+    """Обработчик ошибок TclError для CustomTkinter виджетов."""
+    try:
+        return func(*args, **kwargs)
+    except tk.TclError as e:
+        # Игнорируем ошибки с недействительными именами команд canvas
+        if "invalid command name" in str(e):
+            logging.getLogger(__name__).debug(f"Ignored TclError: {e}")
+            return None
+        else:
+            # Пробрасываем другие TclError
+            raise e
+
+
+def setup_tcl_error_handling():
+    """Настройка глобальной обработки ошибок TclError."""
+    import sys
+    
+    def tcl_error_handler(exc_type, exc_value, exc_traceback):
+        if exc_type is tk.TclError:
+            error_msg = str(exc_value)
+            if "invalid command name" in error_msg or "can't invoke" in error_msg:
+                logger.debug(f"Ignored global TclError: {error_msg}")
+                return
+        # Для всех других ошибок используем стандартную обработку
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = tcl_error_handler
 
 
 def _ensure_db_available(logger: logging.Logger) -> None:
@@ -74,6 +104,13 @@ def _ensure_db_available(logger: logging.Logger) -> None:
 def main() -> None:
     configure_logging()
     logger = logging.getLogger(__name__)
+    
+    # Настройка обработки ошибок TclError для CustomTkinter
+    setup_tcl_error_handling()
+    
+    # Применение патчей для CustomTkinter
+    from utils.customtkinter_patches import apply_all_patches
+    apply_all_patches()
 
     # Create data/logs/backups dirs explicitly at startup
     try:

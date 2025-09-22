@@ -1649,13 +1649,15 @@ class WorkOrdersForm(ctk.CTkFrame):
             where.append("wo.date <= ?")
             params.append(date_to)
         sql = (
-            "SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, p.name AS product_name, wo.total_amount "
+            "SELECT wo.id, wo.order_no, wo.date, c.code AS contract_code, GROUP_CONCAT(p.name, ', ') AS product_name, wo.total_amount "
             "FROM work_orders wo "
             "LEFT JOIN contracts c ON c.id = wo.contract_id "
-            "LEFT JOIN products p ON p.id = wo.product_id "
+            "LEFT JOIN work_order_products wop ON wop.work_order_id = wo.id "
+            "LEFT JOIN products p ON p.id = wop.product_id "
         )
         if where:
             sql += "WHERE " + " AND ".join(where) + " "
+        sql += "GROUP BY wo.id, wo.order_no, wo.date, c.code, wo.total_amount "
         # По умолчанию сортируем по номеру наряда по убыванию
         sql += "ORDER BY wo.order_no DESC, wo.date DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -2022,10 +2024,10 @@ class WorkOrdersForm(ctk.CTkFrame):
         
         # Логируем данные для диагностики
         logger.info(
-            "Попытка сохранения наряда: работники=%s, контракт=%s, изделие=%s, строк=%d",
+            "Попытка сохранения наряда: работники=%s, контракт=%s, изделия=%s, строк=%d",
             [(w.worker_id, w.worker_name) for w in wo.workers],
             wo.contract_id,
-            wo.product_id,
+            wo.extra_product_ids,
             len(wo.items),
         )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import customtkinter as ctk
 import tkinter.font as tkfont
+import logging
 
 from gui.forms.workers_form import WorkersForm
 from gui.forms.job_types_form import JobTypesForm
@@ -14,9 +15,7 @@ from utils.user_prefs import load_prefs
 from utils.ui_theming import apply_user_fonts
 from utils.versioning import get_version
 from utils.runtime_mode import is_readonly
-
-
-import logging
+from utils.safe_tkinter import safe_widget_operation
 
 
 class AppWindow(ctk.CTk):

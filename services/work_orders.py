@@ -252,7 +252,7 @@ class LoadedWorkOrder:
     id: int
     order_no: int
     date: str
-    product_id: int | None
+    product_ids: list[int]  # Multiple products per work order
     contract_id: int
     items: list[
         tuple[int, str, float, float, float]
@@ -267,6 +267,7 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
         raise ValueError("Наряд не найден")
     items_rows = q.get_work_order_items(conn, work_order_id)
     workers_rows = q.get_work_order_workers(conn, work_order_id)
+    products_rows = q.get_work_order_products(conn, work_order_id)
     items = [
         (
             r["job_type_id"],
@@ -281,13 +282,12 @@ def load_work_order(conn: sqlite3.Connection, work_order_id: int) -> LoadedWorkO
         (int(r["worker_id"]), float(r["amount"]) if r["amount"] is not None else 0.0)
         for r in workers_rows
     ]
+    product_ids = [int(r["id"]) for r in products_rows]
     return LoadedWorkOrder(
         id=int(header["id"]),
         order_no=int(header["order_no"]),
         date=str(header["date"]),
-        product_id=(
-            int(header["product_id"]) if header["product_id"] is not None else None
-        ),
+        product_ids=product_ids,
         contract_id=int(header["contract_id"]),
         items=items,
         workers=worker_allocs,

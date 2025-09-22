@@ -99,10 +99,10 @@ def merge_from_file(
                 refs_upserts += 1
 
             # --- 2) Work orders ---
-            # Read orders from source and import to target
+            # Read orders from source and import to target (without product_id)
             src_orders = src_conn.execute(
                 """
-                SELECT id, order_no, date, product_id, contract_id, total_amount
+                SELECT id, order_no, date, contract_id, total_amount
                 FROM work_orders
                 ORDER BY date, order_no
                 """
@@ -158,9 +158,6 @@ def merge_from_file(
 
             for o in src_orders:
                 tgt_contract_id = _map_contract_id(o["contract_id"])
-                tgt_product_id = (
-                    _map_product_id(o["product_id"]) if o["product_id"] else None
-                )
                 if not tgt_contract_id:
                     # Cannot import order without contract mapping
                     continue
@@ -200,10 +197,47 @@ def merge_from_file(
                     total_amount=float(o.get("total_amount") or 0.0),
                 )
 
-                # Если есть продукт в старой схеме, добавляем связь
-                if tgt_product_id:
+                # Загружаем продукты (поддерживаем и старую, и новую схему)
+                tgt_product_ids = []
+                
+                # Сначала пробуем новую схему (junction table)
+                try:
+                    src_products = src_conn.execute(
+                        """
+                        SELECT p.id, p.product_no, p.name 
+                        FROM work_order_products wop
+                        JOIN products p ON p.id = wop.product_id
+                        WHERE wop.work_order_id = ?
+                        """,
+                        (o["id"],)
+                    ).fetchall()
+                    
+                    for src_prod in src_products:
+                        tgt_prod_id = _map_product_id(src_prod["id"])
+                        if tgt_prod_id:
+                            tgt_product_ids.append(tgt_prod_id)
+                            
+                except sqlite3.OperationalError:
+                    # Если junction table не существует, пробуем старую схему
                     try:
-                        q.set_work_order_products(tgt_conn, new_wo_id, [tgt_product_id])
+                        # Проверяем, есть ли колонка product_id в work_orders
+                        columns = [col[1] for col in src_conn.execute("PRAGMA table_info(work_orders)").fetchall()]
+                        if "product_id" in columns:
+                            src_product_id = src_conn.execute(
+                                "SELECT product_id FROM work_orders WHERE id = ?",
+                                (o["id"],)
+                            ).fetchone()
+                            if src_product_id and src_product_id["product_id"]:
+                                tgt_prod_id = _map_product_id(src_product_id["product_id"])
+                                if tgt_prod_id:
+                                    tgt_product_ids.append(tgt_prod_id)
+                    except Exception:
+                        # Игнорируем ошибки при работе со старой схемой
+                        pass
+                
+                if tgt_product_ids:
+                    try:
+                        q.set_work_order_products(tgt_conn, new_wo_id, tgt_product_ids)
                     except Exception:
                         # Игнорируем ошибки связывания продуктов при миграции
                         pass
