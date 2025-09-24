@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
+import signal
+import sys
+import tempfile
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from pathlib import Path
 
 from config.settings import ensure_data_directories
 from db.schema import initialize_schema
@@ -12,6 +18,89 @@ from utils.logging import configure_logging
 from gui.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path, set_db_path
+
+
+def check_single_instance() -> bool:
+    """Проверить, что запущен только один экземпляр программы.
+    
+    Returns:
+        bool: True если можно запускать программу, False если уже запущена
+    """
+    # Создаем путь к файлу блокировки в временной директории
+    lock_file = Path(tempfile.gettempdir()) / "sdelka_app.lock"
+    
+    try:
+        # Проверяем, существует ли файл блокировки
+        if lock_file.exists():
+            # Читаем PID из файла
+            try:
+                with open(lock_file, 'r') as f:
+                    pid = int(f.read().strip())
+                
+                # Проверяем, запущен ли процесс с этим PID
+                if os.name == 'nt':  # Windows
+                    import subprocess
+                    try:
+                        # Используем tasklist для проверки процесса
+                        result = subprocess.run(
+                            ['tasklist', '/FI', f'PID eq {pid}'],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        if str(pid) in result.stdout:
+                            return False  # Процесс еще запущен
+                    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                        pass
+                else:  # Unix-like systems
+                    try:
+                        os.kill(pid, 0)  # Проверяем существование процесса
+                        return False  # Процесс еще запущен
+                    except OSError:
+                        pass  # Процесс не существует
+                
+                # Если процесс не существует, удаляем старый файл блокировки
+                lock_file.unlink(missing_ok=True)
+                
+            except (ValueError, FileNotFoundError):
+                # Если не удалось прочитать PID, удаляем файл
+                lock_file.unlink(missing_ok=True)
+        
+        # Создаем новый файл блокировки с текущим PID
+        with open(lock_file, 'w') as f:
+            f.write(str(os.getpid()))
+        
+        return True
+        
+    except Exception as e:
+        # В случае ошибки разрешаем запуск
+        logging.getLogger(__name__).warning(f"Ошибка проверки единственного экземпляра: {e}")
+        return True
+
+
+def cleanup_lock_file():
+    """Удалить файл блокировки при завершении программы"""
+    lock_file = Path(tempfile.gettempdir()) / "sdelka_app.lock"
+    try:
+        lock_file.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def setup_signal_handlers():
+    """Настройка обработчиков сигналов для корректного завершения"""
+    def signal_handler(signum, frame):
+        cleanup_lock_file()
+        sys.exit(0)
+    
+    # Обработчики для корректного завершения
+    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # SIGTERM
+    
+    # На Windows также обрабатываем SIGBREAK
+    if os.name == 'nt':
+        try:
+            signal.signal(signal.SIGBREAK, signal_handler)
+        except AttributeError:
+            pass  # SIGBREAK может не существовать на некоторых системах
 
 
 def handle_tcl_error(func, *args, **kwargs):
@@ -32,6 +121,8 @@ def setup_tcl_error_handling():
     """Настройка глобальной обработки ошибок TclError."""
     import sys
     
+    logger = logging.getLogger(__name__)
+
     def tcl_error_handler(exc_type, exc_value, exc_traceback):
         if exc_type is tk.TclError:
             error_msg = str(exc_value)
@@ -105,12 +196,34 @@ def main() -> None:
     configure_logging()
     logger = logging.getLogger(__name__)
     
+    # Проверяем, что запущен только один экземпляр программы
+    if not check_single_instance():
+        logger.warning("Программа уже запущена")
+        # Создаем простое окно с сообщением
+        root = tk.Tk()
+        root.withdraw()  # Скрываем главное окно
+        messagebox.showwarning(
+            "Программа уже запущена",
+            "Программа 'Сделка' уже запущена.\n\n"
+            "Пожалуйста, закройте предыдущий экземпляр программы "
+            "или подождите, пока он полностью завершится."
+        )
+        root.destroy()
+        sys.exit(1)
+    
     # Настройка обработки ошибок TclError для CustomTkinter
     setup_tcl_error_handling()
+    
+    # Настройка обработчиков сигналов для корректного завершения
+    setup_signal_handlers()
     
     # Применение патчей для CustomTkinter
     from utils.customtkinter_patches import apply_all_patches
     apply_all_patches()
+    
+    # Применение современной темы
+    from utils.modern_theme import apply_modern_theme
+    apply_modern_theme()
 
     # Create data/logs/backups dirs explicitly at startup
     try:
@@ -239,6 +352,9 @@ def main() -> None:
                         )
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        
+        # Очищаем файл блокировки при завершении программы
+        cleanup_lock_file()
 
 
 if __name__ == "__main__":

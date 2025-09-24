@@ -87,7 +87,9 @@ def merge_from_file(
 
             # Contracts
             for r in src_conn.execute(
-                "SELECT code, start_date, end_date, description FROM contracts"
+                """SELECT code, name, contract_type, executor, igk, contract_number, 
+                          bank_account, start_date, end_date, description 
+                   FROM contracts"""
             ).fetchall():
                 q.upsert_contract(
                     tgt_conn,
@@ -95,6 +97,12 @@ def merge_from_file(
                     r.get("start_date"),
                     r.get("end_date"),
                     r.get("description"),
+                    name=r.get("name"),
+                    contract_type=r.get("contract_type"),
+                    executor=r.get("executor"),
+                    igk=r.get("igk"),
+                    contract_number=r.get("contract_number"),
+                    bank_account=r.get("bank_account"),
                 )
                 refs_upserts += 1
 

@@ -30,7 +30,7 @@ def suggest_workers(
 
 def suggest_job_types(
     conn: sqlite3.Connection, prefix: str, limit: int | None = None
-) -> list[tuple[int, str]]:
+) -> list[tuple[int, str, float]]:
     # Если пустой ввод — вернем самые популярные/последние по истории использования
     # (История используется на уровне формы; здесь при пустом запросе вернем первые N по алфавиту)
     if not prefix:
@@ -40,7 +40,7 @@ def suggest_job_types(
         rows = q.search_job_types_by_substring(
             conn, prefix, limit or CONFIG.autocomplete_limit
         )
-    return [(r["id"], r["name"]) for r in rows]
+    return [(r["id"], r["name"], float(r["price"])) for r in rows]
 
 
 def suggest_products(

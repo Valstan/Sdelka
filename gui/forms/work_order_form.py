@@ -28,6 +28,14 @@ from utils.autocomplete_positioning import (
     create_suggestion_button,
     create_suggestions_frame,
 )
+from utils.modern_theme import (
+    create_modern_button, create_modern_frame, create_modern_label,
+    create_modern_entry, create_modern_tabview, create_modern_scrollable_frame,
+    configure_widget_style, get_color
+)
+from gui.widgets.unified_list_widget import (
+    create_products_list, create_workers_list, create_job_types_list
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,6 +56,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._readonly = readonly
         self.selected_contract_id: Optional[int] = None
         self.selected_product_ids: list[int] = []  # Список изделий
+        self.selected_products: dict[int, str] = {}  # Словарь изделий (id -> название)
         self.selected_workers: dict[int, str] = {}
         self.worker_amounts: dict[int, float] = {}
         self._worker_amount_vars: dict[int, ctk.StringVar] = {}
@@ -57,6 +66,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.item_rows: list[ItemRow] = []
         self.editing_order_id: Optional[int] = None
         self._manual_worker_counter = -1  # Инициализируем счетчик для ручных работников
+        self._manual_product_counter = -1  # Инициализируем счетчик для ручных изделий
 
         # Ширины столбцов для списка работ (в пикселях)
         self._col_pad_px: int = 8
@@ -83,15 +93,9 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         self._build_ui()
         # Стартовые пустые строки
-        try:
-            if not self.item_rows:
-                self._add_blank_item_row()
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-        try:
-            self._refresh_workers_display()
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        # Старый метод _add_blank_item_row удален - используется новый виджет видов работ
+        # Старый метод _refresh_workers_display удален
+        # Старый метод _refresh_products_display удален
         self._update_totals()
         self._load_recent_orders()
 
@@ -112,12 +116,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Резиновая сетка: списки тянут высоту
         try:
             left.grid_rowconfigure(0, weight=0)  # header
-            left.grid_rowconfigure(1, weight=1)  # items list (expand to top)
-            left.grid_rowconfigure(2, weight=0)  # workers header
-            left.grid_rowconfigure(3, weight=0)  # workers list (auto height)
-            left.grid_rowconfigure(
-                4, weight=0
-            )  # totals + actions (bottom, sticky south)
+            left.grid_rowconfigure(1, weight=1)  # top panel (products + workers)
+            left.grid_rowconfigure(2, weight=1)  # job types list (expand)
+            left.grid_rowconfigure(3, weight=0)  # totals + actions (bottom, sticky south)
             left.grid_columnconfigure(0, weight=1)
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
@@ -163,25 +164,33 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
         self.date_entry.bind("<FocusIn>", lambda e: self._open_date_picker())
 
-        # Products section (ниже шапки)
-        products_section = ctk.CTkFrame(left)
-        products_section.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
-        products_section.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(products_section, text="Изделия").grid(row=0, column=0, sticky="w", padx=5)
-        products_frame = ctk.CTkFrame(products_section)
-        products_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 6))
-        products_frame.grid_columnconfigure(0, weight=1)
-        # Поле ввода для добавления изделий
-        self.product_entry = ctk.CTkEntry(products_frame, placeholder_text="Номер/Название")
-        self.product_entry.grid(row=0, column=0, sticky="ew", padx=(5, 2), pady=5)
-        self.product_entry.bind("<KeyRelease>", lambda e: self._on_product_key_for(self.product_entry))
-        self.product_entry.bind("<FocusIn>", lambda e: self._on_product_key_for(self.product_entry))
-        # Кнопка добавления изделия
-        self.add_product_btn = ctk.CTkButton(products_frame, text="+", width=30, command=self._add_product)
-        self.add_product_btn.grid(row=0, column=1, padx=(2, 5), pady=5)
-        # Список выбранных изделий (табличный вид: Наименование | № | Контракт | x)
-        self.products_list = ctk.CTkScrollableFrame(products_frame, height=120)
-        self.products_list.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5))
+        # Новый layout: Изделия и Работники рядом по горизонтали, Виды работ под ними
+        
+        # Верхняя панель: Изделия и Работники
+        top_panel = create_modern_frame(left, style_type="frame")
+        top_panel.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        top_panel.grid_columnconfigure(0, weight=1)  # Изделия
+        top_panel.grid_columnconfigure(1, weight=1)  # Работники
+        top_panel.grid_rowconfigure(0, weight=1)
+        
+        # Изделия (левая колонка)
+        self.products_widget = create_products_list(
+            top_panel,
+            readonly=self._readonly,
+            on_item_add=self._on_product_add,
+            on_item_remove=self._on_product_remove
+        )
+        self.products_widget.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        
+        # Работники (правая колонка)
+        self.workers_widget = create_workers_list(
+            top_panel,
+            readonly=self._readonly,
+            on_item_add=self._on_worker_add,
+            on_item_remove=self._on_worker_remove,
+            on_amount_change=self._on_worker_amount_change
+        )
+        self.workers_widget.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
 
         # Contract (заполняется автоматически по изделию, недоступно для редактирования)
         ctk.CTkLabel(header, text="Контракт").grid(row=0, column=4, sticky="w", padx=5)
@@ -204,190 +213,23 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.suggest_job_frame = create_suggestions_frame(self)
         self.suggest_job_frame.place_forget()
 
-        # Items list (adaptive rows with delete buttons) — тянем к верхнему краю
-        items_list_frame = ctk.CTkFrame(left)
-        items_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
-        # Header row
-        hdr = ctk.CTkFrame(items_list_frame)
-        hdr.grid(row=0, column=0, sticky="ew")
-        # Use two containers to avoid pushing right columns: left flexible, right fixed
-        hdr_right = ctk.CTkFrame(hdr)
-        hdr_right.pack(side="right")
-        # Right headers
-        ctk.CTkLabel(hdr_right, text="Кол-во", anchor="e", width=self._col_qty_w).pack(
-            side="left", padx=4
+        # Виды работ (под верхней панелью)
+        self.job_types_widget = create_job_types_list(
+            left,
+            readonly=self._readonly,
+            on_item_add=self._on_job_type_add,
+            on_item_remove=self._on_job_type_remove,
+            on_amount_change=self._on_job_type_quantity_change
         )
-        ctk.CTkLabel(hdr_right, text="Цена", anchor="e", width=self._col_price_w).pack(
-            side="left", padx=4
-        )
-        ctk.CTkLabel(
-            hdr_right, text="Сумма", anchor="e", width=self._col_amount_w
-        ).pack(side="left", padx=4)
-        ctk.CTkLabel(hdr_right, text=" ", anchor="e", width=self._col_delete_w).pack(
-            side="left", padx=4
-        )
-        # Left flexible header
-        self._name_header_label = ctk.CTkLabel(hdr, text="Вид работ", anchor="w")
-        self._name_header_label.pack(side="left", fill="x", expand=True, padx=4)
-        # Scrollable rows
-        items_list_frame.grid_rowconfigure(1, weight=1)
-        items_list_frame.grid_columnconfigure(0, weight=1)
-        self.items_list = ctk.CTkScrollableFrame(items_list_frame)
-        # Показать таблицу даже без выбранного изделия
-        self.items_list.grid(row=1, column=0, sticky="nsew")
-
-        # Табличный контейнер для строк (редактируемые строки)
-        self.items_table = ctk.CTkFrame(self.items_list)
-        # Не расширяем таблицу по высоте, чтобы scrollregion рос от содержимого
-        self.items_table.pack(side="top", fill="x", expand=False, anchor="n")
-        # Общая сетка: колонка 0 тянется, остальные фиксированные
-        self.items_table.grid_columnconfigure(0, weight=1)
-        self.items_table.grid_columnconfigure(1, weight=0, minsize=self._col_qty_w)
-        self.items_table.grid_columnconfigure(2, weight=0, minsize=self._col_price_w)
-        self.items_table.grid_columnconfigure(3, weight=0, minsize=self._col_amount_w)
-        self.items_table.grid_columnconfigure(4, weight=0, minsize=self._col_delete_w)
-
-        # Прокрутка колесом и перетягиванием ползунка
-        try:
-            can_items = self.items_list._parent_canvas
-            sb_items = self.items_list._scrollbar
-            can_items.configure(yscrollcommand=sb_items.set)
-            sb_items.configure(command=lambda *args: (can_items.yview(*args), "break"))
-
-            # Обновлять scrollregion по мере добавления/удаления строк
-            def _refresh_items_scrollregion(_e=None):
-                try:
-                    can_items.configure(scrollregion=can_items.bbox("all"))
-                except Exception as exc:
-                    logging.getLogger(__name__).exception(
-                        "Ignored unexpected error: %s", exc
-                    )
-
-            self.items_table.bind("<Configure>", _refresh_items_scrollregion, add="+")
-
-            # Явные бинды колеса мыши для Windows/Linux/macOS (ускорение x3)
-            def _on_mousewheel_items(event):
-                try:
-                    step = 3
-                    delta = 0
-                    if hasattr(event, "delta") and event.delta:
-                        delta = int(-1 * (event.delta / 120) * step)
-                    elif getattr(event, "num", None) == 4:
-                        delta = -step
-                    elif getattr(event, "num", None) == 5:
-                        delta = step
-                    if delta:
-                        can_items.yview_scroll(delta, "units")
-                        return "break"
-                except Exception:
-                    return None
-
-            # Биндим на контейнер scrollable-frame, чтобы события точно доходили
-            for widget in (self.items_list, can_items, self.items_table):
-                widget.bind("<MouseWheel>", _on_mousewheel_items, add="+")
-                widget.bind("<Button-4>", _on_mousewheel_items, add="+")
-                widget.bind("<Button-5>", _on_mousewheel_items, add="+")
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-        # При изменении размеров контента — обновить ширины столбца и скролл
-        self.items_table.bind(
-            "<Configure>",
-            lambda e: (
-                self._update_items_columns_widths(),
-                self._toggle_items_scroll(),
-            ),
-        )
+        self.job_types_widget.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
         
-        # Показать скролл только при переполнении
-        def _toggle_items_scroll_internal():
-            try:
-                can = self.items_list._parent_canvas
-                bbox = can.bbox("all")
-                need = False
-                if bbox is not None:
-                    need = bbox[3] > can.winfo_height()
-                self.items_list._scrollbar.configure(width=(14 if need else 0))
-            except Exception as exc:
-                logging.getLogger(__name__).exception(
-                    "Ignored unexpected error: %s", exc
-                )
+        # Старый список видов работ удален - теперь используется новый виджет выше
 
-        self._toggle_items_scroll = _toggle_items_scroll_internal
-
-        # Workers section (заголовок)
-        workers_header = ctk.CTkFrame(left)
-        workers_header.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 2))
-        ctk.CTkLabel(workers_header, text="Работники").pack(side="left", padx=5)
-
-        self.suggest_worker_frame = create_suggestions_frame(self)
-        self.suggest_worker_frame.place_forget()
-
-        # Глобальный клик по корневому окну — скрыть подсказки, если клик вне списков
-        self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
-
-        self.workers_list = ctk.CTkScrollableFrame(left)
-        self.workers_list.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 8))
-        try:
-            can_workers = self.workers_list._parent_canvas
-            sb_workers = self.workers_list._scrollbar
-            can_workers.configure(yscrollcommand=sb_workers.set)
-            sb_workers.configure(
-                command=lambda *args: (can_workers.yview(*args), "break")
-            )
-
-            def _refresh_workers_scrollregion(_e=None):
-                try:
-                    can_workers.configure(scrollregion=can_workers.bbox("all"))
-                except Exception as exc:
-                    logging.getLogger(__name__).exception(
-                        "Ignored unexpected error: %s", exc
-                    )
-
-            self.workers_list.bind(
-                "<Configure>", _refresh_workers_scrollregion, add="+"
-            )
-
-            def _on_mousewheel_workers(event):
-                try:
-                    step = 3
-                    delta = 0
-                    if hasattr(event, "delta") and event.delta:
-                        delta = int(-1 * (event.delta / 120) * step)
-                    elif getattr(event, "num", None) == 4:
-                        delta = -step
-                    elif getattr(event, "num", None) == 5:
-                        delta = step
-                    if delta:
-                        can_workers.yview_scroll(delta, "units")
-                        return "break"
-                except Exception:
-                    return None
-
-            for widget in (can_workers, self.workers_list):
-                widget.bind("<MouseWheel>", _on_mousewheel_workers, add="+")
-                widget.bind("<Button-4>", _on_mousewheel_workers, add="+")
-                widget.bind("<Button-5>", _on_mousewheel_workers, add="+")
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-        
-        def _toggle_workers_scroll(_e=None):
-            try:
-                can = self.workers_list._parent_canvas
-                bbox = can.bbox("all")
-                need = False
-                if bbox is not None:
-                    need = bbox[3] > can.winfo_height()
-                self.workers_list._scrollbar.configure(width=(14 if need else 0))
-            except Exception as exc:
-                logging.getLogger(__name__).exception(
-                    "Ignored unexpected error: %s", exc
-                )
-
-        self.workers_list.bind("<Configure>", _toggle_workers_scroll)
+        # Старый список работников удален - теперь используется новый виджет рядом с изделиями
 
         # Totals and Save
         totals_frame = ctk.CTkFrame(left)
-        totals_frame.grid(row=5, column=0, sticky="sew", padx=10, pady=(6, 8))
+        totals_frame.grid(row=3, column=0, sticky="sew", padx=10, pady=(6, 8))
         for i in range(4):
             totals_frame.grid_columnconfigure(i, weight=1 if i == 0 else 0)
 
@@ -571,26 +413,46 @@ class WorkOrdersForm(ctk.CTkFrame):
         product_w = max(min_widths.get("product", 120), leftover)
         self.orders_tree.column("product", width=product_w)
 
-    # --- Truncate job name column with ellipsis and keep numeric columns visible ---
-    def _update_items_columns_widths(self) -> None:
+    def _get_orders_content_width(self) -> int:
+        total = 0
         try:
-            total_w = int(self.items_list.winfo_width() or 0)
-            fixed = (
-                self._col_qty_w
-                + self._col_price_w
-                + self._col_amount_w
-                + self._col_delete_w
-                + (5 * self._col_pad_px)
-            )
-            name_w = max(120, total_w - fixed)
-            # update header width for name
+            for col in self.orders_tree["columns"]:
+                total += int(self.orders_tree.column(col, "width") or 0)
+            # учесть вертикальный скроллбар и внутренние отступы
+            total += 20 + 16
+        except Exception:
+            total = 360
+        return total
+
+    def _enforce_right_width_limit(self, adjust_to_content: bool) -> None:
+        try:
+            total = self.winfo_width()
+            if not total or total <= 1:
+                self.after(
+                    120, lambda: self._enforce_right_width_limit(adjust_to_content)
+                )
+                return
+            max_right = int(total * 0.40)
+            desired = max_right
+            if adjust_to_content:
+                desired = min(max_right, self._get_orders_content_width())
+            # Минимальная ширина справа, чтобы элементы управления не ломались
+            min_right = 260
+            desired = max(min_right, desired)
+            # Применить ширину к правой панели
             try:
-                if getattr(self, "_name_header_label", None) is not None:
-                    self._name_header_label.configure(width=name_w)
+                self._right.configure(width=desired)
+                self._right.pack_propagate(False)
             except Exception as exc:
                 logging.getLogger(__name__).exception(
                     "Ignored unexpected error: %s", exc
                 )
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+
+    # --- Truncate job name column with ellipsis and keep numeric columns visible ---
+    # Старый метод _update_items_columns_widths удален - используется новый виджет видов работ
+            # update header width for name - removed old code
 
             # font for measuring
             try:
@@ -654,42 +516,9 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
 
-    def _get_orders_content_width(self) -> int:
-        total = 0
-        try:
-            for col in self.orders_tree["columns"]:
-                total += int(self.orders_tree.column(col, "width") or 0)
-            # учесть вертикальный скроллбар и внутренние отступы
-            total += 20 + 16
-        except Exception:
-            total = 360
-        return total
-
     def _enforce_right_width_limit(self, adjust_to_content: bool) -> None:
-        try:
-            total = self.winfo_width()
-            if not total or total <= 1:
-                self.after(
-                    120, lambda: self._enforce_right_width_limit(adjust_to_content)
-                )
-                return
-            max_right = int(total * 0.40)
-            desired = max_right
-            if adjust_to_content:
-                desired = min(max_right, self._get_orders_content_width())
-            # Минимальная ширина справа, чтобы элементы управления не ломались
-            min_right = 260
-            desired = max(min_right, desired)
-            # Применить ширину к правой панели
-            try:
-                self._right.configure(width=desired)
-                self._right.pack_propagate(False)
-            except Exception as exc:
-                logging.getLogger(__name__).exception(
-                    "Ignored unexpected error: %s", exc
-                )
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        # Метод упрощен - правая панель больше не используется для списка нарядов
+        pass
 
     # --- suggest helpers ---
     def _hide_all_suggests(self) -> None:
@@ -978,7 +807,7 @@ class WorkOrdersForm(ctk.CTkFrame):
 
         # Добавляем изделие
         self.selected_product_ids.append(product_id)
-        self._refresh_products_display()
+        # Старый метод _refresh_products_display удален
         self._update_contract_from_products()
 
         # Очищаем поле ввода
@@ -998,7 +827,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._manual_worker_counter -= 1
         manual_worker_id = self._manual_worker_counter
         self.selected_workers[manual_worker_id] = ""
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
         self._update_totals()
 
     def _on_global_click(self, event=None) -> None:
@@ -1030,7 +859,8 @@ class WorkOrdersForm(ctk.CTkFrame):
         self._hide_all_suggests()
 
     # ---- Items and Workers manipulation ----
-    def _add_item(self) -> None:
+    # Старый метод _add_item удален - используется новый виджет видов работ
+    def _placeholder_method(self) -> None:
         job_type_id = getattr(self.job_entry, "_selected_job_id", None)
         if not job_type_id:
             messagebox.showwarning("Проверка", "Выберите вид работ из подсказки")
@@ -1180,69 +1010,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.item_rows.clear()
         self._update_totals()
 
-    def _add_blank_item_row(self) -> None:
-        # Пустая строка для ввода нового вида работ
-        idx = len(self.item_rows)
-        self.item_rows.append(
-            ItemRow(
-                job_type_id=0,
-                job_type_name="",
-                quantity=0.0,
-                unit_price=0.0,
-                line_amount=0.0,
-            )
-        )
-        row_index = len(self._item_widgets)
-        name_var = ctk.StringVar(value="")
-        name_entry = ctk.CTkEntry(self.items_table, textvariable=name_var)
-        name_entry.grid(row=row_index, column=0, sticky="ew", padx=4, pady=2)
-        name_entry.bind(
-            "<KeyRelease>",
-            lambda _e=None, ent=name_entry, i=idx: self._on_job_key_edit(ent, i),
-        )
-        qty_var = ctk.StringVar(value="0")
-        qty_entry = ctk.CTkEntry(
-            self.items_table, textvariable=qty_var, width=self._col_qty_w
-        )
-        qty_entry.grid(row=row_index, column=1, sticky="e", padx=4, pady=2)
-        qty_entry.bind(
-            "<KeyRelease>", lambda _e=None, i=idx, v=qty_var: self._on_qty_change(i, v)
-        )
-        price_label = ctk.CTkLabel(self.items_table, text="0.00", anchor="e")
-        price_label.grid(row=row_index, column=2, sticky="e", padx=4, pady=2)
-        amount_label = ctk.CTkLabel(self.items_table, text="0.00", anchor="e")
-        amount_label.grid(row=row_index, column=3, sticky="e", padx=4, pady=2)
-        add_btn_row = ctk.CTkButton(
-            self.items_table, text="+", width=28, command=self._add_blank_item_row
-        )
-        add_btn_row.grid(row=row_index, column=4, sticky="e", padx=2, pady=2)
-        del_btn = ctk.CTkButton(
-            self.items_table,
-            text="Удалить",
-            width=self._col_delete_w - self._col_pad_px,
-            fg_color="#b91c1c",
-            hover_color="#7f1d1d",
-            command=lambda i=idx: self._remove_item_row(i),
-        )
-        del_btn.grid(row=row_index, column=5, sticky="e", padx=4, pady=2)
-        self._item_row_widgets.append(name_entry)
-        self._item_widgets.append(
-            {
-                "name": name_entry,
-                "qty": qty_entry,
-                "price": price_label,
-                "amount": amount_label,
-                "btn_add": add_btn_row,
-                "btn_del": del_btn,
-                "name_var": name_var,
-                "qty_var": qty_var,
-            }
-        )
-        try:
-            name_entry.focus_set()
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-
+    # Старый метод _add_blank_item_row удален - используется новый виджет видов работ
     def _on_job_key_edit(self, entry: ctk.CTkEntry, idx: int) -> None:
         # Подсказки по виду работ, выбор обновляет job_type_id, price, amount
         self._hide_all_suggests()
@@ -1369,98 +1137,10 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.selected_workers[worker_id] = label or f"Работник {worker_id}"
         
         # Обновляем отображение списка работников
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
         self._update_totals()
     
-    def _refresh_workers_display(self) -> None:
-        """Обновляет отображение списка работников"""
-        # Очищаем текущий список
-        for w in self.workers_list.winfo_children():
-            w.destroy()
-        self._worker_amount_vars.clear()
-
-        # Создаем новые строки для каждого работника (редактируемые)
-        if not self.selected_workers:
-            # Добавим пустую строку для ввода
-            self._manual_worker_counter -= 1
-            self.selected_workers[self._manual_worker_counter] = ""
-        for wid, name in self.selected_workers.items():
-            row = ctk.CTkFrame(self.workers_list)
-            row.pack(fill="x", pady=2)
-            # ФИО
-            name_var = ctk.StringVar(value=name)
-            name_entry = ctk.CTkEntry(row, textvariable=name_var)
-            name_entry.pack(side="left", padx=4, fill="x", expand=True)
-
-            # Показывать подсказки при вводе ФИО
-            def _show_worker_suggest(evt=None, ent=name_entry):
-                try:
-                    self._hide_all_suggests()
-                    for w in self.suggest_worker_frame.winfo_children():
-                        w.destroy()
-                    place_suggestions_under_entry(ent, self.suggest_worker_frame, self)
-                    text = (ent.get() or "").strip()
-                    with get_connection() as conn:
-                        rows = suggestions.suggest_workers(
-                            conn, text, CONFIG.autocomplete_limit
-                        )
-                    for _id, label in rows:
-                        btn = create_suggestion_button(
-                            self.suggest_worker_frame,
-                            text=label,
-                            command=lambda i=_id, l=label, entry=ent, wid_loc=wid: self._pick_worker_for_row(
-                                wid_loc, i, l, entry
-                            ),
-                        )
-                        if "(Уволен)" in label:
-                            try:
-                                btn.configure(state="disabled")
-                            except Exception as exc:
-                                logging.getLogger(__name__).exception(
-                                    "Ignored unexpected error: %s", exc
-                                )
-                        btn.pack(fill="x", padx=2, pady=1)
-                except Exception as exc:
-                    logging.getLogger(__name__).exception(
-                        "Ignored unexpected error: %s", exc
-                    )
-
-            name_entry.bind("<KeyRelease>", _show_worker_suggest)
-            name_entry.bind("<FocusIn>", _show_worker_suggest)
-
-            # Сумма
-            var = ctk.StringVar(value=f"{self.worker_amounts.get(wid, 0.0):.2f}")
-            self._worker_amount_vars[wid] = var
-            amount_entry = ctk.CTkEntry(row, textvariable=var, width=100)
-            amount_entry.pack(side="left", padx=4)
-            amount_entry.bind(
-                "<KeyRelease>", lambda _e=None, i=wid: self._on_worker_amount_change(i)
-            )
-            if self._readonly:
-                try:
-                    amount_entry.configure(state="disabled")
-                except Exception as exc:
-                    logging.getLogger(__name__).exception(
-                        "Ignored unexpected error: %s", exc
-                    )
-            # Плюс и удалить
-            add_btn = ctk.CTkButton(
-                row, text="+", width=28, command=self._add_worker_from_entry
-            )
-            add_btn.pack(side="left", padx=4)
-            del_btn = ctk.CTkButton(
-                row,
-                text="Удалить",
-                width=80,
-                fg_color="#b91c1c",
-                hover_color="#7f1d1d",
-                command=lambda i=wid: self._remove_worker(i),
-            )
-            del_btn.pack(side="left", padx=4)
-
-        # После перерисовки — пересчитать и обновить поля сумм
-        self._recalculate_worker_amounts()
-        self._update_worker_amount_entries()
+    # Старый метод _refresh_workers_display удален - используется новый виджет работников
 
     def _remove_worker(self, worker_id: int) -> None:
         if worker_id in self.selected_workers:
@@ -1469,7 +1149,7 @@ class WorkOrdersForm(ctk.CTkFrame):
                 del self.worker_amounts[worker_id]
             if worker_id in self._manual_amount_ids:
                 self._manual_amount_ids.discard(worker_id)
-            self._refresh_workers_display()
+            # Старый метод _refresh_workers_display удален
             self._update_totals()
 
     def _update_totals(self) -> None:
@@ -1551,7 +1231,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._recalculate_worker_amounts()
             self._update_worker_amount_entries()
         # Перерисовать строки работников с актуальной доступностью полей
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
 
     def _set_edit_locked(self, locked: bool) -> None:
         """Включает/выключает режим просмотра (блокирует поля формы)."""
@@ -1589,7 +1269,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Перерисовать работников (включит/выключит поля сумм)
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
 
     def _enable_editing(self) -> None:
         # При включении редактирования не менять суммы автоматически: остаемся в ручном режиме
@@ -1792,7 +1472,22 @@ class WorkOrdersForm(ctk.CTkFrame):
             # Загружаем изделия наряда
             products = q.get_work_order_products(conn, data.id)
             self.selected_product_ids = [p["id"] for p in products]
-            self._refresh_products_display()
+            
+            # Заполняем новую структуру selected_products
+            self.selected_products.clear()
+            product_items = []
+            for i, product in enumerate(products):
+                # Используем положительные ID для реальных изделий
+                product_id = product["id"]
+                product_name = f"{product['product_no']} — {product['name']}"
+                self.selected_products[product_id] = product_name
+                product_items.append((product_id, product_name, {}))
+            
+            # Загружаем в новый виджет
+            if hasattr(self, 'products_widget'):
+                self.products_widget.set_items(product_items)
+                
+            # Старый метод _refresh_products_display удален
 
             # Загружаем контракт
             self.selected_contract_id = data.contract_id
@@ -1898,7 +1593,7 @@ class WorkOrdersForm(ctk.CTkFrame):
         # Просмотр: фиксируем ручные значения, чтобы не пересчитывать
         self._manual_amount_ids = set(self.selected_workers.keys())
         self._set_edit_locked(True)
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
         # Обновим числа (без перерасчета распределения)
         try:
             total = sum(i.line_amount for i in self.item_rows)
@@ -1910,7 +1605,9 @@ class WorkOrdersForm(ctk.CTkFrame):
 
     # ---- Save/Update/Delete ----
     def _build_input(self) -> Optional[WorkOrderInput]:
-        if not self.item_rows:
+        # Получаем данные из нового виджета видов работ
+        job_types_data = self.job_types_widget.get_items_data()
+        if not job_types_data:
             messagebox.showwarning("Проверка", "Добавьте хотя бы одну строку работ")
             return None
         # Проверка: должно быть выбрано хотя бы одно изделие
@@ -1968,14 +1665,14 @@ class WorkOrdersForm(ctk.CTkFrame):
             return None
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
-        for i in self.item_rows:
-            if not i.job_type_id:
+        for job_data in job_types_data:
+            if not job_data['id'] or job_data['id'] <= 0:
                 messagebox.showwarning(
                     "Проверка", "Выберите вид работ из подсказок для каждой строки"
                 )
                 return None
             items.append(
-                WorkOrderItemInput(job_type_id=i.job_type_id, quantity=i.quantity)
+                WorkOrderItemInput(job_type_id=job_data['id'], quantity=job_data['quantity'])
             )
         # Создаем список работников с именами и суммами
         workers: list[WorkOrderWorkerInput] = []
@@ -2086,10 +1783,22 @@ class WorkOrdersForm(ctk.CTkFrame):
         self.editing_order_id = None
         self.selected_contract_id = None
         self.selected_product_ids.clear()
+        self.selected_products.clear()
         self.selected_workers.clear()
         self.item_rows.clear()
         self._manual_worker_counter = -1
-        self._refresh_workers_display()
+        self._manual_product_counter = -1
+        
+        # Очищаем новые виджеты
+        if hasattr(self, 'products_widget'):
+            self.products_widget.clear_items()
+        if hasattr(self, 'workers_widget'):
+            self.workers_widget.clear_items()
+        if hasattr(self, 'job_types_widget'):
+            self.job_types_widget.clear_items()
+        
+        # Очищаем старые виджеты
+        # Старый метод _refresh_products_display удален
         for w in self.workers_list.winfo_children():
             try:
                 w.destroy()
@@ -2137,11 +1846,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             self._item_row_widgets.clear()
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
-        # Стартовая пустая строка для видов работ
-        try:
-            self._add_blank_item_row()
-        except Exception as exc:
-            logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
+        # Стартовая пустая строка для видов работ - удалена, используется новый виджет
         self._update_totals()
         try:
             self.save_btn.configure(
@@ -2194,134 +1899,162 @@ class WorkOrdersForm(ctk.CTkFrame):
         else:
             self.selected_workers[wid_current] = label
         self.suggest_worker_frame.place_forget()
-        self._refresh_workers_display()
+        # Старый метод _refresh_workers_display удален
 
-    def _add_product(self) -> None:
-        """Добавляет изделие из поля ввода в список"""
-        text = self.product_entry.get().strip()
-        if not text:
-            return
-
-        # Пытаемся найти изделие по тексту
-        with get_connection() as conn:
-            rows = suggestions.suggest_products(conn, text, 1)
-
-        if not rows:
-            # Если не найдено, попробуем извлечь номер изделия из строки вида "123 — Название"
-            import re
-            match = re.match(r'^(\d+)\s*—', text)
-            if match:
-                product_no = match.group(1)
-                # повторный запрос — в отдельном подключении, чтобы не использовать закрытое
-                with get_connection() as conn2:
-                    rows = suggestions.suggest_products(conn2, product_no, 1)
-            
-            if not rows:
-                messagebox.showerror("Ошибка", f"Изделие '{text}' не найдено")
-                return
-
-        product_id, label = rows[0]
-
-        # Проверяем, не добавлено ли уже
-        if product_id in self.selected_product_ids:
-            messagebox.showwarning("Предупреждение", f"Изделие '{label}' уже добавлено")
-            return
-
-        # Добавляем изделие
-        self.selected_product_ids.append(product_id)
-        self._refresh_products_display()
-        self._update_contract_from_products()
-
-        # Очищаем поле ввода
-        self.product_entry.delete(0, "end")
-        record_use("work_orders.product", label)
 
     def _remove_product(self, product_id: int) -> None:
         """Удаляет изделие из списка"""
-        if product_id in self.selected_product_ids:
-            self.selected_product_ids.remove(product_id)
-            self._refresh_products_display()
+        if product_id in self.selected_products:
+            del self.selected_products[product_id]
+            # Также удаляем из старого списка если есть
+            if product_id in self.selected_product_ids:
+                self.selected_product_ids.remove(product_id)
+            # Старый метод _refresh_products_display удален
             self._update_contract_from_products()
 
-    def _refresh_products_display(self) -> None:
-        """Обновляет отображение списка изделий"""
-        # Очищаем список
-        for child in self.products_list.winfo_children():
-            try:
-                child.destroy()
-            except Exception as exc:
-                logging.getLogger(__name__).exception(
-                    "Ignored unexpected error: %s", exc
-                )
+    # Старые методы для работы с изделиями удалены - используется новый виджет
 
-        # Заголовок таблицы
-        header = ctk.CTkFrame(self.products_list)
-        header.pack(fill="x")
-        name_h = ctk.CTkLabel(header, text="Наименование", anchor="w")
-        name_h.grid(row=0, column=0, sticky="ew", padx=6)
-        no_h = ctk.CTkLabel(header, text="№", anchor="w", width=120)
-        no_h.grid(row=0, column=1, sticky="w", padx=6)
-        contract_h = ctk.CTkLabel(header, text="Контракт", anchor="w", width=160)
-        contract_h.grid(row=0, column=2, sticky="w", padx=6)
-        header.grid_columnconfigure(0, weight=1)
+    # Новые методы для работы с едиными виджетами
+    
+    def _on_product_add(self, product_id: int, product_name: str):
+        """Обработчик добавления изделия"""
+        try:
+            if product_id > 0 and product_id not in self.selected_product_ids:
+                self.selected_product_ids.append(product_id)
+                self._update_contract_from_products()
+                record_use("work_orders.product", product_name)
+        except Exception as exc:
+            logger.exception("Ошибка добавления изделия: %s", exc)
+    
+    def _on_product_remove(self, product_id: int):
+        """Обработчик удаления изделия"""
+        try:
+            if product_id in self.selected_product_ids:
+                self.selected_product_ids.remove(product_id)
+                self._update_contract_from_products()
+        except Exception as exc:
+            logger.exception("Ошибка удаления изделия: %s", exc)
+    
+    def _on_worker_add(self, worker_id: int, worker_name: str):
+        """Обработчик добавления работника"""
+        try:
+            if worker_id > 0 and worker_id not in self.selected_workers:
+                self.selected_workers[worker_id] = worker_name
+                self.worker_amounts[worker_id] = 0.0
+                self._update_totals()
+                record_use("work_orders.worker", worker_name)
+                # Пересчитываем суммы работников
+                self._redistribute_worker_amounts()
+        except Exception as exc:
+            logger.exception("Ошибка добавления работника: %s", exc)
+    
+    def _on_worker_remove(self, worker_id: int):
+        """Обработчик удаления работника"""
+        try:
+            if worker_id in self.selected_workers:
+                del self.selected_workers[worker_id]
+                if worker_id in self.worker_amounts:
+                    del self.worker_amounts[worker_id]
+                self._update_totals()
+                # Пересчитываем суммы работников
+                self._redistribute_worker_amounts()
+        except Exception as exc:
+            logger.exception("Ошибка удаления работника: %s", exc)
+    
+    def _on_worker_amount_change(self, worker_id: int, amount: float):
+        """Обработчик изменения суммы работника"""
+        try:
+            self.worker_amounts[worker_id] = amount
+            self._update_totals()
+        except Exception as exc:
+            logger.exception("Ошибка изменения суммы работника: %s", exc)
+    
+    def _on_job_type_add(self, job_type_id: int, job_type_name: str):
+        """Обработчик добавления вида работ"""
+        try:
+            # Создаем новый элемент работы
+            item = ItemRow(
+                job_type_id=job_type_id,
+                job_type_name=job_type_name,
+                quantity=1.0,
+                unit_price=0.0,
+                line_amount=0.0,
+            )
+            self.item_rows.append(item)
+            # Старый метод _add_blank_item_row удален - используется новый виджет
+            record_use("work_orders.job_type", job_type_name)
+        except Exception as exc:
+            logger.exception("Ошибка добавления вида работ: %s", exc)
+    
+    def _on_job_type_remove(self, job_type_id: int):
+        """Обработчик удаления вида работ"""
+        try:
+            # Находим и удаляем соответствующий элемент
+            for i, item in enumerate(self.item_rows):
+                if item.job_type_id == job_type_id:
+                    self._remove_item_row(i)
+                    break
+        except Exception as exc:
+            logger.exception("Ошибка удаления вида работ: %s", exc)
+    
+    def _on_job_type_quantity_change(self, job_type_id: int, quantity: float):
+        """Обработчик изменения количества вида работ"""
+        try:
+            # Находим соответствующий элемент и обновляем количество
+            for item in self.item_rows:
+                if item.job_type_id == job_type_id:
+                    item.quantity = quantity
+                    item.line_amount = item.quantity * item.unit_price
+                    self._update_totals()
+                    break
+            
+            # Пересчитываем суммы работников
+            self._redistribute_worker_amounts()
+        except Exception as exc:
+            logger.exception("Ошибка изменения количества вида работ: %s", exc)
 
-        # Добавляем строки изделий
-        with get_connection() as conn:
-            for product_id in self.selected_product_ids:
-                row = q.get_product(conn, product_id)
-                if not row:
-                    continue
-                # Получить контракт; если None — привязать к "Без контракта"
-                cid = row["contract_id"] if "contract_id" in row.keys() else row[3]
-                try:
-                    if cid is None:
-                        cid = q.get_or_create_default_contract(conn)
-                        q.set_product_contract(conn, int(product_id), int(cid))
-                except Exception as exc:
-                    logging.getLogger(__name__).exception(
-                        "Ignored unexpected error: %s", exc
-                    )
-                contract = None
-                try:
-                    if cid is not None:
-                        contract = q.get_contract(conn, int(cid))
-                except Exception:
-                    contract = None
+    # Старый метод _refresh_products_display удален - используется новый виджет изделий
 
-                # Строка таблицы
-                line = ctk.CTkFrame(self.products_list)
-                line.pack(fill="x", padx=2, pady=1)
-                # Наименование
-                name_lbl = ctk.CTkLabel(line, text=str(row["name"]))
-                name_lbl.grid(row=0, column=0, sticky="ew", padx=6)
-                # № изделия
-                no_lbl = ctk.CTkLabel(line, text=str(row["product_no"]))
-                no_lbl.grid(row=0, column=1, sticky="w", padx=6)
-                # Контракт
-                code = contract["code"] if contract and "code" in contract.keys() else "Без контракта"
-                contract_lbl = ctk.CTkLabel(line, text=str(code))
-                contract_lbl.grid(row=0, column=2, sticky="w", padx=6)
-                # Удаление справа
-                del_btn = ctk.CTkButton(
-                    line,
-                    text="Удалить",
-                    width=80,
-                    fg_color="#b91c1c",
-                    hover_color="#7f1d1d",
-                    command=lambda pid=product_id: self._remove_product(pid),
-                )
-                del_btn.grid(row=0, column=3, sticky="e", padx=6)
-                line.grid_columnconfigure(0, weight=1)
+    def _redistribute_worker_amounts(self) -> None:
+        """Равномерно распределить суммы видов работ между работниками"""
+        try:
+            # Получаем общую сумму всех видов работ
+            total_job_amount = 0.0
+            job_types_data = self.job_types_widget.get_items_data()
+            for job_data in job_types_data:
+                total_job_amount += job_data['total']
+            
+            # Получаем количество работников
+            worker_count = len(self.selected_workers)
+            
+            if worker_count == 0 or total_job_amount == 0:
+                # Если нет работников или сумма равна 0, обнуляем все суммы
+                for worker_id in self.worker_amounts:
+                    self.worker_amounts[worker_id] = 0.0
+            else:
+                # Распределяем сумму равномерно между работниками
+                amount_per_worker = total_job_amount / worker_count
+                for worker_id in self.selected_workers:
+                    self.worker_amounts[worker_id] = amount_per_worker
+            
+            # Обновляем отображение сумм работников
+            self._update_totals()
+            
+        except Exception as exc:
+            logger.exception("Ошибка пересчета сумм работников: %s", exc)
 
     def _update_contract_from_products(self) -> None:
         """Обновляет контракт на основе выбранных изделий"""
-        if not self.selected_product_ids:
+        # Используем новый список ID изделий
+        product_ids = [pid for pid in self.selected_product_ids if pid > 0]
+        
+        if not product_ids:
             self.selected_contract_id = None
             self.contract_entry.delete(0, "end")
             return
 
         with get_connection() as conn:
-            contract_id = q.get_contract_from_products(conn, self.selected_product_ids)
+            contract_id = q.get_contract_from_products(conn, product_ids)
 
             if contract_id:
                 self.selected_contract_id = contract_id

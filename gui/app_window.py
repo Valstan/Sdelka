@@ -16,6 +16,10 @@ from utils.ui_theming import apply_user_fonts
 from utils.versioning import get_version
 from utils.runtime_mode import is_readonly
 from utils.safe_tkinter import safe_widget_operation
+from utils.modern_theme import (
+    create_modern_button, create_modern_frame, create_modern_label,
+    configure_widget_style, get_color
+)
 
 
 class AppWindow(ctk.CTk):
@@ -65,29 +69,6 @@ class AppWindow(ctk.CTk):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        # Верхняя панель с кнопкой синхронизации
-        top_frame = ctk.CTkFrame(self, height=50)
-        top_frame.pack(fill="x", padx=5, pady=(5, 0))
-        top_frame.pack_propagate(False)
-
-        # Кнопка принудительной синхронизации
-        self._sync_button = ctk.CTkButton(
-            top_frame,
-            text="🔄 Обновить данные",
-            fg_color="#dc2626",  # Красный цвет
-            hover_color="#b91c1c",
-            width=200,
-            height=35,
-            command=self._force_sync,
-        )
-        self._sync_button.pack(side="right", padx=10, pady=7)
-
-        # Статус синхронизации
-        self._sync_status_label = ctk.CTkLabel(
-            top_frame, text="Готов к работе", font=ctk.CTkFont(size=12)
-        )
-        self._sync_status_label.pack(side="left", padx=10, pady=7)
-
         # Основной Tabview
         tabview = ctk.CTkTabview(self)
         tabview.pack(expand=True, fill="both", pady=(5, 0))
@@ -126,8 +107,10 @@ class AppWindow(ctk.CTk):
 
         # Создаем компактный бейдж названия/версии на одном уровне с кнопками табов
         self._create_title_badge()
+        # Создаем элементы синхронизации на уровне с кнопками навигации
+        self._create_sync_elements()
         # Следим за ресайзом, чтобы поддерживать позиционирование на уровне сегментированных кнопок
-        self.bind("<Configure>", lambda e: self._place_title_badge(), add="+")
+        self.bind("<Configure>", lambda e: [self._place_title_badge(), self._place_sync_elements()], add="+")
         try:
             seg = getattr(self._tabview, "_segmented_button", None)
             if (
@@ -135,17 +118,20 @@ class AppWindow(ctk.CTk):
                 and hasattr(seg, "__class__")
                 and "CTkSegmentedButton" not in str(seg.__class__)
             ):
-                seg.bind("<Configure>", lambda e: self._place_title_badge(), add="+")
+                seg.bind("<Configure>", lambda e: [self._place_title_badge(), self._place_sync_elements()], add="+")
         except Exception as exc:
             logging.getLogger(__name__).exception("Ignored unexpected error: %s", exc)
         # Первичное размещение
-        self._schedule_after(50, self._place_title_badge)
+        self._schedule_after(50, lambda: [self._place_title_badge(), self._place_sync_elements()])
 
         # Малый бейдж "Режим просмотра" справа от сегментированных кнопок
         try:
             seg = getattr(self._tabview, "_segmented_button", None)
-            self._readonly_badge = ctk.CTkLabel(
-                self, text="Режим просмотра", text_color="#dc2626"
+            self._readonly_badge = create_modern_label(
+                self, 
+                text="Режим просмотра", 
+                style_type="label_secondary",
+                text_color=get_color("accent_danger")
             )
 
             def place_badge():
@@ -216,8 +202,10 @@ class AppWindow(ctk.CTk):
         fixed_font_small = ctk.CTkFont(family=base_family, size=11, weight="normal")
         fixed_font_small_bold = ctk.CTkFont(family=base_family, size=11, weight="bold")
 
-        badge = ctk.CTkFrame(
-            self, corner_radius=4, border_width=1, border_color=("gray70", "gray40")
+        badge = create_modern_frame(
+            self, 
+            style_type="frame",
+            corner_radius=6
         )
         # Минимальные внутренние отступы
         inner = ctk.CTkFrame(badge, fg_color="transparent")
@@ -283,6 +271,79 @@ class AppWindow(ctk.CTk):
         except Exception:
             try:
                 badge.place_forget()
+            except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "Ignored unexpected error: %s", exc
+                )
+
+    def _create_sync_elements(self) -> None:
+        """Создание элементов синхронизации на уровне с кнопками навигации"""
+        # Статус синхронизации
+        self._sync_status_label = create_modern_label(
+            self, 
+            text="Готов к работе", 
+            style_type="label_secondary",
+            font=ctk.CTkFont(size=11)
+        )
+        
+        # Кнопка принудительной синхронизации
+        self._sync_button = create_modern_button(
+            self,
+            text="🔄 Обновить данные",
+            style_type="button_danger",
+            width=160,
+            height=28,
+            command=self._force_sync,
+            font=ctk.CTkFont(size=11)
+        )
+
+    def _place_sync_elements(self) -> None:
+        """Позиционирование элементов синхронизации у правого края программы"""
+        try:
+            if not hasattr(self, '_sync_status_label') or not self._sync_status_label.winfo_exists():
+                return
+            if not hasattr(self, '_sync_button') or not self._sync_button.winfo_exists():
+                return
+                
+            seg = getattr(self._tabview, "_segmented_button", None)
+            if seg is None or not seg.winfo_exists():
+                return
+                
+            self.update_idletasks()
+            seg.update_idletasks()
+            self._sync_status_label.update_idletasks()
+            self._sync_button.update_idletasks()
+            
+            # Получаем размеры окна и кнопок навигации
+            seg_y = seg.winfo_rooty() - self.winfo_rooty()
+            seg_h = seg.winfo_height()
+            window_w = self.winfo_width()
+            
+            # Выравниваем по центру высоты кнопок навигации
+            center_y = seg_y + (seg_h - 28) // 2  # 28 - высота кнопки
+            
+            # Прижимаем к правому краю окна
+            button_width = 160
+            status_width = 120
+            margin = 16  # отступ от края
+            
+            # Позиционируем справа налево: сначала кнопка, потом статус
+            right_x = window_w - button_width - margin
+            status_x = right_x - status_width - 8
+            
+            self._sync_button.place(x=right_x, y=center_y)
+            self._sync_status_label.place(x=status_x, y=center_y + 2)
+            
+            # Поднимаем на передний план
+            self._sync_status_label.lift()
+            self._sync_button.lift()
+            
+        except Exception:
+            try:
+                if hasattr(self, '_sync_status_label') and self._sync_status_label.winfo_exists():
+                    self._sync_status_label.place_forget()
+                if hasattr(self, '_sync_button') and self._sync_button.winfo_exists():
+                    self._sync_button.place_forget()
             except Exception as exc:
                 logging.getLogger(__name__).exception(
                     "Ignored unexpected error: %s", exc
@@ -543,6 +604,20 @@ class AppWindow(ctk.CTk):
             try:
                 if self._readonly_badge.winfo_exists():
                     self._readonly_badge.destroy()
+            except Exception:
+                pass
+
+        # Очищаем элементы синхронизации
+        if hasattr(self, "_sync_status_label") and self._sync_status_label:
+            try:
+                if self._sync_status_label.winfo_exists():
+                    self._sync_status_label.destroy()
+            except Exception:
+                pass
+        if hasattr(self, "_sync_button") and self._sync_button:
+            try:
+                if self._sync_button.winfo_exists():
+                    self._sync_button.destroy()
             except Exception:
                 pass
 
