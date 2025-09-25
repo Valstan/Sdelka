@@ -1,0 +1,67 @@
+name: sdelka_v4
+description: "Программа Сделка версия 4.0 - современное приложение для управления нарядами"
+publish_to: 'none'
+version: 4.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI и тема
+  cupertino_icons: ^1.0.6
+  material_color_utilities: ^0.5.0
+  
+  # Состояние приложения
+  provider: ^6.1.1
+  riverpod: ^2.4.9
+  flutter_riverpod: ^2.4.9
+  
+  # База данных PostgreSQL
+  postgres: ^3.0.3
+  drift: ^2.14.1
+  sqlite3_flutter_libs: ^0.5.15
+  path_provider: ^2.1.2
+  path: ^1.8.3
+  
+  # Сетевые запросы
+  http: ^1.1.2
+  dio: ^5.4.0
+  
+  # Работа с JSON
+  json_annotation: ^4.8.1
+  
+  # Дата и время
+  intl: ^0.19.0
+  
+  # Файловая система
+  file_picker: ^6.1.1
+  
+  # Логирование
+  logger: ^2.0.2
+  
+  # Утилиты
+  uuid: ^4.2.1
+  equatable: ^2.0.5
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  # Генерация кода
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+  drift_dev: ^2.14.1
+  
+  # Линтеры
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/

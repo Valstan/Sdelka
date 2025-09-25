@@ -1,0 +1,13 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # Настройки для json_serializable
+          explicit_to_json: true
+          include_if_null: false
+      
+      drift_dev:
+        options:
+          # Настройки для drift
+          generate_connect_constructor: true
