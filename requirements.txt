@@ -1,8 +1,31 @@
-customtkinter>=5.2.2
-pandas>=2.2.2
-reportlab>=4.2.2
-openpyxl>=3.1.5
-XlsxWriter>=3.2.0
-python-dateutil>=2.9.0
-pytest>=8.3.2
-tkcalendar>=1.6.1
+# Основные зависимости
+customtkinter>=5.2.0
+pillow>=10.0.0
+requests>=2.31.0
+pyyaml>=6.0.1
+python-dateutil>=2.8.2
+psutil>=5.9.0
+
+# База данных
+sqlite3
+
+# Логирование
+loguru>=0.7.0
+
+# Тестирование
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Линтинг и форматирование
+flake8>=6.0.0
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.5.0
+
+# Безопасность
+bandit>=1.7.5
+safety>=2.3.5
+
+# Дополнительные утилиты
+pathlib2>=2.3.7
+typing-extensions>=4.7.0

@@ -15,7 +15,7 @@ from db.schema import initialize_schema
 from db.sqlite import get_connection
 from utils.backup import backup_sqlite_db
 from utils.logging import configure_logging
-from gui.app_window import AppWindow
+from gui.windows.app_window import AppWindow
 from gui.login_dialog import LoginDialog
 from utils.user_prefs import get_current_db_path, set_db_path
 

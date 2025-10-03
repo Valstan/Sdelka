@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  sdelka-app:
+    build: .
+    container_name: sdelka-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - sdelka-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sdelka-postgres
+    environment:
+      POSTGRES_DB: sdelka
+      POSTGRES_USER: sdelka_user
+      POSTGRES_PASSWORD: sdelka_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./setup_postgresql.sql:/docker-entrypoint-initdb.d/setup.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - sdelka-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: sdelka-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - sdelka-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: sdelka-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - sdelka-app
+    restart: unless-stopped
+    networks:
+      - sdelka-network
+
+volumes:
+  postgres_data:
+
+networks:
+  sdelka-network:
+    driver: bridge

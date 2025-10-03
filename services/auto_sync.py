@@ -661,3 +661,38 @@ def show_yadisk_setup_dialog(parent_window=None) -> str:
 def is_sync_running() -> bool:
     """Проверить, запущена ли автоматическая синхронизация"""
     return _sync_thread is not None and _sync_thread.is_alive()
+
+
+def start_periodic_sync(parent_window=None) -> None:
+    """
+    Запустить периодическую синхронизацию
+    
+    Args:
+        parent_window: Родительское окно для callback'ов
+    """
+    try:
+        logger.info("Запуск периодической синхронизации...")
+        
+        # Устанавливаем callback'и если есть родительское окно
+        if parent_window:
+            def ui_refresh():
+                try:
+                    if hasattr(parent_window, 'after') and parent_window.winfo_exists():
+                        parent_window.after(0, lambda: None)  # Простое обновление UI
+                except Exception:
+                    pass
+            
+            def sync_status(status: str):
+                try:
+                    if hasattr(parent_window, '_update_sync_status'):
+                        if hasattr(parent_window, 'after') and parent_window.winfo_exists():
+                            parent_window.after(0, lambda: parent_window._update_sync_status(status))
+                except Exception:
+                    pass
+            
+            start_auto_sync(ui_refresh, sync_status)
+        else:
+            start_auto_sync()
+            
+    except Exception as exc:
+        logger.exception("Ошибка запуска периодической синхронизации: %s", exc)

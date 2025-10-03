@@ -1577,6 +1577,17 @@ class WorkOrdersForm(ctk.CTkFrame):
                     "qty_var": qty_var,
                 }
             )
+        # Загружаем данные в новый виджет видов работ
+        if hasattr(self, 'job_types_widget'):
+            job_items = []
+            for job_type_id, name, qty, unit_price, line_amount in data.items:
+                job_items.append((job_type_id, name, {
+                    'quantity': qty,
+                    'price': unit_price,
+                    'total': line_amount
+                }))
+            self.job_types_widget.set_items(job_items)
+        
         # workers — показываем в режиме просмотра, суммы не пересчитываем
         self.selected_workers.clear()
         self.worker_amounts.clear()
@@ -1607,7 +1618,9 @@ class WorkOrdersForm(ctk.CTkFrame):
     def _build_input(self) -> Optional[WorkOrderInput]:
         # Получаем данные из нового виджета видов работ
         job_types_data = self.job_types_widget.get_items_data()
-        if not job_types_data:
+        # Фильтруем пустые элементы (с пустым именем)
+        valid_job_types = [item for item in job_types_data if item['name'].strip()]
+        if not valid_job_types:
             messagebox.showwarning("Проверка", "Добавьте хотя бы одну строку работ")
             return None
         # Проверка: должно быть выбрано хотя бы одно изделие
@@ -1665,7 +1678,7 @@ class WorkOrdersForm(ctk.CTkFrame):
             return None
         # Проверим, что виды работ выбраны корректно
         items: list[WorkOrderItemInput] = []
-        for job_data in job_types_data:
+        for job_data in valid_job_types:
             if not job_data['id'] or job_data['id'] <= 0:
                 messagebox.showwarning(
                     "Проверка", "Выберите вид работ из подсказок для каждой строки"
@@ -2021,7 +2034,9 @@ class WorkOrdersForm(ctk.CTkFrame):
             # Получаем общую сумму всех видов работ
             total_job_amount = 0.0
             job_types_data = self.job_types_widget.get_items_data()
-            for job_data in job_types_data:
+            # Фильтруем пустые элементы для расчета
+            valid_job_types = [item for item in job_types_data if item['name'].strip()]
+            for job_data in valid_job_types:
                 total_job_amount += job_data['total']
             
             # Получаем количество работников

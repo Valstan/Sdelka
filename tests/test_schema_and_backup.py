@@ -9,7 +9,12 @@ from utils.backup import backup_sqlite_db
 
 def test_initialize_schema(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
-    with get_connection(db_path) as conn:
+    # Создаем директорию если она не существует
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Используем прямой путь к БД
+    import sqlite3
+    with sqlite3.connect(str(db_path)) as conn:
         initialize_schema(conn)
         # таблица должна существовать
         rows = conn.execute(
@@ -21,9 +26,14 @@ def test_initialize_schema(tmp_path: Path) -> None:
 def test_backup_rotation(tmp_path: Path) -> None:
     db_path = tmp_path / "test.db"
     backups_dir = tmp_path / "backups"
+    
+    # Создаем директории если они не существуют
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    backups_dir.mkdir(parents=True, exist_ok=True)
 
     # создать пустую БД
-    with get_connection(db_path) as conn:
+    import sqlite3
+    with sqlite3.connect(str(db_path)) as conn:
         initialize_schema(conn)
 
     # сделать 22 бэкапа, оставить 20

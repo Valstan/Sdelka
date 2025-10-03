@@ -1,14 +1,14 @@
 {
   "list_font_size": 12,
   "ui_font_size": 12,
-  "db_path": "D:\\Сделка тесты\\3_11\\base_sdelka.db",
+  "db_path": null,
   "enable_wal": null,
   "busy_timeout_ms": 10000,
-  "yandex_remote_dir": "/SdelkaBackups",
+  "yandex_remote_dir": null,
   "yandex_auth_method": "oauth",
-  "yandex_oauth_token": "y0__xDR8Z0KGNuWAyCFzMykFJz31O8WoqV9ONfVuMNLNIyjYsZK",
+  "yandex_oauth_token": null,
   "yandex_username": null,
   "yandex_app_password": null,
   "yandex_public_folder_url": null,
-  "yandex_private_file_path": "/SdelkaBackups/sdelka_base.db"
+  "yandex_private_file_path": null
 }
